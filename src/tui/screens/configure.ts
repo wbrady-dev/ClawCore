@@ -1282,10 +1282,25 @@ function treeCheckboxMenu(tree: WatchEntry[], enabledPaths: Set<string> = new Se
     fullRender();
 
     process.stdout.write("\x1b[?25l"); // hide cursor
-    if (process.stdin.isTTY) process.stdin.setRawMode(true);
+
+    // Ensure stdin is fully active for raw keyboard input
+    // Must resume BEFORE setting raw mode to avoid EAGAIN on some platforms
+    process.stdin.removeAllListeners("data");
+    process.stdin.removeAllListeners("keypress");
     process.stdin.resume();
+    if (process.stdin.isTTY) {
+      try { process.stdin.setRawMode(true); } catch (e) {
+        // If raw mode fails, we can't do keyboard navigation
+        console.error(t.err("\n  Failed to enable keyboard input. Try running from a standard terminal."));
+        resolveMenu(null);
+        return;
+      }
+    }
+    // Keep the event loop alive while waiting for input
+    const keepAlive = setInterval(() => {}, 60000);
 
     const finish = (result: WatchEntry[] | null) => {
+      clearInterval(keepAlive);
       if (resolved) return;
       resolved = true;
       process.stdin.removeListener("data", onKey);
