@@ -1,6 +1,6 @@
 # 🦞 ClawCore — Stateful Evidence Engine
 
-**ClawCore** is the knowledge and memory backbone of [OpenClaw](https://openclaw.ai), built on the **CRAM Architecture** — a multi-layer agent architecture that combines retrieval, summary lineage, knowledge graphs, awareness, evidence-backed state, delta tracking, attempt memory, branch governance, and low-token context compilation. It gives your AI agent persistent, inspectable, evidence-backed memory.
+**ClawCore** brings a knowledge and memory backbone to [OpenClaw](https://openclaw.ai), built on the **CRAM Architecture** — a multi-layer agent architecture that combines retrieval, summary lineage, knowledge graphs, awareness, evidence-backed state, delta tracking, attempt memory, branch governance, and low-token context compilation. It gives your AI agent persistent, inspectable, evidence-backed memory.
 
 ### Evidence OS
 
