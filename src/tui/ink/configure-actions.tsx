@@ -66,7 +66,13 @@ export async function runInkConfigureAction(action: ConfigureAction): Promise<vo
   else if (action === "audio") await configureAudio();
   else if (action === "evidence") await configureEvidence();
   else if (action === "watch") {
-    // Use the legacy tree-based watch path browser for directory navigation
+    // Legacy tree screen needs full stdin control — reset to non-raw mode
+    if (process.stdin.isTTY) {
+      try { process.stdin.setRawMode(false); } catch {}
+    }
+    process.stdin.removeAllListeners("data");
+    process.stdin.removeAllListeners("keypress");
+    process.stdout.write("\x1b[?25h"); // show cursor
     const { configureWatchPaths: legacyWatchPaths } = await import("../screens/configure.js");
     await legacyWatchPaths(getRootDir());
   }
