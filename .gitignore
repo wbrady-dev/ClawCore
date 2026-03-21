@@ -1,0 +1,17 @@
+node_modules/
+dist/
+logs/
+.env
+*.db
+*.db-shm
+*.db-wal
+__pycache__/
+*.pyc
+.models.pid
+.clawcore.pid
+server/config.json
+package-lock.json
+*.exe
+.DS_Store
+data/*
+!data/.gitkeep

@@ -1,0 +1,63 @@
+import type { FastifyInstance } from "fastify";
+import { resolve } from "path";
+import { config } from "../config.js";
+import { getDb } from "../storage/index.js";
+import {
+  listCollections,
+  createCollection,
+  deleteCollection,
+  getCollectionStats,
+  getCollection,
+  getCollectionByName,
+} from "../storage/collections.js";
+import { invalidateCollection } from "../query/cache.js";
+
+function db() {
+  return getDb(resolve(config.dataDir, "clawcore.db"));
+}
+
+export function registerCollectionRoutes(server: FastifyInstance) {
+  server.get("/collections", async () => {
+    const collections = listCollections(db());
+    return { collections };
+  });
+
+  server.post("/collections", async (req, reply) => {
+    const { name, description } = req.body as {
+      name: string;
+      description?: string;
+    };
+
+    if (!name) {
+      return reply.status(400).send({ error: "name required" });
+    }
+
+    const existing = getCollectionByName(db(), name);
+    if (existing) {
+      return reply.status(409).send({ error: "collection with this name already exists", collection: existing });
+    }
+
+    const collection = createCollection(db(), name, description);
+    return reply.status(201).send(collection);
+  });
+
+  server.delete("/collections/:id", async (req) => {
+    const { id } = req.params as { id: string };
+    // Invalidate query cache for this collection before deleting
+    const collection = getCollection(db(), id);
+    if (collection) {
+      invalidateCollection(collection.name);
+    }
+    deleteCollection(db(), id);
+    return { deleted: true };
+  });
+
+  server.get("/collections/:id/stats", async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const stats = getCollectionStats(db(), id);
+    if (!stats) {
+      return reply.status(404).send({ error: "Collection not found" });
+    }
+    return stats;
+  });
+}

@@ -1,0 +1,53 @@
+import Database from "better-sqlite3";
+import * as sqliteVec from "sqlite-vec";
+import { mkdirSync } from "fs";
+import { dirname } from "path";
+import { logger } from "../utils/logger.js";
+
+let db: Database.Database | null = null;
+
+export function getDb(dbPath: string): Database.Database {
+  if (db) return db;
+
+  mkdirSync(dirname(dbPath), { recursive: true });
+
+  db = new Database(dbPath);
+  db.pragma("journal_mode = WAL");
+  db.pragma("foreign_keys = ON");
+  db.pragma("busy_timeout = 5000");
+  // Checkpoint WAL every 1000 pages (~4MB) to prevent unbounded growth
+  db.pragma("wal_autocheckpoint = 1000");
+
+  // Load sqlite-vec extension
+  sqliteVec.load(db);
+  logger.info("sqlite-vec extension loaded");
+
+  return db;
+}
+
+/**
+ * Force a WAL checkpoint. Call after large batch operations (bulk ingest)
+ * to flush the WAL to the main DB file and free disk space.
+ */
+export function checkpoint(): void {
+  if (db) {
+    try {
+      db.pragma("wal_checkpoint(TRUNCATE)");
+    } catch {
+      // Non-critical — auto-checkpoint will handle it
+    }
+  }
+}
+
+export function closeDb(): void {
+  if (db) {
+    const ref = db;
+    db = null; // Clear reference first to prevent use-after-close
+    try {
+      ref.pragma("wal_checkpoint(TRUNCATE)");
+    } catch {}
+    try {
+      ref.close();
+    } catch {}
+  }
+}

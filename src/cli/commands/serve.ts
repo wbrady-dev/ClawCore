@@ -1,0 +1,206 @@
+import { Command } from "commander";
+import { spawn, execSync, execFileSync, type ChildProcess } from "child_process";
+import { resolve } from "path";
+import { existsSync } from "fs";
+import chalk from "chalk";
+import { config } from "../../config.js";
+import { getApiPort, getModelPort } from "../../tui/platform.js";
+
+/**
+ * Run both model server and ClawCore RAG API in a single terminal.
+ * Shows live status and logs. Ctrl+C stops everything cleanly.
+ */
+export const serveCommand = new Command("serve")
+  .description("Run ClawCore services in this terminal (model server + RAG API)")
+  .action(async () => {
+    const root = config.rootDir;
+    const nemScript = resolve(root, "..", "rerank-server.py");
+    const nemScriptAlt = resolve(root, "server", "rerank-server.py");
+    const serverScript = nemScript.includes("rerank-server.py") && existsSync(nemScript)
+      ? nemScript
+      : nemScriptAlt;
+
+    console.log("");
+    console.log(chalk.bold.green("  ╔══════════════════════════════════╗"));
+    console.log(chalk.bold.green("  ║") + chalk.bold.white("   C L A W C O R E   S E R V E R ") + chalk.bold.green("║"));
+    console.log(chalk.bold.green("  ╚══════════════════════════════════╝"));
+    console.log("");
+
+    // Find Python
+    let pythonCmd = "python";
+    try {
+      execFileSync("python3", ["--version"], { stdio: "pipe" });
+      pythonCmd = "python3";
+    } catch {
+      try {
+        execFileSync("python", ["--version"], { stdio: "pipe" });
+        pythonCmd = "python";
+      } catch {}
+    }
+
+    const prefix = {
+      nem: chalk.magenta("[models]  "),
+      tal: chalk.green("[clawcore]"),
+      sys: chalk.dim("[system]  "),
+    };
+
+    // Stop any existing services/processes on our ports
+    console.log(`${prefix.sys} Checking for existing services...`);
+
+    // Stop Windows services if they exist
+    if (process.platform === "win32") {
+      try { execFileSync("net", ["stop", "ClawCoreRAG"], { stdio: "pipe" }); console.log(`${prefix.sys} Stopped ClawCoreRAG service`); } catch {}
+      try { execFileSync("net", ["stop", "ClawCoreModels"], { stdio: "pipe" }); console.log(`${prefix.sys} Stopped ClawCoreModels service`); } catch {}
+    }
+
+    // Kill anything on our ports (cross-platform)
+    for (const port of [getModelPort(), getApiPort()]) {
+      try {
+        if (process.platform === "win32") {
+          const out = execFileSync("netstat", ["-ano"], { stdio: "pipe" }).toString();
+          for (const line of out.split("\n")) {
+            if (line.includes(`:${port}`) && line.includes("LISTENING")) {
+              const pid = line.trim().split(/\s+/).pop();
+              if (pid && pid !== "0" && /^\d+$/.test(pid)) {
+                try { execFileSync("taskkill", ["/PID", pid, "/F"], { stdio: "pipe" }); } catch {}
+              }
+            }
+          }
+        } else {
+          const out = execFileSync("lsof", ["-ti", `:${port}`], { stdio: "pipe" }).toString().trim();
+          if (out) {
+            for (const pid of out.split("\n")) {
+              const trimmed = pid.trim();
+              if (/^\d+$/.test(trimmed)) {
+                try { process.kill(Number(trimmed), "SIGKILL"); } catch {}
+              }
+            }
+          }
+        }
+      } catch {}
+    }
+
+    // Brief pause for ports to release
+    await new Promise((r) => setTimeout(r, 2000));
+
+    console.log(`${prefix.sys} Starting model server...`);
+    console.log(`${prefix.sys} Script: ${serverScript}`);
+    console.log("");
+
+    // Start Models
+    const nemProcess = spawn(pythonCmd, [serverScript], {
+      cwd: resolve(root, ".."),
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+
+    nemProcess.stdout?.on("data", (data: Buffer) => {
+      for (const line of data.toString().split("\n").filter((l: string) => l.trim())) {
+        console.log(`${prefix.nem} ${line}`);
+      }
+    });
+
+    nemProcess.stderr?.on("data", (data: Buffer) => {
+      for (const line of data.toString().split("\n").filter((l: string) => l.trim())) {
+        console.log(`${prefix.nem} ${chalk.dim(line)}`);
+      }
+    });
+
+    // Wait for models to be ready
+    console.log(`${prefix.sys} Waiting for models to load...`);
+    try {
+      await waitForPort(getModelPort(), 120000);
+    } catch {
+      console.error(`${prefix.sys} ${chalk.red("✗")} Model server failed to start within 120s`);
+      console.error(`${prefix.sys}   Check logs above for errors. Common causes:`);
+      console.error(`${prefix.sys}   - Model not downloaded yet (first run takes longer)`);
+      console.error(`${prefix.sys}   - Insufficient VRAM/RAM for the selected model`);
+      console.error(`${prefix.sys}   - Port ${getModelPort()} already in use`);
+      nemProcess.kill();
+      process.exit(1);
+    }
+    console.log(`${prefix.sys} ${chalk.green("●")} Model server ready on port ${getModelPort()}`);
+    console.log("");
+
+    // Start ClawCore
+    console.log(`${prefix.sys} Starting ClawCore RAG API...`);
+    const distIndex = resolve(root, "dist", "index.js");
+    const tsxCli = resolve(root, "node_modules", "tsx", "dist", "cli.mjs");
+    const srcEntry = resolve(root, "src", "index.ts");
+    // Prefer dist (production), fall back to tsx (development)
+    const useBuilt = existsSync(distIndex);
+    const entryArgs = useBuilt ? [distIndex] : [tsxCli, srcEntry];
+
+    const talProcess = spawn(process.execPath, entryArgs, {
+      cwd: root,
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+
+    talProcess.stdout?.on("data", (data: Buffer) => {
+      for (const line of data.toString().split("\n").filter((l: string) => l.trim())) {
+        console.log(`${prefix.tal} ${line}`);
+      }
+    });
+
+    talProcess.stderr?.on("data", (data: Buffer) => {
+      for (const line of data.toString().split("\n").filter((l: string) => l.trim())) {
+        console.log(`${prefix.tal} ${chalk.dim(line)}`);
+      }
+    });
+
+    try {
+      await waitForPort(getApiPort(), 30000);
+    } catch {
+      console.error(`${prefix.sys} ${chalk.red("✗")} ClawCore API failed to start within 30s`);
+      console.error(`${prefix.sys}   Check logs above for errors.`);
+      talProcess.kill();
+      nemProcess.kill();
+      process.exit(1);
+    }
+    console.log(`${prefix.sys} ${chalk.green("●")} ClawCore RAG API ready on port ${getApiPort()}`);
+    console.log("");
+    console.log(`${prefix.sys} ${chalk.bold.green("All services running.")}`);
+    console.log(`${prefix.sys} ${chalk.dim("Press Ctrl+C to stop.")}`);
+    console.log("");
+
+    // Graceful shutdown
+    const cleanup = () => {
+      console.log("");
+      console.log(`${prefix.sys} Shutting down...`);
+      talProcess.kill("SIGTERM");
+      nemProcess.kill("SIGTERM");
+
+      setTimeout(() => {
+        talProcess.kill("SIGKILL");
+        nemProcess.kill("SIGKILL");
+        process.exit(0);
+      }, 5000);
+    };
+
+    process.on("SIGINT", cleanup);
+    process.on("SIGTERM", cleanup);
+
+    nemProcess.on("exit", (code) => {
+      console.log(`${prefix.nem} ${chalk.red("Process exited")} (code ${code})`);
+    });
+
+    talProcess.on("exit", (code) => {
+      console.log(`${prefix.tal} ${chalk.red("Process exited")} (code ${code})`);
+    });
+
+    // Keep alive
+    await new Promise(() => {});
+  });
+
+async function waitForPort(port: number, timeoutMs: number): Promise<void> {
+  const start = Date.now();
+  while (Date.now() - start < timeoutMs) {
+    try {
+      const res = await fetch(`http://127.0.0.1:${port}/health`, {
+        signal: AbortSignal.timeout(2000),
+      });
+      if (res.ok) return;
+    } catch {}
+    await new Promise((r) => setTimeout(r, 2000));
+  }
+  throw new Error(`Service on port ${port} did not become ready within ${Math.round(timeoutMs / 1000)}s`);
+}

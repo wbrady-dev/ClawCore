@@ -1,0 +1,116 @@
+import type Database from "better-sqlite3";
+import { logger } from "../utils/logger.js";
+
+/**
+ * Check if a document with this content hash already exists in the collection.
+ */
+export function isDuplicate(
+  db: Database.Database,
+  contentHash: string,
+  collectionId: string,
+): boolean {
+  const row = db
+    .prepare(
+      "SELECT id FROM documents WHERE content_hash = ? AND collection_id = ?",
+    )
+    .get(contentHash, collectionId);
+  return !!row;
+}
+
+// ── Semantic Deduplication ──
+
+const SIMILARITY_THRESHOLD = 0.95; // cosine similarity above this = duplicate
+
+/**
+ * Find duplicate chunk indices within a batch of new embeddings.
+ * Returns Set of indices that should be skipped (duplicates of earlier chunks).
+ */
+export function findIntraBatchDuplicates(embeddings: number[][]): Set<number> {
+  if (embeddings.length < 2) return new Set();
+
+  const dupes = new Set<number>();
+  for (let i = 1; i < embeddings.length; i++) {
+    if (dupes.has(i)) continue;
+    for (let j = 0; j < i; j++) {
+      if (dupes.has(j)) continue;
+      if (cosineSimilarity(embeddings[i], embeddings[j]) >= SIMILARITY_THRESHOLD) {
+        dupes.add(i);
+        break;
+      }
+    }
+  }
+  if (dupes.size > 0) {
+    logger.info({ duplicates: dupes.size, total: embeddings.length }, "Intra-batch semantic duplicates removed");
+  }
+  return dupes;
+}
+
+/**
+ * Check new embeddings against existing vectors in a collection.
+ * Returns Set of indices that are duplicates of already-indexed content.
+ *
+ * Uses sqlite-vec nearest neighbor search. For normalized vectors:
+ * cos_sim = 1 - (L2^2 / 2), so similarity >= 0.95 means L2 <= ~0.316
+ */
+export function findExistingDuplicates(
+  db: Database.Database,
+  embeddings: number[][],
+  collectionId: string,
+): Set<number> {
+  const dupes = new Set<number>();
+  const L2_THRESHOLD = 0.316; // corresponds to cosine similarity 0.95
+
+  let stmt: ReturnType<Database.Database["prepare"]>;
+  try {
+    stmt = db.prepare(`
+      SELECT chunk_id, distance
+      FROM chunk_vectors
+      WHERE embedding MATCH ?
+        AND k = ?
+    `);
+  } catch (err) {
+    // Vector index may not exist yet (empty DB) — this is expected
+    const msg = String(err);
+    if (!msg.includes("no such table") && !msg.includes("no such module")) {
+      logger.warn({ error: msg }, "Unexpected error preparing dedup query");
+    }
+    return dupes;
+  }
+
+  const filterStmt = db.prepare(`
+    SELECT 1 FROM chunks c
+    JOIN documents d ON d.id = c.document_id
+    WHERE c.id = ? AND d.collection_id = ?
+  `);
+
+  for (let i = 0; i < embeddings.length; i++) {
+    try {
+      const result = (stmt as any).get(new Float32Array(embeddings[i]), 1) as
+        { chunk_id: string; distance: number } | undefined;
+
+      if (result && result.distance < L2_THRESHOLD) {
+        if (filterStmt.get(result.chunk_id, collectionId)) {
+          dupes.add(i);
+        }
+      }
+    } catch {
+      // Empty index or other issue — skip
+    }
+  }
+
+  if (dupes.size > 0) {
+    logger.info({ duplicates: dupes.size, total: embeddings.length }, "Existing semantic duplicates found");
+  }
+  return dupes;
+}
+
+function cosineSimilarity(a: number[], b: number[]): number {
+  let dot = 0, normA = 0, normB = 0;
+  for (let i = 0; i < a.length; i++) {
+    dot += a[i] * b[i];
+    normA += a[i] * a[i];
+    normB += b[i] * b[i];
+  }
+  const denom = Math.sqrt(normA) * Math.sqrt(normB);
+  return denom === 0 ? 0 : dot / denom;
+}

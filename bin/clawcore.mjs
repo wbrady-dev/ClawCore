@@ -1,0 +1,46 @@
+#!/usr/bin/env node
+
+// Global launcher for ClawCore
+// Runs the built CLI from dist/. Falls back to tsx + src/ for development.
+
+import { spawn, execSync } from "node:child_process";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+import { existsSync } from "node:fs";
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const root = resolve(__dirname, "..");
+
+const distEntries = [
+  resolve(root, "dist", "cli", "clawcore.js"),
+  resolve(root, "dist", "cli", "clawcore.mjs"),
+];
+const distEntry = distEntries.find((entry) => existsSync(entry));
+
+if (distEntry) {
+  const child = spawn(process.execPath, [distEntry, ...process.argv.slice(2)], {
+    cwd: root,
+    stdio: "inherit",
+  });
+  child.on("exit", (code) => process.exit(code ?? 0));
+  process.on("SIGINT", () => child.kill("SIGINT"));
+  process.on("SIGTERM", () => child.kill("SIGTERM"));
+} else {
+  // Development fallback: use tsx to run TypeScript source directly
+  const tsxCli = resolve(root, "node_modules", "tsx", "dist", "cli.mjs");
+  const srcEntry = resolve(root, "src", "cli", "clawcore.ts");
+
+  if (!existsSync(tsxCli)) {
+    console.error("Error: dist/ not built and tsx not available.");
+    console.error("Run 'npm run build' first, or 'npm install' for development.");
+    process.exit(1);
+  }
+
+  const child = spawn(process.execPath, [tsxCli, srcEntry, ...process.argv.slice(2)], {
+    cwd: root,
+    stdio: "inherit",
+  });
+  child.on("exit", (code) => process.exit(code ?? 0));
+  process.on("SIGINT", () => child.kill("SIGINT"));
+  process.on("SIGTERM", () => child.kill("SIGTERM"));
+}

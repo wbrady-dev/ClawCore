@@ -1,0 +1,111 @@
+import { Command } from "commander";
+import { resolve } from "path";
+import { config } from "../../config.js";
+import { getDb, runMigrations } from "../../storage/index.js";
+
+export const chunksCommand = new Command("chunks")
+  .description("Inspect chunks produced from a document")
+  .argument("<source>", "Source file path or partial match")
+  .option("-c, --collection <name>", "Filter by collection")
+  .option("--full", "Show full chunk text (default: truncated to 200 chars)")
+  .action(
+    async (
+      source: string,
+      opts: { collection?: string; full: boolean },
+    ) => {
+      try {
+        const dbPath = resolve(config.dataDir, "clawcore.db");
+        const db = getDb(dbPath);
+        runMigrations(db);
+
+        const searchTerm = source.replace(/[\\/]/g, "%");
+        let query = `
+          SELECT d.id as docId, d.source_path, d.content_hash, d.metadata_json,
+                 col.name as collectionName
+          FROM documents d
+          JOIN collections col ON col.id = d.collection_id
+          WHERE (d.source_path LIKE ? OR d.source_path LIKE ?)`;
+        const params: string[] = [`%${source}%`, `%${searchTerm}%`];
+
+        if (opts.collection) {
+          query += ` AND col.name = ?`;
+          params.push(opts.collection);
+        }
+
+        const docs = db.prepare(query).all(...params) as {
+          docId: string;
+          source_path: string;
+          content_hash: string;
+          metadata_json: string;
+          collectionName: string;
+        }[];
+
+        if (docs.length === 0) {
+          console.log(`No documents found matching: ${source}`);
+          return;
+        }
+
+        for (const doc of docs) {
+          const fileName = doc.source_path.replace(/\\/g, "/").split("/").pop();
+          const meta = JSON.parse(doc.metadata_json || "{}");
+
+          console.log(`\n${"=".repeat(60)}`);
+          console.log(`Document: ${fileName}`);
+          console.log(`Collection: ${doc.collectionName}`);
+          console.log(`ID: ${doc.docId}`);
+          console.log(`Hash: ${doc.content_hash.slice(0, 16)}...`);
+          if (meta.title) console.log(`Title: ${meta.title}`);
+          if (meta.fileType) console.log(`Type: ${meta.fileType}`);
+          if (meta.tags?.length) console.log(`Tags: ${meta.tags.join(", ")}`);
+
+          const chunks = db
+            .prepare(
+              `SELECT id, text, context_prefix, position, token_count
+               FROM chunks
+               WHERE document_id = ?
+               ORDER BY position`,
+            )
+            .all(doc.docId) as {
+            id: string;
+            text: string;
+            context_prefix: string | null;
+            position: number;
+            token_count: number;
+          }[];
+
+          console.log(`Chunks: ${chunks.length}`);
+          console.log(`${"=".repeat(60)}`);
+
+          for (const chunk of chunks) {
+            console.log(
+              `\n  [${chunk.position}] ${chunk.token_count} tokens | ID: ${chunk.id.slice(0, 8)}...`,
+            );
+
+            if (chunk.context_prefix) {
+              console.log(`  Section: ${chunk.context_prefix}`);
+            }
+
+            const text = opts.full
+              ? chunk.text
+              : chunk.text.length > 200
+                ? chunk.text.slice(0, 200) + "..."
+                : chunk.text;
+
+            // Indent chunk text
+            const lines = text.split("\n").slice(0, opts.full ? Infinity : 5);
+            for (const line of lines) {
+              console.log(`    ${line}`);
+            }
+            if (!opts.full && chunk.text.split("\n").length > 5) {
+              console.log(`    ... (${chunk.text.split("\n").length} lines total)`);
+            }
+          }
+        }
+
+        console.log("");
+      } catch (err) {
+        console.error(`Error: ${err instanceof Error ? err.message : err}`);
+        process.exit(1);
+      }
+    },
+  );

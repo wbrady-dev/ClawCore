@@ -1,0 +1,57 @@
+name: CRAM CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+
+jobs:
+  typecheck:
+    name: TypeScript Check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci
+      - run: npx tsc --noEmit
+
+  test:
+    name: Test Suite
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        node: [22]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+      - run: npm ci
+      - name: Memory Engine Tests
+        run: cd memory-engine && npm ci && npx vitest run
+      - name: Stress Test
+        run: cd memory-engine && npx vitest run test/cram-stress.test.ts
+      - name: Failure Injection Tests
+        run: cd memory-engine && npx vitest run test/cram-failure-injection.test.ts
+
+  build:
+    name: Build Check
+    runs-on: ubuntu-latest
+    needs: [typecheck, test]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci
+      - run: npm run build
+      - name: Verify dist output exists
+        run: |
+          test -f dist/index.mjs || (echo "dist/index.mjs missing" && exit 1)
+          test -f dist/cli/clawcore.mjs || (echo "dist/cli/clawcore.mjs missing" && exit 1)
+      - name: Smoke test (binary runs)
+        run: node bin/clawcore.mjs --version

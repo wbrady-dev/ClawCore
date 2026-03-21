@@ -1,0 +1,73 @@
+import type { FastifyInstance } from "fastify";
+import { resolve } from "path";
+import { statSync } from "fs";
+import { config } from "../config.js";
+import { getDb, listCollections } from "../storage/index.js";
+import { getTokenCounts } from "../utils/token-tracker.js";
+
+export function registerHealthRoutes(server: FastifyInstance) {
+  server.get("/health", async () => {
+    const checks: Record<string, { status: string; detail?: string }> = {};
+
+    // Check embedding server
+    try {
+      const res = await fetch(`${config.embedding.url.replace("/v1", "")}/health`, {
+        signal: AbortSignal.timeout(3000),
+      });
+      const data = await res.json() as Record<string, unknown>;
+      checks.embedding = { status: "ok", detail: config.embedding.model };
+      checks.reranker = {
+        status: (data as { models?: { rerank?: { ready?: boolean } } }).models?.rerank?.ready ? "ok" : "down",
+      };
+    } catch {
+      checks.embedding = { status: "down" };
+      checks.reranker = { status: "down" };
+    }
+
+    // Check database
+    try {
+      const dbPath = resolve(config.dataDir, "clawcore.db");
+      statSync(dbPath);
+      checks.database = { status: "ok", detail: dbPath };
+    } catch {
+      checks.database = { status: "missing" };
+    }
+
+    const allOk = Object.values(checks).every((c) => c.status === "ok");
+
+    return {
+      status: allOk ? "healthy" : "degraded",
+      services: checks,
+    };
+  });
+
+  server.get("/stats", async () => {
+    const db = getDb(resolve(config.dataDir, "clawcore.db"));
+
+    const collections = listCollections(db);
+
+    const totals = db.prepare(`
+      SELECT
+        COUNT(DISTINCT d.id) as documents,
+        COUNT(c.id) as chunks,
+        COALESCE(SUM(c.token_count), 0) as tokens
+      FROM documents d
+      LEFT JOIN chunks c ON c.document_id = d.id
+    `).get() as { documents: number; chunks: number; tokens: number };
+
+    const dbPath = resolve(config.dataDir, "clawcore.db");
+    let dbSizeBytes = 0;
+    try {
+      dbSizeBytes = statSync(dbPath).size;
+    } catch {}
+
+    return {
+      collections: collections.length,
+      documents: totals.documents,
+      chunks: totals.chunks,
+      tokens: totals.tokens,
+      dbSizeMB: Math.round(dbSizeBytes / 1024 / 1024 * 100) / 100,
+      localTokens: getTokenCounts(),
+    };
+  });
+}

@@ -1,0 +1,197 @@
+/**
+ * Status & Health Screen — live-updating system overview.
+ */
+import React, { useState, useEffect } from "react";
+import { Box, Text } from "ink";
+import { existsSync, readFileSync, statSync } from "fs";
+import { resolve } from "path";
+import { Section, KV, StatusDot, Menu, t, useInterval } from "../components.js";
+import { readConfig, getRootDir, getDataDir, findOpenClaw, getApiPort, getModelPort, getApiBaseUrl, getModelBaseUrl, type ServiceStatus } from "../../platform.js";
+import { checkAutoStartupAsync, detectGpuAsync, isPortReachable } from "../../runtime-status.js";
+import { subscribeTasks } from "../../tasks.js";
+import type { GpuInfo } from "../../models.js";
+
+// Module-level cache for status screen so re-mounts don't flash
+let cachedSvc: ServiceStatus = { models: { running: false }, clawcore: { running: false } };
+let cachedAutoStart = false;
+let cachedGpu: GpuInfo = { name: "None detected", vramTotalMb: 0, vramUsedMb: 0, vramFreeMb: 0, detected: false };
+let statusInitialized = false;
+
+export function StatusScreen({ onBack }: { onBack: () => void }) {
+  const [tick, setTick] = useState(0);
+  const [svc, setSvc] = useState<ServiceStatus>(cachedSvc);
+  const [autoStart, setAutoStart] = useState(cachedAutoStart);
+  const [gpu, setGpu] = useState<GpuInfo>(cachedGpu);
+
+  const [gpuTick, setGpuTick] = useState(0);
+  useInterval(() => setTick((n: number) => n + 1), 3000);
+  useInterval(() => setGpuTick((n: number) => n + 1), 10000);
+
+  const config = readConfig();
+  const root = getRootDir();
+
+  const [modelHealth, setModelHealth] = useState<any>(null);
+  const [apiStats, setApiStats] = useState<any>(null);
+  const [collections, setCollections] = useState<any[]>([]);
+
+  // GPU refresh on separate slower interval
+  useEffect(() => {
+    let cancelled = false;
+    detectGpuAsync().then((gpuState) => {
+      if (!cancelled) { cachedGpu = gpuState; setGpu(gpuState); }
+    }).catch(() => {});
+    return () => { cancelled = true; };
+  }, [gpuTick]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    (async () => {
+      // Use fast TCP port checks for service status
+      const [modelsUp, clawcoreUp, autoStartState, modelResponse, statsResponse, collectionsResponse] = await Promise.all([
+        isPortReachable(getModelPort()),
+        isPortReachable(getApiPort()),
+        checkAutoStartupAsync(),
+        fetch(`${getModelBaseUrl()}/health`, { signal: AbortSignal.timeout(3000) }).catch(() => null),
+        fetch(`${getApiBaseUrl()}/stats`, { signal: AbortSignal.timeout(3000) }).catch(() => null),
+        fetch(`${getApiBaseUrl()}/collections`, { signal: AbortSignal.timeout(3000) }).catch(() => null),
+      ]);
+
+      if (cancelled) return;
+
+      const serviceState: ServiceStatus = {
+        models: { running: modelsUp },
+        clawcore: { running: clawcoreUp },
+      };
+      cachedSvc = serviceState;
+      cachedAutoStart = autoStartState;
+      statusInitialized = true;
+      setSvc(serviceState);
+      setAutoStart(autoStartState);
+
+      try {
+        setModelHealth(modelResponse?.ok ? await modelResponse.json() : null);
+      } catch {
+        setModelHealth(null);
+      }
+
+      try {
+        setApiStats(statsResponse?.ok ? await statsResponse.json() : null);
+      } catch {
+        setApiStats(null);
+      }
+
+      try {
+        const data = collectionsResponse?.ok ? await collectionsResponse.json() as any : null;
+        setCollections(data?.collections ?? []);
+      } catch {
+        setCollections([]);
+      }
+    })();
+
+    return () => { cancelled = true; };
+  }, [tick]);
+
+  useEffect(() => subscribeTasks(() => {
+    setTick((value) => value + 1);
+  }), []);
+
+  // Model indicators: if port is up, models are loaded (server only accepts connections after loading)
+  const embedOk = svc.models.running || modelHealth?.models?.embed?.ready === true;
+  const rerankOk = svc.models.running || modelHealth?.models?.rerank?.ready === true;
+  const doclingOk = modelHealth?.models?.docling?.ready === true;
+  const embedName = config?.embed_model ?? "not configured";
+  const rerankName = config?.rerank_model ?? "not configured";
+
+  const gameModeOn = !svc.models.running && !svc.clawcore.running;
+
+  // Read .env once for all config values
+  let envContent = "";
+  try {
+    const envPath = resolve(root, ".env");
+    if (existsSync(envPath)) envContent = readFileSync(envPath, "utf-8");
+  } catch {}
+
+  // Query expansion
+  let expansionLabel = t.dim("off");
+  const expEnabled = envContent.match(/QUERY_EXPANSION_ENABLED=(\w+)/)?.[1];
+  const expModel = envContent.match(/QUERY_EXPANSION_MODEL=(.+)/)?.[1]?.trim();
+  if (expEnabled === "true" && expModel) expansionLabel = t.value(expModel);
+
+  // Database
+  const dbPath = resolve(getDataDir(), "clawcore.db");
+  const dbExists = existsSync(dbPath);
+  const dbSize = dbExists ? (statSync(dbPath).size / 1024 / 1024).toFixed(2) : "0";
+
+  // Network
+  const tPort = envContent.match(/CLAWCORE_PORT=(\d+)/)?.[1] ?? String(getApiPort());
+  const mPort = envContent.match(/RERANKER_URL=.*:(\d+)/)?.[1] ?? String(getModelPort());
+
+  const ocDir = findOpenClaw();
+
+  return (
+    <Box flexDirection="column">
+      <Section title="Services" />
+      <StatusDot ok={svc.models.running} label="Models" detail={`port ${getModelPort()}`} />
+      <StatusDot ok={svc.clawcore.running} label="ClawCore RAG API" detail={`port ${getApiPort()}`} />
+      <StatusDot ok={autoStart} label="Auto-Startup" />
+      <KV label="Game Mode" value={gameModeOn ? t.warn("on (VRAM freed)") : t.dim("off")} />
+
+      <Section title="Models" />
+      <Text>{"  " + (embedOk ? t.ok("●") : t.err("○")) + " " + t.label("Embed") + "   " + t.value(embedName)}</Text>
+      <Text>{"  " + (rerankOk ? t.ok("●") : t.err("○")) + " " + t.label("Rerank") + "  " + t.value(rerankName)}</Text>
+      <Text>{"  " + (doclingOk ? t.ok("●") : t.dim("○")) + " " + t.label("Docling") + " " + (doclingOk ? t.value(config?.docling_device ?? "cpu") : t.dim("off"))}</Text>
+      <Text>{"  " + (modelHealth?.ner?.ready === true ? t.ok("●") : t.dim("○")) + " " + t.label("NER") + "     " + (modelHealth?.ner?.ready === true ? t.value("en_core_web_sm") : t.dim("off"))}</Text>
+      <Text>{"  " + t.dim("○") + " " + t.label("Query Expansion") + " " + expansionLabel}</Text>
+
+      <Section title="GPU" />
+      {gpu.detected ? (
+        <Box flexDirection="column">
+          <KV label="GPU" value={gpu.name} />
+          <KV label="VRAM" value={(() => {
+            const usedPct = Math.round((gpu.vramUsedMb / gpu.vramTotalMb) * 100);
+            const color = usedPct >= 80 ? t.err : usedPct >= 50 ? t.warn : t.ok;
+            return color(`${gpu.vramUsedMb} / ${gpu.vramTotalMb} MB (${usedPct}%)`);
+          })()} />
+          <KV label="Free" value={`${gpu.vramFreeMb} MB`} />
+        </Box>
+      ) : (
+        <KV label="GPU" value={t.err("not detected")} />
+      )}
+
+      <Section title="Database" />
+      {dbExists ? (
+        <Box flexDirection="column">
+          <KV label="Size" value={`${dbSize} MB`} />
+          {apiStats && (
+            <>
+              <KV label="Collections" value={String(apiStats.collections)} />
+              <KV label="Documents" value={String(apiStats.documents)} />
+              <KV label="Chunks" value={String(apiStats.chunks)} />
+              <KV label="Tokens" value={apiStats.tokens?.toLocaleString() ?? "0"} />
+            </>
+          )}
+        </Box>
+      ) : (
+        <Text>{t.dim("  No database yet. Ingest documents to create one.")}</Text>
+      )}
+
+      {collections.length > 0 && (
+        <>
+          <Section title="Collections" />
+          {collections.map((c: any) => (
+            <Text key={c.name}>{"    " + t.selected(c.name.padEnd(20)) + " " + t.dim(c.id?.slice(0, 8) + "...")}</Text>
+          ))}
+        </>
+      )}
+
+      <Section title="Network" />
+      <KV label="ClawCore API" value={`http://localhost:${tPort}`} />
+      <KV label="Model Server" value={`http://localhost:${mPort}`} />
+      {ocDir && <KV label="OpenClaw" value={t.ok(`detected at ${ocDir}`)} />}
+
+      <Text> </Text>
+      <Menu items={[{ label: "Back", value: "__back__", color: t.dim }]} onSelect={onBack} />
+    </Box>
+  );
+}

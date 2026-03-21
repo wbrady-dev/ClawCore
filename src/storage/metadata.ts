@@ -1,0 +1,59 @@
+import type Database from "better-sqlite3";
+
+export function insertMetadata(
+  db: Database.Database,
+  documentId: string,
+  metadata: Record<string, string>,
+): void {
+  const stmt = db.prepare(
+    "INSERT INTO metadata_index (document_id, key, value) VALUES (?, ?, ?)",
+  );
+  const insertMany = db.transaction(
+    (entries: [string, string, string][]) => {
+      for (const [docId, key, value] of entries) {
+        stmt.run(docId, key, value);
+      }
+    },
+  );
+
+  const entries = Object.entries(metadata).map(
+    ([key, value]) => [documentId, key, value] as [string, string, string],
+  );
+  insertMany(entries);
+}
+
+export interface MetadataFilter {
+  key: string;
+  value: string;
+}
+
+export function getDocumentIdsByMetadata(
+  db: Database.Database,
+  filters: MetadataFilter[],
+  collectionId?: string,
+): string[] {
+  if (filters.length === 0) return [];
+
+  const conditions = filters.map(
+    (_, i) => `(mi${i}.key = ? AND mi${i}.value = ?)`,
+  );
+  const joins = filters.map(
+    (_, i) =>
+      `JOIN metadata_index mi${i} ON mi${i}.document_id = d.id`,
+  );
+
+  let sql = `SELECT DISTINCT d.id FROM documents d ${joins.join(" ")} WHERE ${conditions.join(" AND ")}`;
+  const params: string[] = [];
+
+  for (const f of filters) {
+    params.push(f.key, f.value);
+  }
+
+  if (collectionId) {
+    sql += " AND d.collection_id = ?";
+    params.push(collectionId);
+  }
+
+  const rows = db.prepare(sql).all(...params) as { id: string }[];
+  return rows.map((r) => r.id);
+}
