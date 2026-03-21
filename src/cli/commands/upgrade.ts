@@ -429,7 +429,8 @@ export const upgradeCommand = new Command("upgrade")
             writeTmp(tmpScript, script);
             let result: string;
             try {
-              result = execFileSync("npx", ["tsx", tmpScript], {
+              const npxCmd = process.platform === "win32" ? "npx.cmd" : "npx";
+              result = execFileSync(npxCmd, ["tsx", tmpScript], {
                 cwd: meDir, stdio: ["pipe", "pipe", "pipe"], timeout: 30000,
               }).toString().trim();
             } finally {

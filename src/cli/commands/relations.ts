@@ -157,7 +157,7 @@ relationsCommand
       const tmpScript = joinTmp(tmpdir(), `clawcore-archive-${Date.now()}.mts`);
       writeTmp(tmpScript, script);
       try {
-        const out = execFileSync("npx", ["tsx", tmpScript], {
+        const out = execFileSync(process.platform === "win32" ? "npx.cmd" : "npx", ["tsx", tmpScript], {
           cwd: meDir, stdio: ["pipe", "pipe", "pipe"], timeout: 30000,
         }).toString().trim();
         const { result, stats } = JSON.parse(out);
@@ -215,7 +215,7 @@ relationsCommand
     writeTmp(tmpScript, script);
 
     try {
-      const out = execFileSync("npx", ["tsx", tmpScript], {
+      const out = execFileSync(process.platform === "win32" ? "npx.cmd" : "npx", ["tsx", tmpScript], {
         cwd: meDir, stdio: ["pipe", "pipe", "pipe"], timeout: 15000,
       }).toString().trim();
       const data = JSON.parse(out);
