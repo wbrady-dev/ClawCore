@@ -251,31 +251,62 @@ function ensureWindowsTasks(root: string): { ready: boolean; error?: string } {
   mkdirSync(binDir, { recursive: true });
   mkdirSync(logsDir, { recursive: true });
 
-  // Write wrapper scripts that redirect output to log files
   const pythonCmd = getPythonCmd();
   const modelsScript = findModelsScript(root);
-  const modelsWrapper = resolve(binDir, `${TASK_MODELS}.cmd`);
-  writeFileSync(modelsWrapper,
-    `@echo off\r\ncd /d "${dirname(modelsScript)}"\r\n"${pythonCmd}" "${modelsScript}" >> "${resolve(logsDir, "models.log")}" 2>&1\r\n`);
-
   const nodeCmd = getNodeCmd();
   const entryArgs = findApiEntryArgs(root);
-  const argsStr = entryArgs.map(a => `"${a}"`).join(" ");
-  const ragWrapper = resolve(binDir, `${TASK_RAG}.cmd`);
-  writeFileSync(ragWrapper,
-    `@echo off\r\ncd /d "${root}"\r\n"${nodeCmd}" ${argsStr} >> "${resolve(logsDir, "clawcore.log")}" 2>&1\r\n`);
+
+  // Use XML task definitions so we can set WorkingDirectory and run the
+  // executable directly (not via cmd.exe). This way schtasks /end kills
+  // the actual python/node process, not just a cmd.exe wrapper.
+  const escXml = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+
+  const modelsXml = resolve(binDir, `${TASK_MODELS}.xml`);
+  writeFileSync(modelsXml, `<?xml version="1.0" encoding="UTF-16"?>
+<Task version="1.2" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
+  <Triggers><LogonTrigger><Enabled>true</Enabled></LogonTrigger></Triggers>
+  <Settings>
+    <AllowStartOnDemand>true</AllowStartOnDemand>
+    <StopIfGoingOnBatteries>false</StopIfGoingOnBatteries>
+    <DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries>
+    <Hidden>true</Hidden>
+    <ExecutionTimeLimit>PT0S</ExecutionTimeLimit>
+  </Settings>
+  <Actions>
+    <Exec>
+      <Command>${escXml(pythonCmd)}</Command>
+      <Arguments>"${escXml(modelsScript)}"</Arguments>
+      <WorkingDirectory>${escXml(dirname(modelsScript))}</WorkingDirectory>
+    </Exec>
+  </Actions>
+</Task>
+`);
+
+  const ragXml = resolve(binDir, `${TASK_RAG}.xml`);
+  const ragArgs = entryArgs.map(a => `"${escXml(a)}"`).join(" ");
+  writeFileSync(ragXml, `<?xml version="1.0" encoding="UTF-16"?>
+<Task version="1.2" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
+  <Triggers><LogonTrigger><Enabled>true</Enabled></LogonTrigger></Triggers>
+  <Settings>
+    <AllowStartOnDemand>true</AllowStartOnDemand>
+    <StopIfGoingOnBatteries>false</StopIfGoingOnBatteries>
+    <DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries>
+    <Hidden>true</Hidden>
+    <ExecutionTimeLimit>PT0S</ExecutionTimeLimit>
+  </Settings>
+  <Actions>
+    <Exec>
+      <Command>${escXml(nodeCmd)}</Command>
+      <Arguments>${ragArgs}</Arguments>
+      <WorkingDirectory>${escXml(root)}</WorkingDirectory>
+    </Exec>
+  </Actions>
+</Task>
+`);
 
   try {
-    // Register models task (creates or updates via /f)
-    schtasks("/create", "/tn", TASK_MODELS,
-      "/tr", `cmd.exe /c "${modelsWrapper}"`,
-      "/sc", "onlogon", "/rl", "limited", "/f");
-
-    // Register RAG task
-    schtasks("/create", "/tn", TASK_RAG,
-      "/tr", `cmd.exe /c "${ragWrapper}"`,
-      "/sc", "onlogon", "/rl", "limited", "/f");
-
+    schtasks("/create", "/tn", TASK_MODELS, "/xml", modelsXml, "/f");
+    schtasks("/create", "/tn", TASK_RAG, "/xml", ragXml, "/f");
     return { ready: true };
   } catch (e) {
     return { ready: false, error: String(e) };
