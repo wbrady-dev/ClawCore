@@ -389,7 +389,7 @@ function HomeScreen({ onAction }: { onAction: (action: string) => void }) {
       isPortReachable(getModelPort()),
       isPortReachable(getApiPort()),
       detectGpuAsync().catch(() => ({ detected: false, name: "", vramUsedMb: 0, vramTotalMb: 0, vramFreeMb: 0 })),
-      checkAutoStartupAsync().catch(() => false),
+      checkAutoStartupAsync().catch(() => null),
       fetch(`${getApiBaseUrl()}/stats`, { signal: AbortSignal.timeout(3000) }).catch(() => null),
       fetch(`${getApiBaseUrl()}/sources`, { signal: AbortSignal.timeout(3000) }).catch(() => null),
       fetch(`${getModelBaseUrl()}/health`, { signal: AbortSignal.timeout(3000) }).catch(() => null),
@@ -401,14 +401,21 @@ function HomeScreen({ onAction }: { onAction: (action: string) => void }) {
       if (existsSync(envPath)) cachedEnvContent = readFileSync(envPath, "utf-8");
     } catch {}
 
+    // Service status: always update (port unreachable = service is down)
     cachedModelsUp = mUp as boolean;
     cachedClawcoreUp = cUp as boolean;
-    cachedGpu = { detected: gpuState.detected, name: gpuState.name, vramUsedMb: gpuState.vramUsedMb, vramTotalMb: gpuState.vramTotalMb };
-    cachedAutoStart = autoStartState;
     setModelsUp(cachedModelsUp);
     setClawcoreUp(cachedClawcoreUp);
-    setGpu(cachedGpu);
-    setAutoStart(cachedAutoStart);
+
+    // GPU and auto-start: only update on success, keep old data on failure
+    if (gpuState.detected) {
+      cachedGpu = { detected: gpuState.detected, name: gpuState.name, vramUsedMb: gpuState.vramUsedMb, vramTotalMb: gpuState.vramTotalMb };
+      setGpu(cachedGpu);
+    }
+    if (autoStartState !== null) {
+      cachedAutoStart = autoStartState;
+      setAutoStart(cachedAutoStart);
+    }
 
     // Only update cache + state on successful responses — keep old data on failures
     try {
