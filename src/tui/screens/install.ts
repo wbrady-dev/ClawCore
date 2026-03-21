@@ -989,15 +989,22 @@ export function getFreeDiskGb(
   try {
     const target = getDiskProbeTarget(platform, installPath);
     if (platform === "windows") {
+      // Use Node.js native statfsSync (available since Node 18.15)
       try {
-        const out = execFileSync("wmic", ["logicaldisk", "where", `DeviceID='${target}'`, "get", "freespace", "/value"], { stdio: "pipe" }).toString();
-        const bytes = parseInt(out.match(/FreeSpace=(\d+)/)?.[1] ?? "0", 10);
-        return bytes / 1024 / 1024 / 1024;
-      } catch {
-        const out = execFileSync("powershell", ["-NoProfile", "-Command", `(Get-CimInstance Win32_LogicalDisk -Filter "DeviceID='${target}'").FreeSpace`], { stdio: "pipe" }).toString().trim();
-        const bytes = parseInt(out, 10);
-        return Number.isFinite(bytes) ? bytes / 1024 / 1024 / 1024 : null;
-      }
+        const { statfsSync } = require("fs");
+        const stats = statfsSync(installPath);
+        return (stats.bavail * stats.bsize) / 1024 / 1024 / 1024;
+      } catch {}
+      // Fallback to dir command
+      try {
+        const out = execFileSync("cmd", ["/c", `dir ${target}\\`], { stdio: "pipe" }).toString();
+        const match = out.match(/([\d,]+)\s+bytes free/);
+        if (match) {
+          const bytes = parseInt(match[1].replace(/,/g, ""), 10);
+          return Number.isFinite(bytes) ? bytes / 1024 / 1024 / 1024 : null;
+        }
+      } catch {}
+      return null;
     }
     const out = execFileSync("df", ["-BG", target], { stdio: "pipe" }).toString();
     const lastLine = out.trim().split("\n").pop() ?? "";

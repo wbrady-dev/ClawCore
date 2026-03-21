@@ -270,7 +270,7 @@ function ensureWindowsTasks(root: string): { ready: boolean; error?: string } {
   const escXml = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 
   const modelsXml = resolve(binDir, `${TASK_MODELS}.xml`);
-  writeFileSync(modelsXml, `<?xml version="1.0" encoding="UTF-16"?>
+  writeFileSync(modelsXml, `<?xml version="1.0" encoding="UTF-8"?>
 <Task version="1.2" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
   <Triggers><LogonTrigger><Enabled>true</Enabled></LogonTrigger></Triggers>
   <Settings>
@@ -292,7 +292,7 @@ function ensureWindowsTasks(root: string): { ready: boolean; error?: string } {
 
   const ragXml = resolve(binDir, `${TASK_RAG}.xml`);
   const ragArgs = entryArgs.map(a => `"${escXml(a)}"`).join(" ");
-  writeFileSync(ragXml, `<?xml version="1.0" encoding="UTF-16"?>
+  writeFileSync(ragXml, `<?xml version="1.0" encoding="UTF-8"?>
 <Task version="1.2" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
   <Triggers><LogonTrigger><Enabled>true</Enabled></LogonTrigger></Triggers>
   <Settings>
@@ -564,17 +564,20 @@ export function stopServices(): { success: boolean; error?: string } {
  * event loop (uses child_process.exec instead of execFileSync).
  */
 export async function forceKillByPort(port: number): Promise<void> {
+  // Validate port is a safe integer to prevent command injection
+  const safePort = Math.floor(Number(port));
+  if (!Number.isFinite(safePort) || safePort < 1 || safePort > 65535) return;
+
   const { exec } = await import("child_process");
   const plat = getPlatform();
 
   return new Promise((resolve) => {
     if (plat === "windows") {
-      // Find PID on port and kill it
-      exec(`for /f "tokens=5" %a in ('netstat -ano ^| findstr :${port} ^| findstr LISTENING') do taskkill /F /PID %a`,
+      exec(`for /f "tokens=5" %a in ('netstat -ano ^| findstr :${safePort} ^| findstr LISTENING') do taskkill /F /PID %a`,
         { shell: "cmd.exe", timeout: 8000 },
         () => resolve());
     } else {
-      exec(`lsof -ti :${port} | xargs kill -9 2>/dev/null`,
+      exec(`lsof -ti :${safePort} | xargs kill -9 2>/dev/null`,
         { timeout: 5000 },
         () => resolve());
     }

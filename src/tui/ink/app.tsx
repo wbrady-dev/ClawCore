@@ -1,7 +1,7 @@
 #!/usr/bin/env node
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useRef, useCallback } from "react";
 import { render, Box, Text } from "ink";
-import { execFileSync } from "child_process";
+import { execFile } from "child_process";
 import { existsSync, readFileSync } from "fs";
 import { resolve } from "path";
 import { Banner, Menu, Separator, t, useInterval, type MenuItem } from "./components.js";
@@ -337,6 +337,7 @@ let cachedSources: any[] = [];
 let cachedModelHealth: any = null;
 let cachedGpu = { detected: false, name: "", vramUsedMb: 0, vramTotalMb: 0 };
 let cachedAutoStart = false;
+let cachedEnvContent = "";
 
 function HomeScreen({ onAction }: { onAction: (action: string) => void }) {
   const root = getRootDir();
@@ -359,25 +360,28 @@ function HomeScreen({ onAction }: { onAction: (action: string) => void }) {
     return () => { serviceActionListeners.delete(listener); };
   }, []);
 
-  // Detect OCR once (async, not on render)
+  // Detect OCR once (truly async — no event loop blocking)
   const [ocrInstalled, setOcrInstalled] = useState(cachedOcrInstalled ?? false);
   useEffect(() => {
     if (cachedOcrInstalled !== null) return;
-    setTimeout(() => {
-      let found = false;
-      try {
-        execFileSync("tesseract", ["--version"], { stdio: "pipe", timeout: 3000 });
-        found = true;
-      } catch {
-        if (getPlatform() === "windows") {
-          for (const p of ["C:\\Program Files\\Tesseract-OCR\\tesseract.exe", "C:\\Program Files (x86)\\Tesseract-OCR\\tesseract.exe"]) {
-            try { execFileSync(p, ["--version"], { stdio: "pipe", timeout: 3000 }); found = true; break; } catch {}
-          }
+    let cancelled = false;
+    const tryExec = (cmd: string): Promise<boolean> =>
+      new Promise((res) => execFile(cmd, ["--version"], { timeout: 3000 }, (err) => res(!err)));
+
+    (async () => {
+      let found = await tryExec("tesseract");
+      if (!found && getPlatform() === "windows") {
+        for (const p of ["C:\\Program Files\\Tesseract-OCR\\tesseract.exe", "C:\\Program Files (x86)\\Tesseract-OCR\\tesseract.exe"]) {
+          found = await tryExec(p);
+          if (found) break;
         }
       }
-      cachedOcrInstalled = found;
-      setOcrInstalled(found);
-    }, 0);
+      if (!cancelled) {
+        cachedOcrInstalled = found;
+        setOcrInstalled(found);
+      }
+    })();
+    return () => { cancelled = true; };
   }, []);
 
   const refresh = async () => {
@@ -390,6 +394,12 @@ function HomeScreen({ onAction }: { onAction: (action: string) => void }) {
       fetch(`${getApiBaseUrl()}/sources`, { signal: AbortSignal.timeout(3000) }).catch(() => null),
       fetch(`${getModelBaseUrl()}/health`, { signal: AbortSignal.timeout(3000) }).catch(() => null),
     ]);
+
+    // Refresh .env content
+    try {
+      const envPath = resolve(root, ".env");
+      if (existsSync(envPath)) cachedEnvContent = readFileSync(envPath, "utf-8");
+    } catch {}
 
     cachedModelsUp = mUp as boolean;
     cachedClawcoreUp = cUp as boolean;
@@ -419,7 +429,18 @@ function HomeScreen({ onAction }: { onAction: (action: string) => void }) {
   };
 
   useEffect(() => { refresh(); }, []);
-  useEffect(() => subscribeTasks(() => { setRecentTasks(getTaskSnapshot()); void refresh(); }), []);
+
+  // Subscribe to task changes with debounced refresh (prevents spam during service actions)
+  const refreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    const unsub = subscribeTasks(() => {
+      setRecentTasks(getTaskSnapshot());
+      if (refreshTimerRef.current) clearTimeout(refreshTimerRef.current);
+      refreshTimerRef.current = setTimeout(() => { void refresh(); }, 500);
+    });
+    return unsub; // cleanup on unmount
+  }, []);
+
   useInterval(refresh, modelsUp || clawcoreUp ? 3000 : 5000);
 
   // ── Derive display values (no sync I/O in render) ──
@@ -427,12 +448,8 @@ function HomeScreen({ onAction }: { onAction: (action: string) => void }) {
   const embedName = config?.embed_model?.split("/").pop() ?? "not configured";
   const rerankName = config?.rerank_model?.split("/").pop() ?? "not configured";
 
-  // Read .env once for all labels
-  let envContent = "";
-  try {
-    const envPath = resolve(root, ".env");
-    if (existsSync(envPath)) envContent = readFileSync(envPath, "utf-8");
-  } catch {}
+  // .env is read during refresh() and cached at module level
+  const envContent = cachedEnvContent;
 
   const deepEnabled = envContent.match(/CLAWCORE_MEMORY_RELATIONS_DEEP_EXTRACTION_ENABLED=(\w+)/)?.[1] === "true";
   let deepExtractLabel = t.dim("off");

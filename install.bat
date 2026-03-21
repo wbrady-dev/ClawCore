@@ -190,7 +190,7 @@ if %EXIT_CODE% equ 0 (
         echo @echo off
         echo cd /d "%SCRIPT_DIR%"
         echo "!PYTHON!" "!MODELS_SCRIPT!" ^>^> "%SCRIPT_DIR%\logs\models.log" 2^>^&1
-    ) > "%SCRIPT_DIR%\bin\ClawCoreModels.cmd"
+    ) > "%SCRIPT_DIR%\bin\ClawCore_Models.cmd"
 
     if exist "%SCRIPT_DIR%\dist\index.js" (
         set "API_ENTRY=%SCRIPT_DIR%\dist\index.js"
@@ -202,25 +202,25 @@ if %EXIT_CODE% equ 0 (
         echo @echo off
         echo cd /d "%SCRIPT_DIR%"
         echo node "!API_ENTRY!" ^>^> "%SCRIPT_DIR%\logs\clawcore.log" 2^>^&1
-    ) > "%SCRIPT_DIR%\bin\ClawCoreRAG.cmd"
+    ) > "%SCRIPT_DIR%\bin\ClawCore_RAG.cmd"
 
     :: Remove old tasks if they exist (clean reinstall)
-    schtasks /delete /tn ClawCoreModels /f >nul 2>&1
-    schtasks /delete /tn ClawCoreRAG /f >nul 2>&1
+    schtasks /delete /tn ClawCore_Models /f >nul 2>&1
+    schtasks /delete /tn ClawCore_RAG /f >nul 2>&1
 
     :: Register tasks (onlogon auto-start, no admin required)
-    schtasks /create /tn ClawCoreModels /tr "\"%SCRIPT_DIR%\bin\ClawCoreModels.cmd\"" /sc onlogon /rl limited /f >nul 2>&1
+    schtasks /create /tn ClawCore_Models /tr "\"%SCRIPT_DIR%\bin\ClawCore_Models.cmd\"" /sc onlogon /rl limited /f >nul 2>&1
     if %errorlevel% equ 0 (
-        echo [OK] ClawCoreModels task registered
+        echo [OK] ClawCore_Models task registered
     ) else (
-        echo [WARN] ClawCoreModels task registration failed
+        echo [WARN] ClawCore_Models task registration failed
     )
 
-    schtasks /create /tn ClawCoreRAG /tr "\"%SCRIPT_DIR%\bin\ClawCoreRAG.cmd\"" /sc onlogon /rl limited /f >nul 2>&1
+    schtasks /create /tn ClawCore_RAG /tr "\"%SCRIPT_DIR%\bin\ClawCore_RAG.cmd\"" /sc onlogon /rl limited /f >nul 2>&1
     if %errorlevel% equ 0 (
-        echo [OK] ClawCoreRAG task registered
+        echo [OK] ClawCore_RAG task registered
     ) else (
-        echo [WARN] ClawCoreRAG task registration failed
+        echo [WARN] ClawCore_RAG task registration failed
     )
 
     echo [OK] Services will start automatically on login

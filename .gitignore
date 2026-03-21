@@ -12,6 +12,7 @@ __pycache__/
 .models.pid
 .clawcore.pid
 bin/ClawCore_*.cmd
+bin/ClawCore_*.xml
 server/config.json
 package-lock.json
 *.exe

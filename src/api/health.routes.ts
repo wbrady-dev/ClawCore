@@ -43,8 +43,10 @@ export function registerHealthRoutes(server: FastifyInstance) {
 
   server.post("/shutdown", async (request, reply) => {
     // Only allow from localhost
-    const remote = request.ip;
-    if (remote !== "127.0.0.1" && remote !== "::1" && remote !== "::ffff:127.0.0.1") {
+    const remote = request.ip ?? "";
+    const isLocal = remote === "127.0.0.1" || remote === "::1"
+      || remote === "::ffff:127.0.0.1" || remote.startsWith("::ffff:127.");
+    if (!isLocal) {
       return reply.code(403).send({ error: "Forbidden" });
     }
     reply.send({ status: "shutting down" });
