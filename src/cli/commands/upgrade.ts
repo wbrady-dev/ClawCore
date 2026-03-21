@@ -107,12 +107,11 @@ async function postUpgradeSmoke(): Promise<{ ok: boolean; checks: string[] }> {
     allOk = false;
   }
 
-  // Check manifest exists
+  // Check manifest — on first upgrade it won't exist yet (written in Step 7)
   if (existsSync(resolve(CLAWCORE_HOME, "manifest.json"))) {
     checks.push("manifest.json exists");
   } else {
-    checks.push("FAIL: manifest.json missing");
-    allOk = false;
+    checks.push("WARN: manifest.json not yet created (will be written after validation)");
   }
 
   // Check at least one DB is accessible
