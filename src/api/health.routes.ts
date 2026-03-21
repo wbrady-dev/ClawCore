@@ -41,6 +41,17 @@ export function registerHealthRoutes(server: FastifyInstance) {
     };
   });
 
+  server.post("/shutdown", async (request, reply) => {
+    // Only allow from localhost
+    const remote = request.ip;
+    if (remote !== "127.0.0.1" && remote !== "::1" && remote !== "::ffff:127.0.0.1") {
+      return reply.code(403).send({ error: "Forbidden" });
+    }
+    reply.send({ status: "shutting down" });
+    // Graceful shutdown after response is sent
+    setTimeout(() => process.exit(0), 200);
+  });
+
   server.get("/stats", async () => {
     const db = getDb(resolve(config.dataDir, "clawcore.db"));
 

@@ -480,6 +480,17 @@ export function stopServices(): { success: boolean; error?: string } {
   const root = getRootDir();
 
   try {
+    // HTTP shutdown: works from any terminal, no permissions needed
+    // Fire and forget — don't wait for response since the server exits
+    try {
+      const http = require("http") as typeof import("http");
+      for (const port of [getApiPort(), getModelPort()]) {
+        const req = http.request({ hostname: "127.0.0.1", port, path: "/shutdown", method: "POST", timeout: 3000 });
+        req.on("error", () => {});
+        req.end();
+      }
+    } catch {}
+
     if (plat === "windows") {
       // Task Scheduler: schtasks /end — always works, no admin needed
       endTask(TASK_RAG);
@@ -492,7 +503,7 @@ export function stopServices(): { success: boolean; error?: string } {
       try { execFileSync("launchctl", ["stop", "com.clawcore.models"], { stdio: "pipe" }); } catch {}
     }
 
-    // Kill by port as backup (catches orphaned processes from old detached spawns)
+    // Kill by port (catches orphaned processes from old detached spawns)
     for (const port of [getApiPort(), getModelPort()]) {
       try {
         if (plat === "windows") {
