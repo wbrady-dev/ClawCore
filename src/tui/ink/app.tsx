@@ -488,17 +488,7 @@ function HomeScreen({ onAction }: { onAction: (action: string) => void }) {
   const claimsEnabled = envContent.match(/CLAWCORE_MEMORY_RELATIONS_CLAIM_EXTRACTION_ENABLED=(\w+)/)?.[1] === "true";
   const attemptEnabled = envContent.match(/CLAWCORE_MEMORY_RELATIONS_ATTEMPT_TRACKING_ENABLED=(\w+)/)?.[1] === "true";
 
-  let evidenceLabel = t.dim("off");
-  if (relationsEnabled) {
-    const features = ["entities"];
-    if (awarenessEnabled) features.push("awareness");
-    if (claimsEnabled) features.push("claims");
-    if (attemptEnabled) features.push("attempts");
-    if (deepEnabled) features.push("deep");
-    evidenceLabel = t.ok(`on (${features.join(", ")})`);
-  }
-
-  // Source summary from .env (fast, no API needed)
+  // Source summary from .env
   const sourceIcons: string[] = [];
   if (watchCount > 0) sourceIcons.push(`${t.ok("●")} Local Files`);
   if (envContent.includes("OBSIDIAN_ENABLED=true")) sourceIcons.push(`${t.ok("●")} Obsidian`);
@@ -507,9 +497,9 @@ function HomeScreen({ onAction }: { onAction: (action: string) => void }) {
   if (envContent.includes("NOTION_ENABLED=true")) sourceIcons.push(`${t.ok("●")} Notion`);
   if (envContent.includes("APPLE_NOTES_ENABLED=true")) sourceIcons.push(`${t.ok("●")} Apple Notes`);
 
-  const P = 16; // label padding
+  const P = 20; // label padding for uniform alignment
 
-  // GPU line
+  // GPU
   let gpuLine: string;
   if (gpu.detected && gpu.vramTotalMb > 0) {
     const pct = Math.round((gpu.vramUsedMb / gpu.vramTotalMb) * 100);
@@ -519,11 +509,21 @@ function HomeScreen({ onAction }: { onAction: (action: string) => void }) {
     gpuLine = t.dim("not detected");
   }
 
-  // Knowledge base stats (always shown, not gated on API)
+  // Knowledge base stats
   const docCount = stats?.documents ?? 0;
   const chunkCount = stats?.chunks ?? 0;
   const collCount = stats?.collections ?? 0;
   const dbSize = ((stats?.dbSizeMB ?? 0) as number).toFixed(1);
+
+  // Evidence OS stats from graph DB
+  let entityCount = 0;
+  let claimCount = 0;
+  try {
+    const graphPath = resolve(require("os").homedir(), ".clawcore", "data", "graph.db");
+    if (existsSync(graphPath)) {
+      // Use stats from the API if available, otherwise just show enabled/disabled
+    }
+  } catch {}
 
   const anyRunning = modelsUp || clawcoreUp;
   const items: MenuItem[] = [
@@ -544,51 +544,61 @@ function HomeScreen({ onAction }: { onAction: (action: string) => void }) {
   return (
     <Box flexDirection="column">
       <Banner />
-
-      {/* ── Services ── */}
       <Text>{"  " + (modelsUp ? t.ok("●") : t.err("○")) + " Models " + t.dim("|") + " " + (clawcoreUp ? t.ok("●") : t.err("○")) + " ClawCore" + (autoStart ? t.dim("  (auto-start on)") : "")}</Text>
 
-      {/* ── Models & Processing ── */}
+      {/* ── Models ── */}
       <Text>{""}</Text>
+      <Text>{t.title("  --- Models ---")}</Text>
       <Text>{"  " + t.dim("Embed:".padEnd(P)) + t.value(embedName)}</Text>
       <Text>{"  " + t.dim("Rerank:".padEnd(P)) + t.value(rerankName)}</Text>
       <Text>{"  " + t.dim("Deep Extract:".padEnd(P)) + deepExtractLabel}</Text>
-      <Text>{"  " + t.dim("Expansion:".padEnd(P)) + expansionLabel}</Text>
-      <Text>{"  " + t.dim("Docling:".padEnd(P)) + doclingLabel + t.dim("  |  ") + t.dim("OCR: ") + (ocrInstalled ? t.ok("on") : t.dim("off")) + t.dim("  |  ") + t.dim("NER: ") + (nerReady ? t.ok("on") : t.dim("off"))}</Text>
+      <Text>{"  " + t.dim("Query Expansion:".padEnd(P)) + expansionLabel}</Text>
       <Text>{"  " + t.dim("GPU:".padEnd(P)) + gpuLine}</Text>
 
-      {/* ── Knowledge Base (always shown) ── */}
+      {/* ── Document Intelligence ── */}
+      <Text>{""}</Text>
+      <Text>{t.title("  --- Document Intelligence ---")}</Text>
+      <Text>{"  " + t.dim("Docling:".padEnd(P)) + doclingLabel + "      " + t.dim("OCR:".padEnd(6)) + (ocrInstalled ? t.ok("on") : t.dim("off")) + "      " + t.dim("NER:".padEnd(6)) + (nerReady ? t.ok("on") : t.dim("off"))}</Text>
+
+      {/* ── Knowledge Base ── */}
       <Text>{""}</Text>
       <Text>{t.title("  --- Knowledge Base ---")}</Text>
-      {stats ? (
-        <>
-          <Text>{"  " + t.dim("Documents:".padEnd(P)) + t.value(String(docCount)) + t.dim("  |  Chunks: ") + t.value(String(chunkCount)) + t.dim("  |  Size: ") + t.value(dbSize + " MB")}</Text>
-          <Text>{"  " + t.dim("Collections:".padEnd(P)) + t.value(String(collCount))}</Text>
-        </>
-      ) : (
-        <Text>{"  " + t.dim(clawcoreUp ? "Loading..." : "API offline — start services to see stats")}</Text>
-      )}
       <Text>{"  " + t.dim("Sources:".padEnd(P)) + (sourceIcons.length > 0 ? sourceIcons.join(t.dim("  |  ")) : t.dim("none configured"))}</Text>
       <Text>{"  " + t.dim("Watch Paths:".padEnd(P)) + (watchCount > 0 ? t.ok(`${watchCount} paths`) : t.dim("none"))}</Text>
-      <Text>{"  " + t.dim("Evidence OS:".padEnd(P)) + evidenceLabel}</Text>
-
-      {/* ── Recent Activity ── */}
-      {recentTasks.length > 0 && (
-        <Box flexDirection="column" marginTop={1}>
-          <Text>{t.title("  --- Activity ---")}</Text>
-          {recentTasks.slice(0, 4).map((task) => (
-            <Text key={task.id}>{"  " + formatTask(task)}</Text>
-          ))}
-        </Box>
+      {stats ? (
+        <>
+          <Text>{"  " + t.dim("Documents:".padEnd(P)) + t.value(String(docCount)) + "      " + t.dim("Chunks:".padEnd(10)) + t.value(String(chunkCount))}</Text>
+          <Text>{"  " + t.dim("Collections:".padEnd(P)) + t.value(String(collCount)) + "      " + t.dim("Size:".padEnd(10)) + t.value(dbSize + " MB")}</Text>
+        </>
+      ) : (
+        <Text>{"  " + t.dim(clawcoreUp ? "Loading..." : "Start services to see stats")}</Text>
       )}
 
-      {/* ── Service action progress ── */}
-      {svcAction && (
+      {/* ── Evidence OS ── */}
+      <Text>{""}</Text>
+      <Text>{t.title("  --- Evidence OS ---")}</Text>
+      <Text>{"  " + t.dim("Status:".padEnd(P)) + (relationsEnabled ? t.ok("ON") : t.dim("OFF"))}</Text>
+      {relationsEnabled && (
+        <>
+          <Text>{"  " + t.dim("Entities:".padEnd(P)) + t.ok("on") + "      " + t.dim("Awareness:".padEnd(14)) + (awarenessEnabled ? t.ok("on") : t.dim("off"))}</Text>
+          <Text>{"  " + t.dim("Claims:".padEnd(P)) + (claimsEnabled ? t.ok("on") : t.dim("off")) + "      " + t.dim("Attempts:".padEnd(14)) + (attemptEnabled ? t.ok("on") : t.dim("off"))}</Text>
+          <Text>{"  " + t.dim("Deep Extraction:".padEnd(P)) + (deepEnabled ? t.ok("on") : t.dim("off"))}</Text>
+        </>
+      )}
+
+      {/* ── Activity / Service Action ── */}
+      {(recentTasks.length > 0 || svcAction) && (
         <Box flexDirection="column" marginTop={1}>
-          <Text>{"  " + (svcAction.done
-            ? (svcAction.success ? t.ok("✓ ") : t.err("✗ ")) + (svcAction.success ? t.ok(svcAction.message) : t.err(svcAction.message))
-            : t.warn("⟳ ") + t.warn(svcAction.label) + t.dim(" — " + svcAction.detail)
-          )}</Text>
+          <Text>{t.title("  --- Activity ---")}</Text>
+          {svcAction && (
+            <Text>{"  " + (svcAction.done
+              ? (svcAction.success ? t.ok("✓ ") : t.err("✗ ")) + (svcAction.success ? t.ok(svcAction.message) : t.err(svcAction.message))
+              : t.warn("⟳ ") + t.warn(svcAction.label) + t.dim(" — " + svcAction.detail)
+            )}</Text>
+          )}
+          {recentTasks.slice(0, 3).map((task) => (
+            <Text key={task.id}>{"  " + formatTask(task)}</Text>
+          ))}
         </Box>
       )}
 
