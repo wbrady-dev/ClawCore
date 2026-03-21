@@ -269,8 +269,15 @@ function ensureWindowsTasks(root: string): { ready: boolean; error?: string } {
   // the actual python/node process, not just a cmd.exe wrapper.
   const escXml = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 
+  // Write XML as UTF-16LE with BOM — required by schtasks /xml on Windows
+  const writeXml = (path: string, content: string) => {
+    const bom = Buffer.from([0xFF, 0xFE]);
+    const body = Buffer.from(content, "utf16le");
+    writeFileSync(path, Buffer.concat([bom, body]));
+  };
+
   const modelsXml = resolve(binDir, `${TASK_MODELS}.xml`);
-  writeFileSync(modelsXml, `<?xml version="1.0" encoding="UTF-8"?>
+  writeXml(modelsXml, `<?xml version="1.0" encoding="UTF-16"?>
 <Task version="1.2" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
   <Triggers><LogonTrigger><Enabled>true</Enabled></LogonTrigger></Triggers>
   <Settings>
@@ -292,7 +299,7 @@ function ensureWindowsTasks(root: string): { ready: boolean; error?: string } {
 
   const ragXml = resolve(binDir, `${TASK_RAG}.xml`);
   const ragArgs = entryArgs.map(a => `"${escXml(a)}"`).join(" ");
-  writeFileSync(ragXml, `<?xml version="1.0" encoding="UTF-8"?>
+  writeXml(ragXml, `<?xml version="1.0" encoding="UTF-16"?>
 <Task version="1.2" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
   <Triggers><LogonTrigger><Enabled>true</Enabled></LogonTrigger></Triggers>
   <Settings>
