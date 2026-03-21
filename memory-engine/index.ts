@@ -1424,7 +1424,7 @@ const lcmPlugin = {
         { name: "cc_diagnostics" },
       );
       api.registerTool(
-        () => createCcMemoryTool({
+        (ctx) => createCcMemoryTool({
           deps, graphDb, lcm,
           sessionId: ctx.sessionId,
           sessionKey: ctx.sessionKey,
