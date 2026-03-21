@@ -417,9 +417,10 @@ function HomeScreen({ onAction }: { onAction: (action: string) => void }) {
       setAutoStart(cachedAutoStart);
     }
 
-    // Only update cache + state on successful responses — keep old data on failures
+    // Update on success; clear when service is confirmed down (not just a timeout)
     try {
       if (statsRes?.ok) { cachedStats = await statsRes.json(); setStats(cachedStats); }
+      else if (!cachedClawcoreUp) { cachedStats = null; setStats(null); }
     } catch {}
 
     try {
@@ -432,6 +433,7 @@ function HomeScreen({ onAction }: { onAction: (action: string) => void }) {
 
     try {
       if (healthRes?.ok) { cachedModelHealth = await healthRes.json(); setModelHealth(cachedModelHealth); }
+      else if (!cachedModelsUp) { cachedModelHealth = null; setModelHealth(null); }
     } catch {}
   };
 
