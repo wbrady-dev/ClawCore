@@ -1,4 +1,4 @@
-import { getRootDir, startClawCoreApi, startModelServer, stopServices, getApiPort, getModelPort } from "./platform.js";
+import { getRootDir, startClawCoreApi, startModelServer, stopServices, forceKillByPort, getApiPort, getModelPort } from "./platform.js";
 import { clearServiceLogs, readLatestServiceLogLine, type ServiceLogName } from "./service-logs.js";
 
 export type ServiceAction = "start" | "stop" | "restart";
@@ -33,7 +33,7 @@ export async function performServiceAction(
       waitForPortClosed(getModelPort(), 20000),
     ]);
 
-    // Verify ports are actually closed — if not, try harder
+    // Verify ports are actually closed — if not, force-kill async
     const { isPortReachable } = await import("./runtime-status.js");
     const [apiStillUp, modelsStillUp] = await Promise.all([
       isPortReachable(getApiPort(), 1000),
@@ -41,24 +41,11 @@ export async function performServiceAction(
     ]);
     if (apiStillUp || modelsStillUp) {
       options.onStatus?.("Force-killing remaining processes...");
-      // Try taskkill with full force on Windows
-      const { execFileSync } = await import("child_process");
-      const { getPlatform } = await import("./platform.js");
-      if (getPlatform() === "windows") {
-        for (const port of [getApiPort(), getModelPort()]) {
-          try {
-            const out = execFileSync("netstat", ["-ano"], { stdio: "pipe" }).toString();
-            for (const line of out.split("\n")) {
-              if (line.includes(`:${port}`) && line.includes("LISTENING")) {
-                const pid = line.trim().split(/\s+/).pop()?.replace(/\r/, "");
-                if (pid && /^\d+$/.test(pid)) {
-                  try { execFileSync("taskkill", ["/F", "/PID", pid], { stdio: "pipe" }); } catch {}
-                }
-              }
-            }
-          } catch {}
-        }
-      }
+      // Async force-kill — doesn't block the event loop
+      await Promise.all([
+        apiStillUp ? forceKillByPort(getApiPort()) : Promise.resolve(),
+        modelsStillUp ? forceKillByPort(getModelPort()) : Promise.resolve(),
+      ]);
       await sleep(2000);
 
       const [apiFinal, modelsFinal] = await Promise.all([

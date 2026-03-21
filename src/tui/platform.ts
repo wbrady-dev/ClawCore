@@ -475,26 +475,30 @@ export function startServices(): { success: boolean; error?: string } {
   return r2;
 }
 
+/**
+ * Send stop signals to services. Returns immediately — does NOT block
+ * waiting for processes to die. The caller (performServiceAction) handles
+ * async port-closed verification.
+ */
 export function stopServices(): { success: boolean; error?: string } {
   const plat = getPlatform();
   const root = getRootDir();
 
   try {
-    // HTTP shutdown: works from any terminal, no permissions needed
-    // Fire and forget — don't wait for response since the server exits
+    // 1. HTTP shutdown: works from any terminal, no permissions needed
     try {
       const http = require("http") as typeof import("http");
       for (const port of [getApiPort(), getModelPort()]) {
-        const req = http.request({ hostname: "127.0.0.1", port, path: "/shutdown", method: "POST", timeout: 3000 });
+        const req = http.request({ hostname: "127.0.0.1", port, path: "/shutdown", method: "POST", timeout: 2000 });
         req.on("error", () => {});
         req.end();
       }
     } catch {}
 
+    // 2. Platform service manager (non-blocking on Windows)
     if (plat === "windows") {
-      // Task Scheduler: schtasks /end — always works, no admin needed
-      endTask(TASK_RAG);
-      endTask(TASK_MODELS);
+      try { endTask(TASK_RAG); } catch {}
+      try { endTask(TASK_MODELS); } catch {}
     } else if (plat === "linux") {
       try { execFileSync("systemctl", ["stop", "clawcore-rag"], { stdio: "pipe" }); } catch {}
       try { execFileSync("systemctl", ["stop", "clawcore-models"], { stdio: "pipe" }); } catch {}
@@ -503,55 +507,39 @@ export function stopServices(): { success: boolean; error?: string } {
       try { execFileSync("launchctl", ["stop", "com.clawcore.models"], { stdio: "pipe" }); } catch {}
     }
 
-    // Kill by port (catches orphaned processes from old detached spawns)
-    for (const port of [getApiPort(), getModelPort()]) {
-      try {
-        if (plat === "windows") {
-          const out = execFileSync("netstat", ["-ano"], { stdio: "pipe" }).toString();
-          for (const line of out.split("\n")) {
-            if (line.includes(`:${port}`) && line.includes("LISTENING")) {
-              const pid = line.trim().split(/\s+/).pop();
-              if (pid && pid !== "0" && /^\d+$/.test(pid)) {
-                try { execFileSync("taskkill", ["/F", "/T", "/PID", pid], { stdio: "pipe" }); } catch {}
-              }
-            }
-          }
-        } else {
-          const out = execFileSync("lsof", ["-ti", `:${port}`], { stdio: "pipe" }).toString().trim();
-          if (out) {
-            for (const pid of out.split("\n")) {
-              const trimmed = pid.trim();
-              if (/^\d+$/.test(trimmed)) {
-                try { process.kill(Number(trimmed), "SIGKILL"); } catch {}
-              }
-            }
-          }
-        }
-      } catch {}
-    }
-
-    // Clean up PID files (legacy — from old detached spawns)
+    // 3. Clean up PID files (don't try to kill — HTTP shutdown handles it)
     for (const pidFile of [".clawcore.pid", ".models.pid"]) {
       const pidPath = resolve(root, pidFile);
-      if (existsSync(pidPath)) {
-        try {
-          const pid = readFileSync(pidPath, "utf-8").trim();
-          if (/^\d+$/.test(pid)) {
-            if (plat === "windows") {
-              try { execFileSync("taskkill", ["/F", "/T", "/PID", pid], { stdio: "pipe" }); } catch {}
-            } else {
-              try { process.kill(Number(pid), "SIGKILL"); } catch {}
-            }
-          }
-        } catch {}
-        try { unlinkSync(pidPath); } catch {}
-      }
+      try { if (existsSync(pidPath)) unlinkSync(pidPath); } catch {}
     }
 
     return { success: true };
   } catch (e) {
     return { success: false, error: String(e) };
   }
+}
+
+/**
+ * Async force-kill: used by performServiceAction when ports are still open
+ * after the graceful stop attempt. Runs taskkill/kill without blocking the
+ * event loop (uses child_process.exec instead of execFileSync).
+ */
+export async function forceKillByPort(port: number): Promise<void> {
+  const { exec } = await import("child_process");
+  const plat = getPlatform();
+
+  return new Promise((resolve) => {
+    if (plat === "windows") {
+      // Find PID on port and kill it
+      exec(`for /f "tokens=5" %a in ('netstat -ano ^| findstr :${port} ^| findstr LISTENING') do taskkill /F /PID %a`,
+        { shell: "cmd.exe", timeout: 8000 },
+        () => resolve());
+    } else {
+      exec(`lsof -ti :${port} | xargs kill -9 2>/dev/null`,
+        { timeout: 5000 },
+        () => resolve());
+    }
+  });
 }
 
 /** Install Windows scheduled tasks for ClawCore services (no admin required). */
