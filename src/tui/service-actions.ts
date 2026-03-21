@@ -29,9 +29,46 @@ export async function performServiceAction(
     // Model server may take time to release GPU memory
     options.onStatus?.("Waiting for services to stop...");
     await Promise.all([
-      waitForPortClosed(getApiPort(), 20000),
-      waitForPortClosed(getModelPort(), 30000),
+      waitForPortClosed(getApiPort(), 15000),
+      waitForPortClosed(getModelPort(), 20000),
     ]);
+
+    // Verify ports are actually closed — if not, try harder
+    const { isPortReachable } = await import("./runtime-status.js");
+    const [apiStillUp, modelsStillUp] = await Promise.all([
+      isPortReachable(getApiPort(), 1000),
+      isPortReachable(getModelPort(), 1000),
+    ]);
+    if (apiStillUp || modelsStillUp) {
+      options.onStatus?.("Force-killing remaining processes...");
+      // Try taskkill with full force on Windows
+      const { execFileSync } = await import("child_process");
+      const { getPlatform } = await import("./platform.js");
+      if (getPlatform() === "windows") {
+        for (const port of [getApiPort(), getModelPort()]) {
+          try {
+            const out = execFileSync("netstat", ["-ano"], { stdio: "pipe" }).toString();
+            for (const line of out.split("\n")) {
+              if (line.includes(`:${port}`) && line.includes("LISTENING")) {
+                const pid = line.trim().split(/\s+/).pop()?.replace(/\r/, "");
+                if (pid && /^\d+$/.test(pid)) {
+                  try { execFileSync("taskkill", ["/F", "/PID", pid], { stdio: "pipe" }); } catch {}
+                }
+              }
+            }
+          } catch {}
+        }
+      }
+      await sleep(2000);
+
+      const [apiFinal, modelsFinal] = await Promise.all([
+        isPortReachable(getApiPort(), 1000),
+        isPortReachable(getModelPort(), 1000),
+      ]);
+      if (apiFinal || modelsFinal) {
+        return { success: false, message: "Could not stop services. Try closing the terminal that started them, or run: taskkill /F /IM node.exe & taskkill /F /IM python.exe" };
+      }
+    }
 
     if (action === "stop") {
       return { success: true, message: "Services stopped" };
