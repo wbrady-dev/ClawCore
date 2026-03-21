@@ -69,14 +69,9 @@ export async function manageServices(): Promise<void> {
       case "auto-on": {
         const root = getRootDir();
         if (plat === "windows") {
-          if (!isAdmin()) {
-            console.log(t.warn("\n  Requires administrator. Right-click terminal → Run as administrator."));
-            await sleep(1500);
-          } else {
-            spinner.start("Enabling auto-startup (Windows services)...");
-            const r = installWindowsServices(root);
-            r.success ? spinner.succeed("Auto-startup enabled.") : spinner.fail(`Failed: ${r.error}`);
-          }
+          spinner.start("Enabling auto-startup...");
+          const r = installWindowsServices(root);
+          r.success ? spinner.succeed("Auto-startup enabled.") : spinner.fail(`Failed: ${r.error}`);
         } else if (plat === "linux") {
           if (!isAdmin()) {
             console.log(t.warn("\n  Requires sudo. Run: sudo clawcore"));
@@ -96,15 +91,10 @@ export async function manageServices(): Promise<void> {
 
       case "auto-off": {
         if (plat === "windows") {
-          if (!isAdmin()) {
-            console.log(t.warn("\n  Requires administrator."));
-            await sleep(1500);
-          } else {
-            spinner.start("Disabling auto-startup...");
-            stopServices();
-            removeWindowsServices();
-            spinner.succeed("Auto-startup disabled.");
-          }
+          spinner.start("Disabling auto-startup...");
+          stopServices();
+          removeWindowsServices();
+          spinner.succeed("Auto-startup disabled.");
         } else if (plat === "linux") {
           if (!isAdmin()) {
             console.log(t.warn("\n  Requires sudo. Run: sudo clawcore"));
@@ -126,12 +116,8 @@ export async function manageServices(): Promise<void> {
 
       case "game-on": {
         spinner.start("Game Mode on — stopping models...");
-        if (plat === "windows") {
-          try { execFileSync("net", ["stop", "ClawCoreRAG"], { stdio: "pipe" }); } catch {}
-          try { execFileSync("net", ["stop", "ClawCoreModels"], { stdio: "pipe" }); } catch {}
-        }
         stopServices();
-        // Force kill anything on our ports
+        // Force kill anything on our ports (catches orphaned processes)
         killPort(getModelPort());
         killPort(getApiPort());
         spinner.succeed("Game Mode on. VRAM freed.");
@@ -139,40 +125,16 @@ export async function manageServices(): Promise<void> {
       }
 
       case "game-off": {
-        spinner.start("Game Mode off — starting models...");
-        // Try NSSM services first, fall back to direct
-        if (plat === "windows" && autoStartEnabled) {
-          try {
-            execFileSync("net", ["start", "ClawCoreModels"], { stdio: "pipe" });
-            spinner.text = "Waiting for model server...";
-            await waitForPort(getModelPort(), 120000);
-            execFileSync("net", ["start", "ClawCoreRAG"], { stdio: "pipe" });
-            spinner.text = "Waiting for ClawCore API...";
-            await waitForPort(getApiPort(), 30000);
-            spinner.succeed("Game Mode off. Services restarted.");
-          } catch {
-            const r = startServices();
-            if (r.success) {
-              spinner.text = "Waiting for model server...";
-              await waitForPort(getModelPort(), 120000);
-              spinner.text = "Waiting for ClawCore API...";
-              await waitForPort(getApiPort(), 30000);
-              spinner.succeed("Game Mode off. Services started.");
-            } else {
-              spinner.fail(`Failed: ${r.error}`);
-            }
-          }
+        spinner.start("Game Mode off — starting services...");
+        const r = startServices();
+        if (r.success) {
+          spinner.text = "Waiting for model server...";
+          await waitForPort(getModelPort(), 120000);
+          spinner.text = "Waiting for ClawCore API...";
+          await waitForPort(getApiPort(), 30000);
+          spinner.succeed("Game Mode off. Services started.");
         } else {
-          const r = startServices();
-          if (r.success) {
-            spinner.text = "Waiting for model server...";
-            await waitForPort(getModelPort(), 120000);
-            spinner.text = "Waiting for ClawCore API...";
-            await waitForPort(getApiPort(), 30000);
-            spinner.succeed("Game Mode off. Services started.");
-          } else {
-            spinner.fail(`Failed: ${r.error}`);
-          }
+          spinner.fail(`Failed: ${r.error}`);
         }
         break;
       }
@@ -463,8 +425,8 @@ function checkAutoStartup(): boolean {
   const plat = getPlatform();
   if (plat === "windows") {
     try {
-      const out = execFileSync("sc", ["query", "ClawCoreModels"], { stdio: "pipe" }).toString();
-      return !out.includes("does not exist");
+      const out = execFileSync("powershell", ["-NoProfile", "-Command", "(Get-ScheduledTask -TaskName 'ClawCoreModels' -ErrorAction SilentlyContinue).TaskName"], { stdio: "pipe" }).toString().trim();
+      return out === "ClawCoreModels";
     } catch {
       return false;
     }

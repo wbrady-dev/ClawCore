@@ -182,6 +182,98 @@ export interface ServiceStatus {
   clawcore: { running: boolean; pid?: number };
 }
 
+// ── Windows Task Scheduler helpers ──
+
+const TASK_MODELS = "ClawCore_Models";
+const TASK_RAG = "ClawCore_RAG";
+
+/** Run a PowerShell command and return stdout. */
+function ps(script: string): string {
+  return execFileSync("powershell", ["-NoProfile", "-Command", script], { stdio: "pipe", timeout: 15000 }).toString().trim();
+}
+
+/** Check if a Windows scheduled task is currently running. */
+function isTaskRunning(taskName: string): boolean {
+  try {
+    const state = ps(`(Get-ScheduledTask -TaskName '${taskName}' -ErrorAction SilentlyContinue).State`);
+    return state === "Running";
+  } catch {
+    return false;
+  }
+}
+
+/** Start a Windows scheduled task (no admin required). */
+function startTask(taskName: string): { success: boolean; error?: string } {
+  try {
+    ps(`Start-ScheduledTask -TaskName '${taskName}'`);
+    return { success: true };
+  } catch (e) {
+    return { success: false, error: String(e) };
+  }
+}
+
+/** Stop a Windows scheduled task (no admin required). */
+function endTask(taskName: string): { success: boolean; error?: string } {
+  try {
+    ps(`Stop-ScheduledTask -TaskName '${taskName}' -ErrorAction SilentlyContinue`);
+    return { success: true };
+  } catch (e) {
+    return { success: false, error: String(e) };
+  }
+}
+
+/** Delete a Windows scheduled task. */
+function deleteTask(taskName: string): { success: boolean } {
+  try {
+    ps(`Unregister-ScheduledTask -TaskName '${taskName}' -Confirm:$false -ErrorAction SilentlyContinue`);
+  } catch {}
+  return { success: true };
+}
+
+/**
+ * Ensure both Windows tasks are registered. Uses a SINGLE PowerShell call
+ * for check + register to avoid CIM session issues between separate calls.
+ */
+function ensureWindowsTasks(root: string): { ready: boolean; error?: string } {
+  const binDir = resolve(root, "bin");
+  const logsDir = resolve(root, "logs");
+  mkdirSync(binDir, { recursive: true });
+  mkdirSync(logsDir, { recursive: true });
+
+  // Write wrapper scripts
+  const pythonCmd = getPythonCmd();
+  const modelsScript = findModelsScript(root);
+  const modelsWrapper = resolve(binDir, `${TASK_MODELS}.cmd`);
+  writeFileSync(modelsWrapper,
+    `@echo off\r\ncd /d "${dirname(modelsScript)}"\r\n"${pythonCmd}" "${modelsScript}" >> "${resolve(logsDir, "models.log")}" 2>&1\r\n`);
+
+  const nodeCmd = getNodeCmd();
+  const entryArgs = findApiEntryArgs(root);
+  const argsStr = entryArgs.map(a => `"${a}"`).join(" ");
+  const ragWrapper = resolve(binDir, `${TASK_RAG}.cmd`);
+  writeFileSync(ragWrapper,
+    `@echo off\r\ncd /d "${root}"\r\n"${nodeCmd}" ${argsStr} >> "${resolve(logsDir, "clawcore.log")}" 2>&1\r\n`);
+
+  // Register tasks with -Force (creates or updates — no need to check first)
+  const escapedModels = modelsWrapper.replace(/'/g, "''");
+  const escapedRag = ragWrapper.replace(/'/g, "''");
+  try {
+    ps([
+      `$a = New-ScheduledTaskAction -Execute '${escapedModels}'`,
+      `$t = New-ScheduledTaskTrigger -AtLogOn`,
+      `Register-ScheduledTask -TaskName '${TASK_MODELS}' -Action $a -Trigger $t -Force | Out-Null`,
+      `$a2 = New-ScheduledTaskAction -Execute '${escapedRag}'`,
+      `$t2 = New-ScheduledTaskTrigger -AtLogOn`,
+      `Register-ScheduledTask -TaskName '${TASK_RAG}' -Action $a2 -Trigger $t2 -Force | Out-Null`,
+    ].join("\n"));
+    return { ready: true };
+  } catch (e) {
+    return { ready: false, error: String(e) };
+  }
+}
+
+// ── End Windows Task Scheduler helpers ──
+
 export function checkServices(): ServiceStatus {
   const result: ServiceStatus = {
     models: { running: false },
@@ -191,15 +283,9 @@ export function checkServices(): ServiceStatus {
   const plat = getPlatform();
 
   if (plat === "windows") {
-    // Check NSSM Windows services
-    try {
-      const out = execFileSync("sc", ["query", "ClawCoreModels"], { stdio: "pipe" }).toString();
-      result.models.running = out.includes("RUNNING");
-    } catch {}
-    try {
-      const out = execFileSync("sc", ["query", "ClawCoreRAG"], { stdio: "pipe" }).toString();
-      result.clawcore.running = out.includes("RUNNING");
-    } catch {}
+    // Check via Task Scheduler
+    result.models.running = isTaskRunning(TASK_MODELS);
+    result.clawcore.running = isTaskRunning(TASK_RAG);
   } else {
     // Check systemd services (Linux)
     if (plat === "linux") {
@@ -293,7 +379,8 @@ function findModelsScript(root: string): string {
 
 /**
  * Start the model server (embeddings + reranking).
- * Skips if already running on the model server port.
+ * On Windows: uses Task Scheduler (no admin, no visible window, always stoppable).
+ * On Unix: detached spawn (systemd/launchd handled separately via auto-start).
  */
 export function startModelServer(): { success: boolean; error?: string } {
   if (isPortOpen(getModelPort())) return { success: true }; // already running
@@ -301,15 +388,14 @@ export function startModelServer(): { success: boolean; error?: string } {
   const root = getRootDir();
   const plat = getPlatform();
 
-  // Try Windows NSSM services first
+  // Windows: Task Scheduler — no admin, no EPERM, no visible window
   if (plat === "windows") {
-    try {
-      execFileSync("sc", ["query", "ClawCoreModels"], { stdio: "pipe" });
-      execFileSync("net", ["start", "ClawCoreModels"], { stdio: "pipe" });
-      return { success: true };
-    } catch {} // fall through to direct spawn
+    const tasks = ensureWindowsTasks(root);
+    if (!tasks.ready) return { success: false, error: tasks.error };
+    return startTask(TASK_MODELS);
   }
 
+  // Unix: detached spawn
   try {
     const pythonCmd = getPythonCmd();
     const modelsScript = findModelsScript(root);
@@ -323,7 +409,6 @@ export function startModelServer(): { success: boolean; error?: string } {
       windowsHide: true,
     });
     modelsProcess.unref();
-    // Close the fd in the parent so the child owns it exclusively
     try { closeSync(modelsLog); } catch {}
     if (modelsProcess.pid) writeFileSync(resolve(root, ".models.pid"), String(modelsProcess.pid));
     return { success: true };
@@ -334,7 +419,8 @@ export function startModelServer(): { success: boolean; error?: string } {
 
 /**
  * Start the ClawCore RAG API server.
- * Skips if already running on the API port.
+ * On Windows: uses Task Scheduler.
+ * On Unix: detached spawn.
  * Call AFTER model server is ready.
  */
 export function startClawCoreApi(): { success: boolean; error?: string } {
@@ -343,15 +429,14 @@ export function startClawCoreApi(): { success: boolean; error?: string } {
   const root = getRootDir();
   const plat = getPlatform();
 
-  // Try Windows NSSM services first
+  // Windows: Task Scheduler
   if (plat === "windows") {
-    try {
-      execFileSync("sc", ["query", "ClawCoreRAG"], { stdio: "pipe" });
-      execFileSync("net", ["start", "ClawCoreRAG"], { stdio: "pipe" });
-      return { success: true };
-    } catch {} // fall through to direct spawn
+    const tasks = ensureWindowsTasks(root);
+    if (!tasks.ready) return { success: false, error: tasks.error };
+    return startTask(TASK_RAG);
   }
 
+  // Unix: detached spawn
   try {
     const entryArgs = findApiEntryArgs(root);
     const logsDir = resolve(root, "logs");
@@ -386,17 +471,18 @@ export function stopServices(): { success: boolean; error?: string } {
 
   try {
     if (plat === "windows") {
-      try { execFileSync("net", ["stop", "ClawCoreRAG"], { stdio: "pipe" }); } catch {}
-      try { execFileSync("net", ["stop", "ClawCoreModels"], { stdio: "pipe" }); } catch {}
+      // Task Scheduler: schtasks /end — always works, no admin needed
+      endTask(TASK_RAG);
+      endTask(TASK_MODELS);
     } else if (plat === "linux") {
-      try { execFileSync("systemctl", ["stop", "clawcore"], { stdio: "pipe" }); } catch {}
+      try { execFileSync("systemctl", ["stop", "clawcore-rag"], { stdio: "pipe" }); } catch {}
       try { execFileSync("systemctl", ["stop", "clawcore-models"], { stdio: "pipe" }); } catch {}
     } else if (plat === "mac") {
-      try { execFileSync("launchctl", ["stop", "com.clawcore.api"], { stdio: "pipe" }); } catch {}
+      try { execFileSync("launchctl", ["stop", "com.clawcore.rag"], { stdio: "pipe" }); } catch {}
       try { execFileSync("launchctl", ["stop", "com.clawcore.models"], { stdio: "pipe" }); } catch {}
     }
 
-    // Kill by port as backup (cross-platform)
+    // Kill by port as backup (catches orphaned processes from old detached spawns)
     for (const port of [getApiPort(), getModelPort()]) {
       try {
         if (plat === "windows") {
@@ -423,7 +509,7 @@ export function stopServices(): { success: boolean; error?: string } {
       } catch {}
     }
 
-    // Also clean up PID files
+    // Clean up PID files (legacy — from old detached spawns)
     for (const pidFile of [".clawcore.pid", ".models.pid"]) {
       const pidPath = resolve(root, pidFile);
       if (existsSync(pidPath)) {
@@ -447,58 +533,18 @@ export function stopServices(): { success: boolean; error?: string } {
   }
 }
 
+/** Install Windows scheduled tasks for ClawCore services (no admin required). */
 export function installWindowsServices(root: string): { success: boolean; error?: string } {
   if (getPlatform() !== "windows") {
     return { success: false, error: "Windows services only available on Windows" };
   }
-
-  const nssm = resolve(root, "nssm.exe");
-  if (!existsSync(nssm)) {
-    return { success: false, error: "nssm.exe not found" };
-  }
-
-  try {
-    const pythonCmd = getPythonCmd();
-    const nodeCmd = getNodeCmd();
-    const entryArgs = findApiEntryArgs(root);
-    const logsDir = resolve(root, "logs");
-    mkdirSync(logsDir, { recursive: true });
-
-    // Install Models
-    execFileSync(nssm, ["install", "ClawCoreModels", pythonCmd, findModelsScript(root)], { stdio: "pipe" });
-    execFileSync(nssm, ["set", "ClawCoreModels", "AppDirectory", root], { stdio: "pipe" });
-    execFileSync(nssm, ["set", "ClawCoreModels", "DisplayName", "ClawCore Models (Embed + Rerank)"], { stdio: "pipe" });
-    execFileSync(nssm, ["set", "ClawCoreModels", "Start", "SERVICE_AUTO_START"], { stdio: "pipe" });
-    execFileSync(nssm, ["set", "ClawCoreModels", "AppStdout", resolve(logsDir, "models.log")], { stdio: "pipe" });
-    execFileSync(nssm, ["set", "ClawCoreModels", "AppStderr", resolve(logsDir, "models.log")], { stdio: "pipe" });
-    execFileSync(nssm, ["set", "ClawCoreModels", "AppRotateFiles", "1"], { stdio: "pipe" });
-    execFileSync(nssm, ["set", "ClawCoreModels", "AppNoConsole", "1"], { stdio: "pipe" });
-
-    // Install ClawCore
-    execFileSync(nssm, ["install", "ClawCoreRAG", nodeCmd, ...entryArgs], { stdio: "pipe" });
-    execFileSync(nssm, ["set", "ClawCoreRAG", "AppDirectory", root], { stdio: "pipe" });
-    execFileSync(nssm, ["set", "ClawCoreRAG", "DisplayName", "ClawCore RAG (Search API)"], { stdio: "pipe" });
-    execFileSync(nssm, ["set", "ClawCoreRAG", "Start", "SERVICE_AUTO_START"], { stdio: "pipe" });
-    execFileSync(nssm, ["set", "ClawCoreRAG", "AppStdout", resolve(logsDir, "clawcore.log")], { stdio: "pipe" });
-    execFileSync(nssm, ["set", "ClawCoreRAG", "AppStderr", resolve(logsDir, "clawcore.log")], { stdio: "pipe" });
-    execFileSync(nssm, ["set", "ClawCoreRAG", "AppRotateFiles", "1"], { stdio: "pipe" });
-    execFileSync(nssm, ["set", "ClawCoreRAG", "AppNoConsole", "1"], { stdio: "pipe" });
-    execFileSync(nssm, ["set", "ClawCoreRAG", "DependOnService", "ClawCoreModels"], { stdio: "pipe" });
-
-    return { success: true };
-  } catch (e) {
-    return { success: false, error: String(e) };
-  }
+  return ensureWindowsTasks(root);
 }
 
+/** Remove Windows scheduled tasks for ClawCore services. */
 export function removeWindowsServices(): { success: boolean } {
-  const nssm = resolve(getRootDir(), "nssm.exe");
-  try {
-    execFileSync(nssm, ["remove", "ClawCoreRAG", "confirm"], { stdio: "pipe" });
-  } catch {}
-  try {
-    execFileSync(nssm, ["remove", "ClawCoreModels", "confirm"], { stdio: "pipe" });
-  } catch {}
+  deleteTask(TASK_RAG);
+  deleteTask(TASK_MODELS);
   return { success: true };
 }
 

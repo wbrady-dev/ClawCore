@@ -169,6 +169,64 @@ if %EXIT_CODE% equ 0 (
     )
 )
 
+:: ── Step 10: Register background services (Task Scheduler, no admin needed) ──
+if %EXIT_CODE% equ 0 (
+    echo.
+    echo [install] Setting up background services...
+    if not exist "%SCRIPT_DIR%\logs" mkdir "%SCRIPT_DIR%\logs"
+
+    :: Find Python and models script
+    set "PYTHON=%SCRIPT_DIR%\.venv\Scripts\python.exe"
+    if exist "%SCRIPT_DIR%\..\rerank-server.py" (
+        set "MODELS_SCRIPT=%SCRIPT_DIR%\..\rerank-server.py"
+    ) else if exist "%SCRIPT_DIR%\server\rerank-server.py" (
+        set "MODELS_SCRIPT=%SCRIPT_DIR%\server\rerank-server.py"
+    ) else (
+        set "MODELS_SCRIPT=%SCRIPT_DIR%\rerank-server.py"
+    )
+
+    :: Create wrapper scripts for Task Scheduler
+    (
+        echo @echo off
+        echo cd /d "%SCRIPT_DIR%"
+        echo "!PYTHON!" "!MODELS_SCRIPT!" ^>^> "%SCRIPT_DIR%\logs\models.log" 2^>^&1
+    ) > "%SCRIPT_DIR%\bin\ClawCoreModels.cmd"
+
+    if exist "%SCRIPT_DIR%\dist\index.js" (
+        set "API_ENTRY=%SCRIPT_DIR%\dist\index.js"
+    ) else (
+        set "API_ENTRY=%SCRIPT_DIR%\node_modules\tsx\dist\cli.mjs" "%SCRIPT_DIR%\src\index.ts"
+    )
+
+    (
+        echo @echo off
+        echo cd /d "%SCRIPT_DIR%"
+        echo node "!API_ENTRY!" ^>^> "%SCRIPT_DIR%\logs\clawcore.log" 2^>^&1
+    ) > "%SCRIPT_DIR%\bin\ClawCoreRAG.cmd"
+
+    :: Remove old tasks if they exist (clean reinstall)
+    schtasks /delete /tn ClawCoreModels /f >nul 2>&1
+    schtasks /delete /tn ClawCoreRAG /f >nul 2>&1
+
+    :: Register tasks (onlogon auto-start, no admin required)
+    schtasks /create /tn ClawCoreModels /tr "\"%SCRIPT_DIR%\bin\ClawCoreModels.cmd\"" /sc onlogon /rl limited /f >nul 2>&1
+    if %errorlevel% equ 0 (
+        echo [OK] ClawCoreModels task registered
+    ) else (
+        echo [WARN] ClawCoreModels task registration failed
+    )
+
+    schtasks /create /tn ClawCoreRAG /tr "\"%SCRIPT_DIR%\bin\ClawCoreRAG.cmd\"" /sc onlogon /rl limited /f >nul 2>&1
+    if %errorlevel% equ 0 (
+        echo [OK] ClawCoreRAG task registered
+    ) else (
+        echo [WARN] ClawCoreRAG task registration failed
+    )
+
+    echo [OK] Services will start automatically on login
+    echo      Use 'clawcore' TUI to start/stop/restart services
+)
+
 if %EXIT_CODE% neq 0 (
     echo.
     echo [ERROR] Installer exited with code %EXIT_CODE%.

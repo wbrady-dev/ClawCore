@@ -815,14 +815,10 @@ async function maybeInstallWindowsServices(root: string): Promise<void> {
 }
 
 export async function installWindowsServicesNow(root: string): Promise<void> {
-  if (!isAdmin()) {
-    console.log(t.warn("  Administrator privileges are required for Windows services.\n"));
-    return;
-  }
-  const sp = ora("Installing Windows services...").start();
+  const sp = ora("Setting up background services...").start();
   const result = installWindowsServices(root);
-  if (result.success) sp.succeed("Windows services installed");
-  else sp.warn(`Windows service install failed: ${result.error}`);
+  if (result.success) sp.succeed("Background services configured");
+  else sp.warn(`Service setup failed: ${result.error}`);
 }
 
 function printVerification(root: string, python: string, envPath: string): void {

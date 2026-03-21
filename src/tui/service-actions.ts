@@ -66,7 +66,7 @@ export async function performServiceAction(
         isPortReachable(getModelPort(), 1000),
       ]);
       if (apiFinal || modelsFinal) {
-        return { success: false, message: "Could not stop services. Try closing the terminal that started them, or run: taskkill /F /IM node.exe & taskkill /F /IM python.exe" };
+        return { success: false, message: "Could not stop services. Try running ClawCore as Administrator, or run: taskkill /F /IM node.exe & taskkill /F /IM python.exe" };
       }
     }
 

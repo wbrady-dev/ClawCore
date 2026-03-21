@@ -74,7 +74,7 @@ export async function performUninstall(options: { deleteData: boolean }): Promis
   // Wait for ports to close
   await waitForPortClosed(getApiPort(), 20000);
   await waitForPortClosed(getModelPort(), 30000);
-  if (plat === "windows" && isAdmin()) {
+  if (plat === "windows") {
     removeWindowsServices();
   } else if (plat === "linux") {
     try { removeLinuxServices(); } catch {}
@@ -253,13 +253,7 @@ export async function performUninstall(options: { deleteData: boolean }): Promis
 
   sp.succeed("ClawCore files removed");
 
-  // ── 5. Windows services reminder ──
-  if (plat === "windows" && !isAdmin()) {
-    console.log(t.warn("\n  To remove Windows services, run as administrator:"));
-    console.log(t.code("  nssm remove ClawCoreRAG confirm && nssm remove ClawCoreModels confirm"));
-  }
-
-  // ── 6. Summary ──
+  // ── 5. Summary ──
   console.log(section("Uninstall Complete"));
 
   console.log(t.ok("  OpenClaw has been restored to its original state."));

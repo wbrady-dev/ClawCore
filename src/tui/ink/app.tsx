@@ -296,11 +296,6 @@ async function runServicesScreenAction(action: string): Promise<void> {
 
   if (action === "services-auto-on") {
     if (platform === "windows") {
-      if (!isAdmin()) {
-        spinner.fail("Administrator privileges are required for Windows services");
-        await sleep(1200);
-        return;
-      }
       const result = installWindowsServices(root);
       result.success ? spinner.succeed("Auto-start enabled") : spinner.fail(result.error ?? "Failed to enable auto-start");
       await sleep(1000);
@@ -330,11 +325,6 @@ async function runServicesScreenAction(action: string): Promise<void> {
     stopServices();
 
     if (platform === "windows") {
-      if (!isAdmin()) {
-        spinner.fail("Administrator privileges are required for Windows services");
-        await sleep(1200);
-        return;
-      }
       removeWindowsServices();
     } else if (platform === "linux") {
       if (!isAdmin()) {
