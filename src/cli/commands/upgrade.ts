@@ -474,6 +474,59 @@ export const upgradeCommand = new Command("upgrade")
         }
       }
 
+      // ── Step 4b: Python Venv + Dependencies ──
+      console.log("");
+      console.log(chalk.dim("── Step 4b: Python Environment ──"));
+
+      const { getPythonCmd, getSystemPythonCmd, getPlatform } = await import("../../tui/platform.js");
+      const venvDir = resolve(rootDir, ".venv");
+      const venvPython = getPlatform() === "windows"
+        ? resolve(venvDir, "Scripts", "python.exe")
+        : resolve(venvDir, "bin", "python3");
+      const reqsFile = resolve(rootDir, "server", "requirements-pinned.txt");
+
+      if (!existsSync(venvPython)) {
+        if (isDryRun) {
+          info("Would create Python venv and install pinned dependencies");
+        } else {
+          try {
+            const { execFileSync } = await import("child_process");
+            const sysPython = getSystemPythonCmd();
+            execFileSync(sysPython, ["-m", "venv", venvDir], { stdio: "pipe", timeout: 60000 });
+            ok("Python venv created");
+
+            if (existsSync(reqsFile)) {
+              const pipCmd = getPlatform() === "windows"
+                ? resolve(venvDir, "Scripts", "pip.exe")
+                : resolve(venvDir, "bin", "pip");
+              execFileSync(pipCmd, ["install", "-r", reqsFile], { stdio: "pipe", timeout: 600000 });
+              ok("Pinned Python dependencies installed");
+            }
+
+            try {
+              execFileSync(venvPython, ["-m", "spacy", "download", "en_core_web_sm"], { stdio: "pipe", timeout: 120000 });
+              ok("spaCy NER model installed");
+            } catch {
+              warn("spaCy NER model not installed (optional)");
+            }
+          } catch (e: any) {
+            warn(`Python venv setup failed: ${e.message}. Run install.bat/install.sh to set up.`);
+          }
+        }
+      } else {
+        ok("Python venv already present");
+        // Update deps if pinned file is newer
+        if (existsSync(reqsFile) && !isDryRun) {
+          try {
+            const { execFileSync } = await import("child_process");
+            execFileSync(venvPython, ["-m", "pip", "install", "-q", "-r", reqsFile], { stdio: "pipe", timeout: 600000 });
+            ok("Python dependencies up to date");
+          } catch {
+            warn("Python dependency update failed (non-fatal)");
+          }
+        }
+      }
+
       // ── Step 5: Skill Sync (3-way merge) ──
       console.log("");
       console.log(chalk.dim("── Step 5: Skill Sync ──"));
