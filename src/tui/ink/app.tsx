@@ -564,8 +564,8 @@ function HomeScreen({ onAction }: { onAction: (action: string) => void }) {
       <Text>{"  " + t.dim("Watch Paths: ") + (watchCount > 0 ? t.ok(`${watchCount} paths`) : t.dim("none"))}</Text>
       {stats ? (
         <>
-          <Text>{"  " + t.dim("Documents: ") + t.value(String(docCount)) + "      " + t.dim("Chunks: ") + t.value(String(chunkCount))}</Text>
-          <Text>{"  " + t.dim("Collections: ") + t.value(String(collCount)) + "         " + t.dim("Size: ") + t.value(dbSize + " MB")}</Text>
+          <Text>{"  " + t.dim("Documents:   ") + t.value(String(docCount).padEnd(8)) + t.dim("Chunks: ") + t.value(String(chunkCount))}</Text>
+          <Text>{"  " + t.dim("Collections: ") + t.value(String(collCount).padEnd(8)) + t.dim("Size: ") + t.value(dbSize + " MB")}</Text>
         </>
       ) : (
         <Text>{"  " + t.dim(clawcoreUp ? "Loading..." : "Start services to see stats")}</Text>
