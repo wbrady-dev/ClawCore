@@ -369,16 +369,20 @@ export function checkServices(): ServiceStatus {
     if (!result.models.running) {
       try {
         if (existsSync(resolve(root, ".models.pid"))) {
-          const pid = parseInt(readFileSync(resolve(root, ".models.pid"), "utf-8").trim());
-          try { process.kill(pid, 0); result.models = { running: true, pid }; } catch {}
+          const pid = parseInt(readFileSync(resolve(root, ".models.pid"), "utf-8").trim(), 10);
+          if (Number.isFinite(pid) && pid > 0) {
+            try { process.kill(pid, 0); result.models = { running: true, pid }; } catch {}
+          }
         }
       } catch {}
     }
     if (!result.clawcore.running) {
       try {
         if (existsSync(resolve(root, ".clawcore.pid"))) {
-          const pid = parseInt(readFileSync(resolve(root, ".clawcore.pid"), "utf-8").trim());
-          try { process.kill(pid, 0); result.clawcore = { running: true, pid }; } catch {}
+          const pid = parseInt(readFileSync(resolve(root, ".clawcore.pid"), "utf-8").trim(), 10);
+          if (Number.isFinite(pid) && pid > 0) {
+            try { process.kill(pid, 0); result.clawcore = { running: true, pid }; } catch {}
+          }
         }
       } catch {}
     }

@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import React, { useEffect, useState, useRef, useCallback } from "react";
+import React, { useEffect, useState, useRef } from "react";
 import { render, Box, Text } from "ink";
 import { execFile } from "child_process";
 import { existsSync, readFileSync } from "fs";
@@ -384,7 +384,7 @@ function HomeScreen({ onAction }: { onAction: (action: string) => void }) {
     return () => { cancelled = true; };
   }, []);
 
-  const refresh = async () => {
+  const refresh = async () => { try {
     const [mUp, cUp, gpuState, autoStartState, statsRes, sourcesRes, healthRes] = await Promise.all([
       isPortReachable(getModelPort()),
       isPortReachable(getApiPort()),
@@ -435,7 +435,7 @@ function HomeScreen({ onAction }: { onAction: (action: string) => void }) {
       if (healthRes?.ok) { cachedModelHealth = await healthRes.json(); setModelHealth(cachedModelHealth); }
       else if (!cachedModelsUp) { cachedModelHealth = null; setModelHealth(null); }
     } catch {}
-  };
+  } catch {} };
 
   useEffect(() => { refresh(); }, []);
 
@@ -523,16 +523,6 @@ function HomeScreen({ onAction }: { onAction: (action: string) => void }) {
   const chunkCount = stats?.chunks ?? 0;
   const collCount = stats?.collections ?? 0;
   const dbSize = ((stats?.dbSizeMB ?? 0) as number).toFixed(1);
-
-  // Evidence OS stats from graph DB
-  let entityCount = 0;
-  let claimCount = 0;
-  try {
-    const graphPath = resolve(require("os").homedir(), ".clawcore", "data", "graph.db");
-    if (existsSync(graphPath)) {
-      // Use stats from the API if available, otherwise just show enabled/disabled
-    }
-  } catch {}
 
   const anyRunning = modelsUp || clawcoreUp;
   const items: MenuItem[] = [
