@@ -558,7 +558,7 @@ function HomeScreen({ onAction }: { onAction: (action: string) => void }) {
       {/* ── Document Intelligence ── */}
       <Text>{""}</Text>
       <Text>{t.title("  --- Document Intelligence ---")}</Text>
-      <Text>{"  " + t.dim("Docling:".padEnd(P)) + doclingLabel + "      " + t.dim("OCR:".padEnd(6)) + (ocrInstalled ? t.ok("on") : t.dim("off")) + "      " + t.dim("NER:".padEnd(6)) + (nerReady ? t.ok("on") : t.dim("off"))}</Text>
+      <Text>{"  " + t.dim("Docling:".padEnd(P)) + doclingLabel + "      " + t.dim("OCR:".padEnd(6)) + (ocrInstalled ? t.ok("●") : t.err("○")) + "      " + t.dim("NER:".padEnd(6)) + (nerReady ? t.ok("●") : t.err("○"))}</Text>
 
       {/* ── Knowledge Base ── */}
       <Text>{""}</Text>
@@ -577,12 +577,12 @@ function HomeScreen({ onAction }: { onAction: (action: string) => void }) {
       {/* ── Evidence OS ── */}
       <Text>{""}</Text>
       <Text>{t.title("  --- Evidence OS ---")}</Text>
-      <Text>{"  " + t.dim("Status:".padEnd(P)) + (relationsEnabled ? t.ok("ON") : t.dim("OFF"))}</Text>
+      <Text>{"  " + t.dim("Status:".padEnd(P)) + (relationsEnabled ? t.ok("●") : t.err("○"))}</Text>
       {relationsEnabled && (
         <>
-          <Text>{"  " + t.dim("Entities:".padEnd(P)) + t.ok("on") + "      " + t.dim("Awareness:".padEnd(14)) + (awarenessEnabled ? t.ok("on") : t.dim("off"))}</Text>
-          <Text>{"  " + t.dim("Claims:".padEnd(P)) + (claimsEnabled ? t.ok("on") : t.dim("off")) + "      " + t.dim("Attempts:".padEnd(14)) + (attemptEnabled ? t.ok("on") : t.dim("off"))}</Text>
-          <Text>{"  " + t.dim("Deep Extraction:".padEnd(P)) + (deepEnabled ? t.ok("on") : t.dim("off"))}</Text>
+          <Text>{"  " + t.dim("Entities:".padEnd(P)) + t.ok("●") + "      " + t.dim("Awareness:".padEnd(14)) + (awarenessEnabled ? t.ok("●") : t.err("○"))}</Text>
+          <Text>{"  " + t.dim("Claims:".padEnd(P)) + (claimsEnabled ? t.ok("●") : t.err("○")) + "      " + t.dim("Attempts:".padEnd(14)) + (attemptEnabled ? t.ok("●") : t.err("○"))}</Text>
+          <Text>{"  " + t.dim("Deep Extraction:".padEnd(P)) + (deepEnabled ? t.ok("●") : t.err("○"))}</Text>
         </>
       )}
 
