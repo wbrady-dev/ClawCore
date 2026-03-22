@@ -258,7 +258,7 @@ function escapeXml(s: string): string {
  * Ensure both Windows tasks are registered.
  * Uses schtasks.exe (native, instant) instead of PowerShell.
  */
-function ensureWindowsTasks(root: string): { ready: boolean; error?: string } {
+function ensureWindowsTasks(root: string): { success: boolean; error?: string } {
   const binDir = resolve(root, "bin");
   const logsDir = resolve(root, "logs");
   mkdirSync(binDir, { recursive: true });
@@ -327,9 +327,9 @@ function ensureWindowsTasks(root: string): { ready: boolean; error?: string } {
   try {
     schtasks("/create", "/tn", TASK_MODELS, "/xml", modelsXml, "/f");
     schtasks("/create", "/tn", TASK_RAG, "/xml", ragXml, "/f");
-    return { ready: true };
+    return { success: true };
   } catch (e) {
-    return { ready: false, error: String(e) };
+    return { success: false, error: String(e) };
   }
 }
 
@@ -457,7 +457,7 @@ export function startModelServer(): { success: boolean; error?: string } {
   // Windows: Task Scheduler — no admin, no EPERM, no visible window
   if (plat === "windows") {
     const tasks = ensureWindowsTasks(root);
-    if (!tasks.ready) return { success: false, error: tasks.error };
+    if (!tasks.success) return { success: false, error: tasks.error };
     return startTask(TASK_MODELS);
   }
 
@@ -498,7 +498,7 @@ export function startClawCoreApi(): { success: boolean; error?: string } {
   // Windows: Task Scheduler
   if (plat === "windows") {
     const tasks = ensureWindowsTasks(root);
-    if (!tasks.ready) return { success: false, error: tasks.error };
+    if (!tasks.success) return { success: false, error: tasks.error };
     return startTask(TASK_RAG);
   }
 

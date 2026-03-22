@@ -64,7 +64,7 @@ server.tool(
       }
 
       // Append concise query metadata
-      const meta = `--- ${result.queryInfo.strategy} | ${result.queryInfo.tokensUsed} tokens | ${result.queryInfo.confidence}% conf | ${result.queryInfo.elapsedMs}ms ---`;
+      const meta = `--- ${result.queryInfo.strategy} | ${result.queryInfo.tokensUsed} tokens | ${Math.round(result.queryInfo.confidence * 100)}% conf | ${result.queryInfo.elapsedMs}ms ---`;
 
       return {
         content: [{ type: "text", text: `${result.context}\n${meta}` }],

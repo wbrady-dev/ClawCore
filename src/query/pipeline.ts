@@ -21,7 +21,6 @@ import {
   generateMultiQuery,
 } from "./expansion.js";
 import { getGraphDb } from "../storage/graph-sqlite.js";
-import { config as appConfig } from "../config.js";
 
 export interface QueryOptions {
   collection?: string;
@@ -189,11 +188,11 @@ export async function query(
   // Entity-boosted BM25: for short queries (1-2 words), expand with
   // co-occurring terms from the entity graph (precision guard).
   let entityBoostedQuery = queryText;
-  if (appConfig.relations.enabled) {
+  if (config.relations.enabled) {
     const wordCount = queryText.trim().split(/\s+/).length;
     if (wordCount <= 2) {
       try {
-        const graphDb = getGraphDb(appConfig.relations.graphDbPath);
+        const graphDb = getGraphDb(config.relations.graphDbPath);
         const lowerQuery = queryText.toLowerCase().trim();
         const entity = graphDb.prepare(
           "SELECT id FROM entities WHERE name = ? AND mention_count >= 2",
