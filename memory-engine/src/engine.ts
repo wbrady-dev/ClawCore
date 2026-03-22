@@ -829,6 +829,58 @@ export class LcmContextEngine implements ContextEngine {
     }
   }
 
+  /**
+   * Run LLM-based deep extraction for claims + relations in a single pass.
+   * Fire-and-forget from ingest — does not block message processing.
+   */
+  private async runDeepExtraction(graphDb: GraphDb, content: string, messageId: string): Promise<void> {
+    const { extractClaimsDeep, extractRelationsDeep } = await import("./relations/deep-extract.js");
+    const { storeClaimExtractionResults } = await import("./relations/claim-store.js");
+    const { upsertRelation } = await import("./relations/relation-store.js");
+    const { withWriteTransaction } = await import("./relations/evidence-log.js");
+
+    // Deep claim extraction (LLM)
+    const deepClaims = await extractClaimsDeep(content, this.deps, this.config);
+    if (deepClaims.length > 0) {
+      withWriteTransaction(graphDb, () => {
+        storeClaimExtractionResults(graphDb, deepClaims, {
+          scopeId: 1,
+          sourceType: "deep_extraction",
+          sourceId: messageId,
+        });
+      });
+    }
+
+    // Deep relation extraction (LLM) — uses known entities from DB
+    const entityRows = graphDb.prepare(
+      "SELECT name FROM entities WHERE length(name) <= 40 ORDER BY mention_count DESC, last_seen_at DESC LIMIT 100",
+    ).all() as Array<{ name: string }>;
+    const entityNames = entityRows.map((r) => r.name);
+
+    if (entityNames.length >= 2) {
+      const deepRelations = await extractRelationsDeep(content, entityNames, this.deps, this.config);
+      if (deepRelations.length > 0) {
+        withWriteTransaction(graphDb, () => {
+          for (const rel of deepRelations) {
+            const subj = graphDb.prepare("SELECT id FROM entities WHERE name = ?").get(rel.subject) as { id: number } | undefined;
+            const obj = graphDb.prepare("SELECT id FROM entities WHERE name = ?").get(rel.object) as { id: number } | undefined;
+            if (subj && obj) {
+              upsertRelation(graphDb, {
+                scopeId: 1,
+                subjectEntityId: subj.id,
+                predicate: rel.predicate,
+                objectEntityId: obj.id,
+                confidence: rel.confidence,
+                sourceType: "deep_extraction",
+                sourceId: messageId,
+              });
+            }
+          }
+        });
+      }
+    }
+  }
+
   /** Build a summarize callback with runtime provider fallback handling. */
   private async resolveSummarize(params: {
     legacyParams?: Record<string, unknown>;
@@ -1412,7 +1464,10 @@ export class LcmContextEngine implements ContextEngine {
       }
     }
 
-    // Real-time claim + decision extraction (don't wait for compaction)
+    // ── HYBRID EXTRACTION PIPELINE ──────────────────────────────────────────
+    // Regex (free): decisions, loops, fast claims — synchronous, always runs
+    // LLM (async): deep claims + relations — user messages only, non-blocking
+
     const claimExtractionEnabled = this.config.relationsClaimExtractionEnabled || this.config.relationsUserClaimExtractionEnabled;
     if (this.graphDb && claimExtractionEnabled && (stored.role === "user" || stored.role === "assistant")) {
       try {
@@ -1424,8 +1479,7 @@ export class LcmContextEngine implements ContextEngine {
         const graphDb = this.graphDb;
 
         withWriteTransaction(graphDb, () => {
-          // Extract claims (full or user-explicit only depending on config)
-          // For assistant messages: skip user-explicit patterns ("Remember:" etc.)
+          // Regex claims — free, instant (catches explicit patterns like "Remember:", "Fact:", etc.)
           const claimResults = this.config.relationsClaimExtractionEnabled
             ? extractClaimsFast(stored.content, {
                 sourceType: "message",
@@ -1433,7 +1487,7 @@ export class LcmContextEngine implements ContextEngine {
               })
             : (stored.role === "user"
                 ? extractClaimsFromUserExplicit(stored.content, String(msgRecord.messageId))
-                : []);  // Don't run user-explicit patterns on assistant messages
+                : []);
           if (claimResults.length > 0) {
             storeClaimExtractionResults(graphDb, claimResults, {
               scopeId: 1,
@@ -1442,7 +1496,7 @@ export class LcmContextEngine implements ContextEngine {
             });
           }
 
-          // Extract decisions (user messages only — assistant would create duplicates)
+          // Regex decisions + loops (user messages only — free, instant)
           if (stored.role === "user") {
             const decisions = extractDecisionsFromText(stored.content, String(msgRecord.messageId));
             for (const d of decisions) {
@@ -1455,7 +1509,6 @@ export class LcmContextEngine implements ContextEngine {
               });
             }
 
-            // Extract loops/tasks (user messages only)
             const loops = extractLoopsFromText(stored.content, String(msgRecord.messageId));
             for (const l of loops) {
               openLoop(graphDb, {
@@ -1469,53 +1522,17 @@ export class LcmContextEngine implements ContextEngine {
           }
         });
       } catch (err) {
-        // Non-fatal: extraction failure must not break message ingest
-        console.warn("[cc-mem] real-time claim extraction failed:", err instanceof Error ? err.message : String(err));
+        console.warn("[cc-mem] regex extraction failed:", err instanceof Error ? err.message : String(err));
       }
     }
 
-    // Fast relation extraction (regex-based, zero tokens)
-    // Runs after entity extraction so entity names are available in the DB
-    if (this.graphDb && this.config.relationsEnabled && stored.content.length > 20) {
-      try {
-        const { extractRelationsFast } = await import("./relations/claim-extract.js");
-        const { upsertRelation } = await import("./relations/relation-store.js");
-        const { withWriteTransaction: wt } = await import("./relations/evidence-log.js");
-        const gdb = this.graphDb;
-
-        // Get known entity names from the DB — filter to short names only
-        // (long names are full sentences stored by NER, not useful for relation matching)
-        const entityRows = gdb.prepare(
-          "SELECT name FROM entities WHERE length(name) <= 40 ORDER BY mention_count DESC, last_seen_at DESC LIMIT 200",
-        ).all() as Array<{ name: string }>;
-        const entityNames = entityRows.map((r) => r.name);
-
-        if (entityNames.length >= 2) {
-          const relations = extractRelationsFast(stored.content, entityNames, String(msgRecord.messageId));
-          if (relations.length > 0) {
-            wt(gdb, () => {
-              for (const rel of relations) {
-                // Look up entity IDs by name
-                const subj = gdb.prepare("SELECT id FROM entities WHERE name = ?").get(rel.subjectName) as { id: number } | undefined;
-                const obj = gdb.prepare("SELECT id FROM entities WHERE name = ?").get(rel.objectName) as { id: number } | undefined;
-                if (subj && obj) {
-                  upsertRelation(gdb, {
-                    scopeId: 1,
-                    subjectEntityId: subj.id,
-                    predicate: rel.predicate,
-                    objectEntityId: obj.id,
-                    confidence: rel.confidence,
-                    sourceType: rel.sourceType,
-                    sourceId: rel.sourceId,
-                  });
-                }
-              }
-            });
-          }
-        }
-      } catch (err) {
-        console.warn("[cc-mem] fast relation extraction failed:", err instanceof Error ? err.message : String(err));
-      }
+    // LLM deep extraction — claims + relations in one pass (user messages only)
+    // Runs async after regex extraction for higher accuracy on nuanced content
+    if (this.graphDb && this.config.relationsDeepExtractionEnabled && stored.role === "user" && stored.content.length > 20) {
+      // Fire-and-forget: don't block message ingest on LLM call
+      this.runDeepExtraction(this.graphDb, stored.content, String(msgRecord.messageId)).catch((err) => {
+        console.warn("[cc-mem] deep extraction failed:", err instanceof Error ? err.message : String(err));
+      });
     }
 
     return { ingested: true };
