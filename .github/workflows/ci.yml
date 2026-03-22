@@ -37,6 +37,8 @@ jobs:
         run: cd memory-engine && npx vitest run test/cram-stress.test.ts
       - name: Failure Injection Tests
         run: cd memory-engine && npx vitest run test/cram-failure-injection.test.ts
+      - name: Source Tests
+        run: npx vitest run --config vitest.config.ts
 
   build:
     name: Build Check

@@ -440,7 +440,7 @@ describe("Query", () => {
       url: "/query",
       payload: { query: "" },
     });
-    expect(res.statusCode).toBe(200); // route returns error in body, not HTTP status
+    expect(res.statusCode).toBe(400);
     const body = res.json();
     expect(body.error).toBe("query required");
   });
@@ -481,7 +481,7 @@ describe("Query", () => {
       url: "/search",
       payload: { query: "" },
     });
-    expect(res.statusCode).toBe(200);
+    expect(res.statusCode).toBe(400);
     const body = res.json();
     expect(body.error).toBe("query required");
   });
