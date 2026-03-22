@@ -1246,8 +1246,8 @@ export function createCcMemoryTool(input: {
 
         // ── 3. Search relationships (claims with relational predicates) ──
         if (claimTerms.length > 0) {
-          const relConditions = claimTerms.map(() => "(subject LIKE ? OR object_text LIKE ?)").join(" OR ");
-          const relArgs = claimTerms.flatMap((t) => [`%${t}%`, `%${t}%`]);
+          const relConditions = claimTerms.map(() => "(subject LIKE ? ESCAPE '\\' OR object_text LIKE ? ESCAPE '\\')").join(" OR ");
+          const relArgs = claimTerms.flatMap((t) => [`%${escapeLike(t)}%`, `%${escapeLike(t)}%`]);
 
           const rels = db.prepare(`
             SELECT subject, predicate, object_text

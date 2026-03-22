@@ -76,6 +76,7 @@ app = Flask(__name__)
 embed_model = None
 rerank_model = None
 ner_model = None
+ner_model_id = None
 
 
 def load_models():
@@ -173,10 +174,12 @@ def load_models():
     # Default: en_core_web_sm (small, runs on any hardware)
     # For better accuracy: set SPACY_NER_MODEL=en_core_web_lg or en_core_web_trf
     ner_model = None
+    ner_model_id = None
     if _spacy_available:
         ner_model_name = os.environ.get("SPACY_NER_MODEL", "en_core_web_sm")
         try:
             ner_model = spacy.load(ner_model_name)
+            ner_model_id = ner_model_name
             logger.info(f"NER model loaded: {ner_model_name}")
         except OSError:
             logger.warning(f"spaCy model {ner_model_name} not installed — NER endpoint disabled")
@@ -527,7 +530,7 @@ def health():
             },
             "rerank": {"id": RERANK_MODEL_ID, "ready": rerank_model is not None},
             "docling": {"ready": _is_docling_available() and DOCLING_DEVICE != "off", "device": DOCLING_DEVICE},
-            "ner": {"ready": ner_model is not None, "model": "en_core_web_sm" if ner_model else None, "available": _spacy_available},
+            "ner": {"ready": ner_model is not None, "model": ner_model_id, "available": _spacy_available},
         },
     })
 
