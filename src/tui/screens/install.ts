@@ -1,9 +1,10 @@
 import prompts from "prompts";
 import ora, { type Ora } from "ora";
 import { execFileSync } from "child_process";
-import { cpSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "fs";
+import { randomUUID } from "crypto";
+import { cpSync, existsSync, mkdirSync, readFileSync, writeFileSync, unlinkSync } from "fs";
 import { resolve } from "path";
-import { homedir } from "os";
+import { homedir, tmpdir } from "os";
 import { clearScreen, kvLine, section, t } from "../theme.js";
 import { runStreamedCommand, sanitizeCommandLine } from "../process.js";
 import {
@@ -997,7 +998,13 @@ async function handleCustomModel(pythonCmd: string): Promise<ModelInfo | null> {
   if (!modelId || cancelled) return null;
   const sp = ora(`Testing ${modelId}...`).start();
   try {
-    const output = execFileSync(pythonCmd, ["-c", `from sentence_transformers import SentenceTransformer; m = SentenceTransformer('${modelId}', trust_remote_code=True); print(m.get_sentence_embedding_dimension())`], { stdio: "pipe", timeout: 600000 }).toString().trim();
+    // Use sys.argv[1] for model ID — never interpolate user input into Python code
+    const tmpScript = resolve(tmpdir(), `clawcore_check_${randomUUID()}.py`);
+    writeFileSync(tmpScript, "import sys; from sentence_transformers import SentenceTransformer; m = SentenceTransformer(sys.argv[1], trust_remote_code=True); print(m.get_sentence_embedding_dimension())");
+    let output: string;
+    try {
+      output = execFileSync(pythonCmd, [tmpScript, modelId], { stdio: "pipe", timeout: 600000 }).toString().trim();
+    } finally { try { unlinkSync(tmpScript); } catch {} }
     const dims = parseInt(output, 10) || 0;
     sp.succeed(`${modelId} works. Dimensions: ${dims}`);
     return { id: modelId, name: modelId.split("/").pop() ?? modelId, dims, vramMb: 0, sizeMb: 0, tier: "Custom", qualityScore: 5, languages: "Unknown", trustRemoteCode: true, gated: false, notes: "Custom model" };

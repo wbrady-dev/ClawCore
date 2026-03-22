@@ -1,9 +1,10 @@
 import prompts from "prompts";
 import ora from "ora";
 import { execFileSync } from "child_process";
+import { randomUUID } from "crypto";
 import { existsSync, unlinkSync, readFileSync, writeFileSync, readdirSync } from "fs";
 import { resolve } from "path";
-import { homedir } from "os";
+import { homedir, tmpdir } from "os";
 import { section, kvLine, t, clearScreen } from "../theme.js";
 import {
   readConfig,
@@ -924,18 +925,21 @@ async function handleCustomModel(
 
   if (customCancelled || !modelId) return null;
 
-  // Test if model works
+  // Test if model works — use sys.argv[1] to prevent code injection via model ID
   const sp = ora(`Testing ${modelId}...`).start();
+  const tmpScript = resolve(tmpdir(), `clawcore_check_${randomUUID()}.py`);
   try {
     let dims = 0;
     if (type === "embed") {
-      const output = execFileSync(python, ["-c", `from sentence_transformers import SentenceTransformer; m = SentenceTransformer('${modelId}', trust_remote_code=True); print(m.get_sentence_embedding_dimension())`], {
+      writeFileSync(tmpScript, "import sys; from sentence_transformers import SentenceTransformer; m = SentenceTransformer(sys.argv[1], trust_remote_code=True); print(m.get_sentence_embedding_dimension())");
+      const output = execFileSync(python, [tmpScript, modelId], {
         stdio: "pipe", timeout: 600000,
       }).toString().trim();
       dims = parseInt(output) || 0;
       sp.succeed(`${modelId} works! Dimensions: ${dims}`);
     } else {
-      execFileSync(python, ["-c", `from sentence_transformers import CrossEncoder; CrossEncoder('${modelId}', trust_remote_code=True)`], {
+      writeFileSync(tmpScript, "import sys; from sentence_transformers import CrossEncoder; CrossEncoder(sys.argv[1], trust_remote_code=True)");
+      execFileSync(python, [tmpScript, modelId], {
         stdio: "pipe", timeout: 600000,
       });
       sp.succeed(`${modelId} works!`);
@@ -966,6 +970,8 @@ async function handleCustomModel(
     sp.fail(`${modelId} failed to load. Check the model ID and try again.`);
     console.log(t.dim(`  Error: ${String(err).slice(0, 200)}`));
     return null;
+  } finally {
+    try { unlinkSync(tmpScript); } catch {}
   }
 }
 
