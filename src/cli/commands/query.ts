@@ -33,11 +33,11 @@ export const queryCommand = new Command("query")
       try {
         const result = await query(question, {
           collection: opts.collection,
-          topK: parseInt(opts.topK, 10),
+          topK: parseInt(opts.topK, 10) || 3,
           useReranker: opts.rerank,
           useBm25: opts.bm25,
           expand: opts.expand || undefined,
-          tokenBudget: parseInt(opts.budget, 10),
+          tokenBudget: parseInt(opts.budget, 10) || 1500,
           brief: opts.brief,
           titlesOnly: opts.titles,
         });

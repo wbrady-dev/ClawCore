@@ -24,7 +24,7 @@ function validateIngestPath(filePath: string): string | null {
   const basename = segments[segments.length - 1] ?? "";
 
   // Exact basename blocks
-  const blockedNames = new Set([".env", "credentials", "secrets", "id_rsa"]);
+  const blockedNames = new Set([".env", "credentials", "secrets", "id_rsa", "id_ed25519", "id_ecdsa", "id_dsa", "id_xmss"]);
   if (blockedNames.has(basename)) return `Blocked path: '${basename}'`;
 
   // .env variant prefix (.env.local, .env.production, etc.)
