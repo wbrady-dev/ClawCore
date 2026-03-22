@@ -82,9 +82,9 @@ export function extractClaimsFromToolResult(
 // Strategy 2: User explicit statements (trust 0.9)
 // ---------------------------------------------------------------------------
 
-// Match ALL "Remember:" / "Remember this:" / "Note:" lines anywhere in text
+// Match explicit user fact statements anywhere in text.
 // Allows optional words between keyword and colon (e.g., "Remember this:", "Note that:")
-const USER_EXPLICIT_RE = /(?:^|\n)\s*(?:remember(?:\s+\w+)?|note(?:\s+\w+)?|fyi|important|keep\s+in\s+mind|fact)\s*:\s*(.+)/gim;
+const USER_EXPLICIT_RE = /(?:^|\n)\s*(?:remember(?:\s+\w+)?|note(?:\s+\w+)?|fyi|important|keep\s+in\s+mind|fact|observation|key\s+point|critical|essential|must\s+remember|don'?t\s+forget)\s*:\s*(.+)/gim;
 
 /**
  * Extract claims from user-prefixed explicit statements.
@@ -285,7 +285,7 @@ export function extractClaimsFromFrontmatter(
 // Strategy 5: Decision extraction from conversation text
 // ---------------------------------------------------------------------------
 
-const DECISION_RE = /(?:^|\n)\s*(?:we(?:'ve)?\s+decided|decision|we\s+chose|we(?:'re)?\s+going\s+(?:to|with))\s*(?:to|that|:)?\s*(.+)/gim;
+const DECISION_RE = /(?:^|\n)\s*(?:we(?:'ve)?\s+decided|decision|decided|we\s+chose|we(?:'re)?\s+going\s+(?:to|with)|we\s+agreed|agreed\s+(?:to|upon|that)|choosing|going\s+with)\s*(?:to|that|:)?\s*(.+)/gim;
 
 export interface DecisionExtractionResult {
   topic: string;
@@ -351,11 +351,11 @@ export function extractDecisionsFromText(
 // Strategy 6: Loop/task extraction from conversation text
 // ---------------------------------------------------------------------------
 
-const LOOP_RE = /(?:^|\n)\s*(?:task|todo|reminder|action\s*item|open\s*(?:task|item)|follow[\s-]?up)\s*:\s*(.+)/gim;
+const LOOP_RE = /(?:^|\n)\s*(?:task|todo|reminder|action\s*item|open\s*(?:task|item|question)|follow[\s-]?up|next\s+step|pending|blocker|action|question|need\s+to)\s*:\s*(.+)/gim;
 
 export interface LoopExtractionResult {
   text: string;
-  loopType: "task" | "question" | "follow_up";
+  loopType: "task" | "question" | "follow_up" | "dependency";
   sourceType: string;
   sourceId: string;
 }
@@ -379,9 +379,12 @@ export function extractLoopsFromText(
 
     // Determine loop type from the matched keyword
     const fullMatch = match[0].toLowerCase();
-    let loopType: "task" | "question" | "follow_up" = "task";
-    if (fullMatch.includes("follow")) loopType = "follow_up";
+    let loopType: "task" | "question" | "follow_up" | "dependency" = "task";
+    if (fullMatch.includes("question")) loopType = "question";
+    else if (fullMatch.includes("follow")) loopType = "follow_up";
     else if (fullMatch.includes("reminder")) loopType = "follow_up";
+    else if (fullMatch.includes("next step")) loopType = "follow_up";
+    else if (fullMatch.includes("blocker")) loopType = "dependency";
 
     results.push({
       text: sentence,
@@ -424,6 +427,18 @@ const RELATION_VERBS: Array<{ re: RegExp; predicate: string }> = [
   // Serving / powering
   { re: /\bserves?\s+(?:as\s+)?(?:the\s+)?/i, predicate: "serves" },
   { re: /\bpowers?\s+(?:the\s+)?/i, predicate: "powers" },
+  // Integration / API
+  { re: /\bintegrates?\s+(?:with|into)\b/i, predicate: "integrates_with" },
+  { re: /\bcalls?\b/i, predicate: "calls" },
+  { re: /\binvokes?\b/i, predicate: "calls" },
+  { re: /\bextends?\b/i, predicate: "extends" },
+  { re: /\bimplements?\b/i, predicate: "implements" },
+  // Data flow
+  { re: /\bfeeds?\s+(?:into|to)\b/i, predicate: "feeds" },
+  { re: /\bsends?\s+(?:to|data\s+to)\b/i, predicate: "sends_to" },
+  // Auth
+  { re: /\bauthorizes?\b/i, predicate: "authorizes" },
+  { re: /\bauthenticates?\s+(?:with|via|against)\b/i, predicate: "authenticates_with" },
 ];
 
 export interface RelationExtractionResult {
@@ -450,15 +465,19 @@ export function extractRelationsFast(
   const results: RelationExtractionResult[] = [];
   const seen = new Set<string>();
 
+  // Sort entities by length (longest first) to prevent substring collisions
+  // e.g., "Azure App Service" should match before "Azure"
+  const sortedEntities = [...entityNames].sort((a, b) => b.length - a.length);
+
   // Split into sentences for locality
   const sentences = text.split(/[.!?\n]+/).filter((s) => s.trim().length > 10);
 
   for (const sentence of sentences) {
     const lowerSentence = sentence.toLowerCase();
 
-    // Find which entities appear in this sentence
+    // Find which entities appear in this sentence (longest-first prevents substring collision)
     const presentEntities: string[] = [];
-    for (const name of entityNames) {
+    for (const name of sortedEntities) {
       if (lowerSentence.includes(name.toLowerCase())) {
         presentEntities.push(name);
       }
