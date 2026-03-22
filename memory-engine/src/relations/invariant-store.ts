@@ -21,8 +21,8 @@ export function upsertInvariant(
     ON CONFLICT(scope_id, invariant_key) DO UPDATE SET
       description = excluded.description,
       category = COALESCE(excluded.category, invariants.category),
-      severity = excluded.severity,
-      enforcement_mode = excluded.enforcement_mode,
+      severity = COALESCE(excluded.severity, invariants.severity),
+      enforcement_mode = COALESCE(excluded.enforcement_mode, invariants.enforcement_mode),
       status = excluded.status,
       updated_at = strftime('%Y-%m-%dT%H:%M:%f', 'now')
   `).run(

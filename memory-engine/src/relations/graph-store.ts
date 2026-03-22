@@ -173,6 +173,7 @@ export function storeExtractionResult(
     const { entityId } = upsertEntity(db, {
       name: result.name,
       displayName: result.name,
+      entityType: result.entityType,
     });
 
     const inserted = insertMention(db, {

@@ -37,6 +37,8 @@ export interface ExtractionResult {
   snippet?: string;
   /** Co-occurring terms-list entries found in the same text. */
   contextTerms?: string[];
+  /** Heuristic entity classification based on extraction strategy. */
+  entityType?: string;
 }
 
 // ---------------------------------------------------------------------------

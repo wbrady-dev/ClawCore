@@ -129,7 +129,9 @@ interface MismatchNote {
 function queryMismatches(db: GraphDb, entityIds: number[], limit: number): MismatchNote[] {
   if (entityIds.length === 0) return [];
   const placeholders = entityIds.map(() => "?").join(",");
-  const rows = db.prepare(`
+
+  // Path 1: divergent context_terms between mentions from different sources
+  const termRows = db.prepare(`
     SELECT
       e.display_name AS entity_name,
       m1.source_type || ':' || m1.source_id AS source_a,
@@ -156,7 +158,29 @@ function queryMismatches(db: GraphDb, entityIds: number[], limit: number): Misma
     terms_b: string;
   }>;
 
-  return rows.map((r) => ({
+  // Path 2: entities mentioned in 2+ distinct sources (even without terms)
+  const remaining = limit - termRows.length;
+  let sourceRows: typeof termRows = [];
+  if (remaining > 0) {
+    sourceRows = db.prepare(`
+      SELECT
+        e.display_name AS entity_name,
+        MIN(m1.source_type || ':' || m1.source_id) AS source_a,
+        NULL AS terms_a,
+        MAX(m2.source_type || ':' || m2.source_id) AS source_b,
+        NULL AS terms_b
+      FROM entity_mentions m1
+      JOIN entity_mentions m2 ON m1.entity_id = m2.entity_id AND m1.id < m2.id
+      JOIN entities e ON m1.entity_id = e.id
+      WHERE e.id IN (${placeholders})
+        AND m1.source_id != m2.source_id
+        AND m1.created_at > datetime('now', '-90 days')
+      GROUP BY e.id
+      LIMIT ?
+    `).all(...entityIds, remaining) as typeof termRows;
+  }
+
+  return [...termRows, ...sourceRows].map((r) => ({
     entity: r.entity_name,
     sourceA: r.source_a,
     termsA: safeParse(r.terms_a),

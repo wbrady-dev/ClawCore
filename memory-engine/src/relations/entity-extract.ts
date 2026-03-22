@@ -82,6 +82,7 @@ function extractCapitalized(text: string): ExtractionResult[] {
       name,
       confidence: 0.6,
       strategy: "capitalized",
+      entityType: "possible_name",
       snippet: extractSnippet(text, match.index, match.index + name.length),
     });
   }
@@ -113,6 +114,7 @@ function extractTermsList(text: string, terms: string[]): ExtractionResult[] {
         name: term, // preserve original casing from terms list
         confidence: 0.9,
         strategy: "terms_list",
+        entityType: "user_defined",
         snippet: extractSnippet(text, match.index, match.index + term.length),
       });
     }
@@ -138,6 +140,7 @@ function extractQuoted(text: string): ExtractionResult[] {
       name: inner,
       confidence: 0.5,
       strategy: "quoted",
+      entityType: "concept",
       snippet: extractSnippet(text, match.index, match.index + match[0].length),
     });
   }
