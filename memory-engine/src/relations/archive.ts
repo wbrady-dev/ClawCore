@@ -290,9 +290,15 @@ function archiveOldEvents(
   if (total === 0) return { archived: 0, candidates: 0 };
 
   let archived = 0;
+  let iterations = 0;
 
   // Process in batches
   while (true) {
+    if (++iterations >= 1000) {
+      console.warn("[cc-mem] archive: hit iteration limit");
+      break;
+    }
+
     const batch = hotDb.prepare(`
       SELECT * FROM evidence_log WHERE created_at < ? ORDER BY id ASC LIMIT ?
     `).all(cutoff, batchSize) as any[];
@@ -316,7 +322,12 @@ function archiveOldEvents(
     }
 
     const maxId = batch[batch.length - 1].id;
-    hotDb.prepare("DELETE FROM evidence_log WHERE id <= ? AND created_at < ?").run(maxId, cutoff);
+    try {
+      hotDb.prepare("DELETE FROM evidence_log WHERE id <= ? AND created_at < ?").run(maxId, cutoff);
+    } catch (err) {
+      console.error("[cc-mem] archive: DELETE failed:", err instanceof Error ? err.message.slice(0, 500) : "unknown error");
+      break;
+    }
     archived += batch.length;
 
     if (batch.length < batchSize) break; // last batch

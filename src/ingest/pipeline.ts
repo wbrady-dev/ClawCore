@@ -95,23 +95,20 @@ async function ingestFileInner(
   // Ensure collection exists
   const collection = ensureCollection(db, collectionName);
 
-  // Read file and compute hash
+  // Read file once as buffer, then try text decode. Avoids double I/O for binary files.
+  const fileBuf = await readFile(absPath);
   let raw: string;
   try {
-    raw = await readFile(absPath, "utf-8");
+    raw = new TextDecoder("utf-8", { fatal: true }).decode(fileBuf);
   } catch {
-    // Binary files (pdf, docx, pptx) — read as buffer handled by parser
+    // Binary files (pdf, docx, pptx) — text decode fails, parser handles natively
     raw = "";
   }
 
-  // Stable hash: text files use xxhash of content string, binary files use xxhash of raw bytes
-  let hash: string;
-  if (raw) {
-    hash = await contentHash(raw);
-  } else {
-    const buf = await readFile(absPath);
-    hash = await contentHashBytes(new Uint8Array(buf));
-  }
+  // Stable hash from the buffer (avoids re-reading for binary files)
+  const hash = raw
+    ? await contentHash(raw)
+    : await contentHashBytes(new Uint8Array(fileBuf));
 
   // Get file mtime for incremental indexing
   let fileMtime: string | null = null;

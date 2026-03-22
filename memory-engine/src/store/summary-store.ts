@@ -827,7 +827,15 @@ export class SummaryStore {
     before?: Date,
     conversationIds?: number[],
   ): SummarySearchResult[] {
-    const re = new RegExp(pattern);
+    if (pattern.length > 200) {
+      throw new Error("Regex pattern too long (max 200 characters)");
+    }
+    let re: RegExp;
+    try {
+      re = new RegExp(pattern);
+    } catch {
+      throw new Error("Invalid regex pattern");
+    }
 
     const convFilter = buildConversationFilter("conversation_id", conversationId, conversationIds);
     const where: string[] = [...convFilter.where];

@@ -114,7 +114,7 @@ export class ExpansionOrchestrator {
    * enforcing a global token cap across all expansions.
    */
   async expand(request: ExpansionRequest): Promise<ExpansionResult> {
-    const maxDepth = request.maxDepth ?? 3;
+    const maxDepth = Math.min(10, Math.max(1, request.maxDepth ?? 3));
     const tokenCap = request.tokenCap ?? Infinity;
     const includeMessages = request.includeMessages ?? false;
 

@@ -20,7 +20,7 @@ function clampBudget(v?: number): number | undefined {
 }
 
 export function registerQueryRoutes(server: FastifyInstance) {
-  server.post("/query", async (req) => {
+  server.post("/query", async (req, reply) => {
     const {
       query: queryText,
       collection,
@@ -44,7 +44,7 @@ export function registerQueryRoutes(server: FastifyInstance) {
     };
 
     if (!queryText) {
-      return { error: "query required" };
+      return reply.status(400).send({ error: "query required" });
     }
 
     return query(queryText, {
@@ -59,7 +59,7 @@ export function registerQueryRoutes(server: FastifyInstance) {
     });
   });
 
-  server.post("/search", async (req) => {
+  server.post("/search", async (req, reply) => {
     const {
       query: queryText,
       collection,
@@ -71,7 +71,7 @@ export function registerQueryRoutes(server: FastifyInstance) {
     };
 
     if (!queryText) {
-      return { error: "query required" };
+      return reply.status(400).send({ error: "query required" });
     }
 
     return query(queryText, {

@@ -13,6 +13,7 @@ Endpoints:
 """
 
 import os
+import math
 import json
 import torch
 import logging
@@ -20,6 +21,7 @@ import traceback
 from pathlib import Path
 from flask import Flask, request, jsonify
 from sentence_transformers import CrossEncoder, SentenceTransformer
+from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeout
 
 try:
     import spacy
@@ -35,12 +37,19 @@ config_path = Path(__file__).parent / "config.json"
 if not config_path.exists():
     config_path = Path(__file__).parent.parent / "config.json"
 if config_path.exists():
-    with open(config_path) as f:
-        config = json.load(f)
-    EMBED_MODEL_ID = config.get("embed_model", "BAAI/bge-large-en-v1.5")
-    RERANK_MODEL_ID = config.get("rerank_model", "BAAI/bge-reranker-large")
-    TRUST_REMOTE = bool(config.get("trust_remote_code", False))
-    DOCLING_DEVICE = config.get("docling_device", "cpu")  # "cpu", "gpu", or "off"
+    try:
+        with open(config_path) as f:
+            config = json.load(f)
+        EMBED_MODEL_ID = config.get("embed_model", "BAAI/bge-large-en-v1.5")
+        RERANK_MODEL_ID = config.get("rerank_model", "BAAI/bge-reranker-large")
+        TRUST_REMOTE = bool(config.get("trust_remote_code", False))
+        DOCLING_DEVICE = config.get("docling_device", "cpu")  # "cpu", "gpu", or "off"
+    except (json.JSONDecodeError, ValueError) as e:
+        logger.warning(f"config.json is malformed ({e}), falling back to environment variables")
+        EMBED_MODEL_ID = os.environ.get("EMBED_MODEL", "BAAI/bge-large-en-v1.5")
+        RERANK_MODEL_ID = os.environ.get("RERANK_MODEL", "BAAI/bge-reranker-large")
+        TRUST_REMOTE = os.environ.get("TRUST_REMOTE_CODE", "0") == "1"
+        DOCLING_DEVICE = os.environ.get("DOCLING_DEVICE", "cpu")
 else:
     EMBED_MODEL_ID = os.environ.get("EMBED_MODEL", "BAAI/bge-large-en-v1.5")
     RERANK_MODEL_ID = os.environ.get("RERANK_MODEL", "BAAI/bge-reranker-large")
@@ -48,6 +57,7 @@ else:
     DOCLING_DEVICE = os.environ.get("DOCLING_DEVICE", "cpu")
 
 PORT = int(os.environ.get("MODEL_SERVER_PORT", "8012"))
+MAX_PARSE_SIZE_MB = int(os.environ.get("MAX_PARSE_SIZE_MB", "100"))
 
 # Path blocklist for /parse — mirrors Node.js ingest validation
 _BLOCKED_PATH_FRAGMENTS = [".env", "credentials", "secrets", ".git/config", "id_rsa", ".ssh/"]
@@ -102,10 +112,14 @@ def load_models():
         logger.warning(f"Could not enable float16 for reranker: {e}")
 
     # Warmup: run a dummy inference to trigger CUDA kernel compilation / JIT.
-    # First real request would otherwise be 2-5x slower.
+    # Also validates float16 didn't produce NaN.
     logger.info("Warming up models...")
     try:
-        embed_model.encode(["warmup"], normalize_embeddings=True, show_progress_bar=False)
+        warmup_result = embed_model.encode(["warmup"], normalize_embeddings=True, show_progress_bar=False)
+        if any(math.isnan(v) for v in warmup_result[0].tolist()):
+            logger.warning("float16 embedding produced NaN — reverting to float32")
+            embed_model.float()
+            embed_model.encode(["warmup"], normalize_embeddings=True, show_progress_bar=False)
         rerank_model.predict([("warmup query", "warmup document")])
         logger.info("Model warmup complete.")
     except Exception as e:
@@ -154,6 +168,13 @@ def embeddings():
 
     if not input_text:
         return jsonify({"error": "input required"}), 400
+
+    # Input size limits
+    if len(input_text) > 256:
+        return jsonify({"error": f"Too many inputs ({len(input_text)}). Maximum: 256"}), 400
+    for i, t in enumerate(input_text):
+        if isinstance(t, str) and len(t) > 8192:
+            input_text[i] = t[:8192]
 
     # Encode with OOM recovery: clear CUDA cache and retry with progressively
     # smaller batches. No CPU fallback — large models get mixed-device errors.
@@ -212,9 +233,13 @@ def rerank():
     if not query or not documents:
         return jsonify({"error": "query and documents required"}), 400
 
+    # Input size limits
+    if len(documents) > 500:
+        return jsonify({"error": f"Too many documents ({len(documents)}). Maximum: 500"}), 400
+
     # Truncate inputs for efficiency — cross-encoders plateau after ~512 tokens
-    q_truncated = ' '.join(query.split()[:200])
-    pairs = [(q_truncated, ' '.join(doc.split()[:512])) for doc in documents]
+    q_truncated = ' '.join(query[:10000].split()[:200])
+    pairs = [(q_truncated, ' '.join(doc[:10000].split()[:512])) for doc in documents]
     scores = None
     for bs in [64, 16, 4, 1]:
         try:
@@ -308,44 +333,45 @@ def parse_document():
     if not os.path.isfile(file_path):
         return jsonify({"error": f"File not found: {file_path}"}), 404
 
+    # File size limit
+    file_size_mb = os.path.getsize(file_path) / (1024 * 1024)
+    if file_size_mb > MAX_PARSE_SIZE_MB:
+        return jsonify({"error": f"File too large ({file_size_mb:.1f} MB). Maximum: {MAX_PARSE_SIZE_MB} MB"}), 413
+
     try:
         device = DOCLING_DEVICE if DOCLING_DEVICE in ("cpu", "gpu") else "cpu"
         logger.info(f"Parsing document ({device}): {file_path}")
 
         if _docling_create_converter is None:
             return jsonify({"error": "Docling not installed or API not detected at startup"}), 503
-        converter = _docling_create_converter(device)
-        result = converter.convert(file_path)
-        doc = result.document
 
-        markdown = doc.export_to_markdown()
+        # Run Docling in a thread with timeout to prevent indefinite hangs
+        def _do_parse():
+            converter = _docling_create_converter(device)
+            result = converter.convert(file_path)
+            doc = result.document
+            markdown = doc.export_to_markdown()
+            metadata = {
+                "title": None, "author": None, "date": None,
+                "language": None, "page_count": None,
+            }
+            if hasattr(doc, 'name') and doc.name:
+                metadata["title"] = doc.name
+            if hasattr(doc, 'origin') and doc.origin:
+                if hasattr(doc.origin, 'filename') and not metadata["title"]:
+                    metadata["title"] = doc.origin.filename
+            if hasattr(result, 'pages') and result.pages:
+                metadata["page_count"] = len(result.pages)
+            if markdown:
+                metadata["language"] = detect_language(markdown[:2000])
+            del converter, result, doc
+            return markdown, metadata
 
-        metadata = {
-            "title": None,
-            "author": None,
-            "date": None,
-            "language": None,
-            "page_count": None,
-        }
-
-        if hasattr(doc, 'name') and doc.name:
-            metadata["title"] = doc.name
-
-        if hasattr(doc, 'origin') and doc.origin:
-            origin = doc.origin
-            if hasattr(origin, 'filename'):
-                if not metadata["title"]:
-                    metadata["title"] = origin.filename
-
-        if hasattr(result, 'pages') and result.pages:
-            metadata["page_count"] = len(result.pages)
-
-        if markdown:
-            metadata["language"] = detect_language(markdown[:2000])
+        with ThreadPoolExecutor(max_workers=1) as pool:
+            future = pool.submit(_do_parse)
+            markdown, metadata = future.result(timeout=300)  # 5 minute timeout
 
         logger.info(f"Parsed: {file_path} -> {len(markdown)} chars")
-
-        del converter, result, doc
         _cleanup_gpu()
 
         return jsonify({
@@ -353,11 +379,14 @@ def parse_document():
             "metadata": metadata,
         })
 
-    except Exception as e:
-        logger.error(f"Parse failed: {file_path}: {e}")
-        logger.error(traceback.format_exc())
+    except FuturesTimeout:
+        logger.error(f"Parse timed out (300s): {file_path}")
         _cleanup_gpu()
-        return jsonify({"error": f"Parse failed: {str(e)}"}), 500
+        return jsonify({"error": "Parse timed out (document too complex or too large)"}), 504
+    except Exception as e:
+        logger.error(f"Parse failed: {file_path}: {str(e)[:500]}")
+        _cleanup_gpu()
+        return jsonify({"error": "Parse failed"}), 500
 
 
 def _cleanup_gpu():
@@ -434,9 +463,16 @@ def shutdown():
     """Graceful shutdown — only from localhost."""
     if request.remote_addr not in ("127.0.0.1", "::1", "::ffff:127.0.0.1"):
         return jsonify({"error": "Forbidden"}), 403
+    logger.info("Shutdown requested, exiting in 0.5s")
     import threading
     def _exit():
-        import time; time.sleep(0.2)
+        import time; time.sleep(0.5)
+        # Release CUDA resources before exit
+        try:
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+        except Exception:
+            pass
         os._exit(0)
     threading.Thread(target=_exit, daemon=True).start()
     return jsonify({"status": "shutting down"})
@@ -447,11 +483,12 @@ if __name__ == "__main__":
     host = os.environ.get("MODEL_SERVER_HOST", "127.0.0.1")
     logger.info(f"ClawCore Model Server starting on {host}:{PORT}")
 
-    # Use Waitress (production WSGI server) if available, else fall back to Flask dev server
+    # Use Waitress (production WSGI server) if available, else fall back to Flask dev server.
+    # threads=1: GPU inference is not thread-safe; Waitress queues requests naturally.
     try:
         from waitress import serve
-        logger.info("Using Waitress WSGI server")
-        serve(app, host=host, port=PORT, threads=4)
+        logger.info("Using Waitress WSGI server (single-threaded for CUDA safety)")
+        serve(app, host=host, port=PORT, threads=1, channel_timeout=120)
     except ImportError:
         logger.warning("Waitress not installed — using Flask dev server (pip install waitress)")
-        app.run(host=host, port=PORT, threaded=True)
+        app.run(host=host, port=PORT, threaded=False)

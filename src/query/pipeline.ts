@@ -129,8 +129,9 @@ export async function query(
 
   // Determine collections — don't auto-create on queries
   const searchCollections: string[] = [];
-  if (collectionName === "all") {
-    for (const c of listCollections(db)) searchCollections.push(c.id);
+  const allCollections = collectionName === "all" ? listCollections(db) : null;
+  if (allCollections) {
+    for (const c of allCollections) searchCollections.push(c.id);
   } else {
     const existing = getCollectionByName(db, collectionName);
     if (!existing) {
@@ -139,8 +140,8 @@ export async function query(
     searchCollections.push(existing.id);
   }
 
-  const collectionNames = collectionName === "all"
-    ? listCollections(db).map((c) => c.name)
+  const collectionNames = allCollections
+    ? allCollections.map((c) => c.name)
     : [collectionName];
 
   const retrieveCount = topK * 2;

@@ -729,6 +729,18 @@ export class LcmContextEngine implements ContextEngine {
     );
 
     this.retrieval = new RetrievalEngine(this.conversationStore, this.summaryStore);
+
+    // Periodic cleanup of settled session queues
+    setInterval(() => {
+      for (const [id, promise] of this.sessionOperationQueues) {
+        Promise.race([promise, Promise.resolve("settled")]).then((v) => {
+          if (v === "settled") return;
+          this.sessionOperationQueues.delete(id);
+        }).catch(() => {
+          this.sessionOperationQueues.delete(id);
+        });
+      }
+    }, 5 * 60 * 1000).unref();
   }
 
   /** Ensure DB schema is up-to-date. Called lazily on first bootstrap/ingest/assemble/compact. */
@@ -838,7 +850,7 @@ export class LcmContextEngine implements ContextEngine {
       }
       console.error(`[cc-mem] resolveSummarize: createLcmSummarizeFromLegacyParams returned undefined`);
     } catch (err) {
-      console.error(`[cc-mem] resolveSummarize failed, using emergency fallback:`, err instanceof Error ? err.message : err);
+      console.error(`[cc-mem] resolveSummarize failed, using emergency fallback:`, err instanceof Error ? err.message.slice(0, 500) : "unknown error");
     }
     console.error(`[cc-mem] resolveSummarize: FALLING BACK TO EMERGENCY TRUNCATION`);
     return createEmergencyFallbackSummarize();
@@ -1224,7 +1236,7 @@ export class LcmContextEngine implements ContextEngine {
       } catch (err) {
         console.error(
           `[cc-mem] bootstrap: heartbeat pruning failed:`,
-          err instanceof Error ? err.message : err,
+          err instanceof Error ? err.message.slice(0, 500) : "unknown error",
         );
       }
     }
@@ -1450,7 +1462,7 @@ export class LcmContextEngine implements ContextEngine {
       // Never compact a stale or partially ingested frontier.
       console.error(
         `[cc-mem] afterTurn: ingest failed, skipping compaction:`,
-        err instanceof Error ? err.message : err,
+        err instanceof Error ? err.message.slice(0, 500) : "unknown error",
       );
       return;
     }

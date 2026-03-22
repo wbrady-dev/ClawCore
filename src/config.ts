@@ -72,10 +72,12 @@ function reloadHotConfig(): void {
   }
 }
 
-// Watch .env for changes — reload hot config automatically
+// Watch .env for changes — reload hot config automatically (debounced to avoid mid-write reads)
+let hotReloadTimer: ReturnType<typeof setTimeout> | null = null;
 if (existsSync(envPath)) {
   watchFile(envPath, { interval: 3000 }, () => {
-    reloadHotConfig();
+    if (hotReloadTimer) clearTimeout(hotReloadTimer);
+    hotReloadTimer = setTimeout(() => reloadHotConfig(), 500);
   });
 }
 
