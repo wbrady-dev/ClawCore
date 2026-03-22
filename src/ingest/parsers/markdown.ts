@@ -43,7 +43,7 @@ export async function parseMarkdown(filePath: string): Promise<ParsedDocument> {
   }
 
   // Find code blocks
-  const codeBlockRegex = /^```(\w*)\n[\s\S]*?^```$/gm;
+  const codeBlockRegex = /^```(\w*)\r?\n[\s\S]*?\r?\n```$/gm;
   while ((match = codeBlockRegex.exec(text)) !== null) {
     structure.push({
       type: "code_block",

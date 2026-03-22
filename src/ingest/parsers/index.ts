@@ -150,7 +150,7 @@ export function getParser(filePath: string): Parser {
 }
 
 export function getSupportedExtensions(): string[] {
-  return Object.keys(PARSER_MAP);
+  return [...new Set([...Object.keys(PARSER_MAP), ...DOCLING_PREFERRED])];
 }
 
 export { parseMarkdown } from "./markdown.js";

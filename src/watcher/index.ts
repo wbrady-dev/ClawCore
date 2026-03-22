@@ -147,7 +147,7 @@ export class ClawCoreWatcher {
 
       const doc = db.prepare(
         "SELECT id FROM documents WHERE source_path = ? AND collection_id = ?",
-      ).get(filePath, collection.id) as { id: string } | undefined;
+      ).get(resolve(filePath), collection.id) as { id: string } | undefined;
 
       if (doc) {
         deleteDocument(db, doc.id);
