@@ -13,7 +13,7 @@ import { rerank } from "./rerank.js";
 import { packContext, packTitles, type PackedChunk } from "./packer.js";
 import { extractBrief, type BriefInput } from "./brief.js";
 import { cacheKey, getCached, setCached } from "./cache.js";
-import { recordQuery } from "../api/analytics.routes.js";
+import { recordQuery } from "../analytics/query-recorder.js";
 import {
   isExpansionEnabled,
   decomposeQuery,

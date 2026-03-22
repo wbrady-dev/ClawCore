@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, writeFileSync } from "fs";
+import { existsSync, readFileSync, writeFileSync, renameSync } from "fs";
 import { resolve } from "path";
 
 export type EnvMap = Record<string, string>;
@@ -44,7 +44,9 @@ export function writeEnvMap(root: string, values: EnvMap): void {
   for (const [key, value] of entries) {
     lines.push(`${key}=${value}`);
   }
-  writeFileSync(envPath, lines.join("\n") + "\n");
+  const tmpPath = envPath + ".tmp";
+  writeFileSync(tmpPath, lines.join("\n") + "\n");
+  renameSync(tmpPath, envPath);
 }
 
 export function updateEnvValues(root: string, updates: EnvMap): void {
@@ -60,7 +62,9 @@ export function updateEnvValues(root: string, updates: EnvMap): void {
     }
   }
 
-  writeFileSync(envPath, content);
+  const tmpPath = envPath + ".tmp";
+  writeFileSync(tmpPath, content);
+  renameSync(tmpPath, envPath);
 }
 
 function escapeRegExp(value: string): string {

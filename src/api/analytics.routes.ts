@@ -1,41 +1,13 @@
 import type { FastifyInstance } from "fastify";
-import { logger } from "../utils/logger.js";
 import { isLocalRequest } from "./guards.js";
+import { type QueryRecord, recordQuery, getRecords, clearRecords } from "../analytics/query-recorder.js";
 
-/**
- * Query analytics — tracks search quality metrics for diagnostics.
- * Ring buffer of recent queries with performance and quality data.
- * No persistence — resets on restart.
- */
-
-interface QueryRecord {
-  timestamp: number;
-  query: string;
-  collection: string;
-  strategy: string;
-  elapsedMs: number;
-  candidates: number;
-  chunksReturned: number;
-  confidence: number;
-  cached: boolean;
-  vectorHits: number;
-  bm25Hits: number;
-  bestDistance: number;
-  reranked: boolean;
-}
-
-const MAX_RECORDS = 500;
-const records: QueryRecord[] = [];
-
-/** Called from query pipeline to record analytics. */
-export function recordQuery(data: QueryRecord): void {
-  records.push(data);
-  if (records.length > MAX_RECORDS) {
-    records.splice(0, records.length - MAX_RECORDS);
-  }
-}
+// Re-export recordQuery for any remaining consumers
+export { recordQuery, type QueryRecord };
 
 export function registerAnalyticsRoutes(server: FastifyInstance) {
+  // Local alias for the shared records store
+  const records = getRecords() as QueryRecord[];
   /**
    * GET /analytics — query performance summary.
    * Returns aggregate stats and recent low-confidence queries.
@@ -130,7 +102,7 @@ export function registerAnalyticsRoutes(server: FastifyInstance) {
    */
   server.delete("/analytics", async (req, reply) => {
     if (!isLocalRequest(req)) return reply.status(403).send({ error: "Forbidden" });
-    records.length = 0;
+    clearRecords();
     return { cleared: true };
   });
 
@@ -189,6 +161,7 @@ export function registerAwarenessStatsGetter(getter: AwarenessStatsGetter): void
  * Available to you (Wesley) via curl or browser.
  */
 export function registerDiagnosticsRoute(server: FastifyInstance) {
+  const records = getRecords();
   server.get("/analytics/diagnostics", async (req, reply) => {
     if (!isLocalRequest(req)) {
       return reply.status(403).send({ error: "Forbidden" });
