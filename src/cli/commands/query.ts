@@ -51,7 +51,7 @@ export const queryCommand = new Command("query")
             console.log("No results found.");
           }
 
-          const conf = Math.round(result.queryInfo.confidence * 100);
+          const conf = Number.isFinite(result.queryInfo.confidence) ? Math.round(result.queryInfo.confidence * 100) : 0;
           const colls = result.queryInfo.collections.join(", ");
           const cached = result.queryInfo.cached ? " CACHED" : "";
           console.log("");

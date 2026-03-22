@@ -4,7 +4,7 @@ import { existsSync } from "fs";
 import { tmpdir } from "os";
 import { randomUUID } from "crypto";
 import { ingestFile } from "../ingest/pipeline.js";
-import { config } from "../config.js";
+
 import { logger } from "../utils/logger.js";
 
 /**
@@ -31,7 +31,7 @@ function validateIngestPath(filePath: string): string | null {
   if (basename.startsWith(".env.")) return `Blocked path: '${basename}'`;
 
   // Sensitive directory segments
-  const blockedSegments = new Set([".git", ".ssh", ".aws", ".docker", ".gnupg"]);
+  const blockedSegments = new Set([".git", ".ssh", ".aws", ".docker", ".gnupg", ".kube", ".azure"]);
   for (const seg of segments) {
     if (blockedSegments.has(seg)) return `Blocked path: contains '${seg}/'`;
   }
