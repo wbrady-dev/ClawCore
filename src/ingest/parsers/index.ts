@@ -119,7 +119,6 @@ const PARSER_MAP: Record<string, Parser> = {
   ".yml": parsePlaintext,
   ".toml": parsePlaintext,
   ".xml": parsePlaintext,
-  ".env": parsePlaintext,
 };
 
 // File types that benefit from Docling's layout-aware parsing

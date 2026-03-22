@@ -17,11 +17,23 @@ function validateIngestPath(filePath: string): string | null {
   // Must be an absolute path to a real file
   if (!existsSync(resolved)) return "File not found";
 
-  // Block obvious sensitive paths
+  // Block sensitive paths using segment-aware matching (avoids false positives
+  // like "/docs/environment.md" matching ".env" via substring)
   const lower = resolved.toLowerCase().replace(/\\/g, "/");
-  const blocked = [".env", "credentials", "secrets", ".git/config", "id_rsa", ".ssh/"];
-  for (const b of blocked) {
-    if (lower.includes(b)) return `Blocked path: contains '${b}'`;
+  const segments = lower.split("/");
+  const basename = segments[segments.length - 1] ?? "";
+
+  // Exact basename blocks
+  const blockedNames = new Set([".env", "credentials", "secrets", "id_rsa"]);
+  if (blockedNames.has(basename)) return `Blocked path: '${basename}'`;
+
+  // .env variant prefix (.env.local, .env.production, etc.)
+  if (basename.startsWith(".env.")) return `Blocked path: '${basename}'`;
+
+  // Sensitive directory segments
+  const blockedSegments = new Set([".git", ".ssh"]);
+  for (const seg of segments) {
+    if (blockedSegments.has(seg)) return `Blocked path: contains '${seg}/'`;
   }
 
   return null; // valid
