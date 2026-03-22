@@ -1302,6 +1302,27 @@ export class LcmContextEngine implements ContextEngine {
     // Append to context items so assembler can see it
     await this.summaryStore.appendContextMessage(conversationId, msgRecord.messageId);
 
+    // Real-time entity extraction — must run BEFORE relation extraction
+    // so entity IDs exist in the DB when relations are looked up
+    if (this.graphDb && this.config.relationsEnabled && stored.content.length > 5) {
+      try {
+        const { extractFast } = await import("./relations/entity-extract.js");
+        const { storeExtractionResult } = await import("./relations/graph-store.js");
+        const { loadTerms } = await import("./relations/terms.js");
+        const terms = loadTerms();
+        const entities = extractFast(stored.content, terms);
+        if (entities.length > 0) {
+          storeExtractionResult(this.graphDb, entities, {
+            sourceType: "message",
+            sourceId: String(msgRecord.messageId),
+            actor: "system",
+          });
+        }
+      } catch (err) {
+        console.warn("[cc-mem] real-time entity extraction failed:", err instanceof Error ? err.message : String(err));
+      }
+    }
+
     // Real-time attempt tracking from tool results
     const messageRole = (message as Record<string, unknown>).role;
     // Extract tool name once for use by both attempt tracking and claim extraction
