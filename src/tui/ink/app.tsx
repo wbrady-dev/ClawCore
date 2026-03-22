@@ -191,24 +191,38 @@ async function runResetKnowledgeBase(): Promise<void> {
   clearScreen();
 
   try {
-    const { promptConfirm } = await import("./prompts.js");
+    const { promptMenu } = await import("./prompts.js");
     const ora = (await import("ora")).default;
 
-    console.log(t.err("\n  Reset Knowledge Base\n"));
-    console.log(t.err("  This will permanently delete ALL documents, chunks, collections,"));
-    console.log(t.err("  and vector embeddings. This cannot be undone.\n"));
-
-    const confirm = await promptConfirm({
+    // Step 1: What to reset
+    const scope = await promptMenu({
       title: "Reset Knowledge Base",
-      message: "Are you sure you want to reset the knowledge base?",
+      message: "This will permanently delete documents, chunks, collections, and embeddings.\nThis cannot be undone. What would you like to reset?",
+      items: [
+        { label: "Reset knowledge base only", value: "kb-only", description: "Delete all documents and embeddings. Keep Evidence OS graph." },
+        { label: "Reset everything", value: "full", description: "Delete all documents, embeddings, AND Evidence OS graph data." },
+        { label: "Cancel", value: "__back__" },
+      ],
     });
-    if (!confirm) { console.log(t.dim("\n  Cancelled.\n")); await sleep(1000); return; }
 
-    const clearGraph = await promptConfirm({
-      title: "Evidence OS",
-      message: "Also clear Evidence OS graph data (entities, claims)?",
+    if (!scope || scope === "__back__") return;
+
+    // Step 2: Final confirmation
+    const confirm = await promptMenu({
+      title: "Are you sure?",
+      message: scope === "full"
+        ? "ALL documents, chunks, embeddings, entities, and claims will be permanently deleted."
+        : "ALL documents, chunks, and embeddings will be permanently deleted.\nEvidence OS graph data (entities, claims) will be preserved.",
+      items: [
+        { label: "Yes, reset now", value: "yes", description: "This cannot be undone" },
+        { label: "No, go back", value: "__back__" },
+      ],
     });
 
+    if (!confirm || confirm === "__back__") return;
+
+    // Step 3: Execute reset
+    const clearGraph = scope === "full";
     const sp = ora("Resetting knowledge base...").start();
     try {
       const res = await fetch(`${getApiBaseUrl()}/reset`, {
@@ -219,8 +233,9 @@ async function runResetKnowledgeBase(): Promise<void> {
       });
       if (res.ok) {
         const data = await res.json() as any;
-        sp.succeed(`Knowledge base reset: ${data.documentsDeleted} documents, ${data.chunksDeleted} chunks removed`);
-        if (data.graphCleared) console.log(t.dim("  Evidence OS graph data cleared."));
+        sp.succeed(`Reset complete: ${data.documentsDeleted} documents, ${data.chunksDeleted} chunks, ${data.collectionsDeleted} collections removed`);
+        if (data.graphCleared) console.log(t.ok("  Evidence OS graph data cleared."));
+        else console.log(t.dim("  Evidence OS graph data preserved."));
       } else {
         sp.fail("Reset failed — check if services are running");
       }
