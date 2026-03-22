@@ -39,6 +39,9 @@ export function registerCollectionRoutes(server: FastifyInstance) {
     if (trimmedName.length > 100) {
       return reply.status(400).send({ error: "Collection name too long (max 100 characters)" });
     }
+    if (!/^[\w\s\-_.]+$/.test(trimmedName)) {
+      return reply.status(400).send({ error: "Collection name may only contain letters, numbers, spaces, hyphens, underscores, and dots" });
+    }
     if (description && description.length > 1000) {
       return reply.status(400).send({ error: "Description too long (max 1000 characters)" });
     }

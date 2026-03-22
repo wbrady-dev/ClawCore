@@ -131,6 +131,8 @@ export class GDriveAdapter implements SourceAdapter {
       return;
     }
 
+    logger.warn("Google Drive manifest is in-memory — full re-sync will occur on restart");
+
     // Initialize Drive client
     try {
       this.drive = await initDriveClient();
@@ -168,9 +170,13 @@ export class GDriveAdapter implements SourceAdapter {
 
     const changes: ChangeSet = { added: [], modified: [], removed: [] };
 
-    for (const collCfg of this.cfg.collections) {
+    for (let ci = 0; ci < this.cfg.collections.length; ci++) {
+      const collCfg = this.cfg.collections[ci];
       const folderName = collCfg.path;
       const collection = collCfg.collection;
+
+      // Rate limit: avoid exhausting Drive API quota (12k req/100s)
+      if (ci > 0) await new Promise((r) => setTimeout(r, 100));
 
       let files: drive_v3.Schema$File[];
       try {

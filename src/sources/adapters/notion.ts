@@ -81,6 +81,8 @@ export class NotionAdapter implements SourceAdapter {
       return;
     }
 
+    logger.warn("Notion manifest is in-memory — full re-sync will occur on restart");
+
     const apiKey = process.env.NOTION_API_KEY;
     if (!apiKey) {
       this.status = { state: "error", docCount: 0, error: "NOTION_API_KEY not set" };

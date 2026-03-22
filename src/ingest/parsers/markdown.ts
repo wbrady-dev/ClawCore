@@ -12,7 +12,7 @@ export async function parseMarkdown(filePath: string): Promise<ParsedDocument> {
   const metadata: DocMetadata = { fileType: "markdown" };
 
   // Extract YAML frontmatter
-  const fmMatch = raw.match(/^---\n([\s\S]*?)\n---\n/);
+  const fmMatch = raw.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n/);
   if (fmMatch) {
     text = raw.slice(fmMatch[0].length);
     const fm = fmMatch[1];

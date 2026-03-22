@@ -55,7 +55,11 @@ function flattenObject(obj: unknown, prefix = ""): string {
     if (typeof value === "object" && value !== null && !Array.isArray(value)) {
       lines.push(flattenObject(value, path));
     } else if (Array.isArray(value)) {
-      lines.push(`${path}: ${value.join(", ")}`);
+      if (value.length > 0 && typeof value[0] === "object" && value[0] !== null) {
+        value.forEach((item, i) => lines.push(flattenObject(item, `${path}[${i}]`)));
+      } else {
+        lines.push(`${path}: ${value.join(", ")}`);
+      }
     } else {
       lines.push(`${path}: ${value}`);
     }

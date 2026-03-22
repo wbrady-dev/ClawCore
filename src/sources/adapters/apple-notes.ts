@@ -88,6 +88,8 @@ export class AppleNotesAdapter implements SourceAdapter {
       return;
     }
 
+    logger.warn("Apple Notes manifest is in-memory — full re-sync will occur on restart");
+
     if (process.platform !== "darwin") {
       this.status = { state: "unavailable", docCount: 0, error: "macOS only" };
       return;

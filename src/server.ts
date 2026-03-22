@@ -4,7 +4,7 @@ import { existsSync, readFileSync, writeFileSync, chmodSync, mkdirSync } from "f
 import { homedir } from "os";
 import { config } from "./config.js";
 import { logger } from "./utils/logger.js";
-import { getDb, closeDb, runMigrations } from "./storage/index.js";
+import { getDb, closeDb, runMigrations, ensureCollection } from "./storage/index.js";
 import { registerRoutes } from "./api/routes.js";
 import { registerRateLimit } from "./api/ratelimit.js";
 import { startSources, stopSources } from "./sources/index.js";
@@ -75,6 +75,7 @@ export async function startServer() {
   const dbPath = resolve(config.dataDir, "clawcore.db");
   const db = getDb(dbPath);
   runMigrations(db);
+  ensureCollection(db, config.defaults.collection);
 
   const server = Fastify({ logger: false });
 
