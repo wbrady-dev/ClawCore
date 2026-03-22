@@ -138,14 +138,13 @@ async function deleteDocument(
     .prepare("SELECT id FROM chunks WHERE document_id = ?")
     .all(documentId) as { id: string }[];
 
-  if (chunkIds.length > 0) {
-    deleteVectors(
-      db,
-      chunkIds.map((c) => c.id),
-    );
-  }
-
-  db.prepare("DELETE FROM documents WHERE id = ?").run(documentId);
+  // Atomic: delete vectors + document in a single transaction
+  db.transaction(() => {
+    if (chunkIds.length > 0) {
+      deleteVectors(db, chunkIds.map((c) => c.id));
+    }
+    db.prepare("DELETE FROM documents WHERE id = ?").run(documentId);
+  })();
 
   // Clean up graph data (mentions, orphaned entities) if relations enabled
   try {
