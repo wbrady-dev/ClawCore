@@ -164,7 +164,8 @@ export function resetKnowledgeBase(db: Database.Database): { collectionsDeleted:
   // Delete all collections (cascades: documents, chunks, metadata_index, watch_paths; triggers: chunk_fts)
   db.prepare("DELETE FROM collections").run();
 
-  // Checkpoint WAL to reclaim disk space
+  // Compact database file — VACUUM reclaims freed pages, checkpoint flushes WAL
+  try { db.exec("VACUUM"); } catch {}
   try { db.pragma("wal_checkpoint(TRUNCATE)"); } catch {}
 
   return { collectionsDeleted: collCount, documentsDeleted: docCount, chunksDeleted: chunkCount };
