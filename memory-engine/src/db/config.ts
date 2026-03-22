@@ -212,22 +212,30 @@ export function resolveLcmConfig(
       e("RELATIONS_GRAPH_DB_PATH")?.trim()
       ?? toStr(pc.relationsGraphDbPath)
       ?? join(homedir(), ".clawcore", "data", "graph.db"),
-    relationsMinMentions:
+    relationsMinMentions: clampInt(
       (e("RELATIONS_MIN_MENTIONS") !== undefined ? parseInt(e("RELATIONS_MIN_MENTIONS")!, 10) : undefined)
-        ?? toNumber(pc.relationsMinMentions) ?? 2,
-    relationsStaleDays:
+        ?? toNumber(pc.relationsMinMentions),
+      1, 1000, 2,
+    ),
+    relationsStaleDays: clampInt(
       (e("RELATIONS_STALE_DAYS") !== undefined ? parseInt(e("RELATIONS_STALE_DAYS")!, 10) : undefined)
-        ?? toNumber(pc.relationsStaleDays) ?? 30,
+        ?? toNumber(pc.relationsStaleDays),
+      1, 3650, 30,
+    ),
     relationsAwarenessEnabled:
       e("RELATIONS_AWARENESS_ENABLED") !== undefined
         ? e("RELATIONS_AWARENESS_ENABLED") === "true"
         : toBool(pc.relationsAwarenessEnabled) ?? false,
-    relationsAwarenessMaxNotes:
+    relationsAwarenessMaxNotes: clampInt(
       (e("RELATIONS_AWARENESS_MAX_NOTES") !== undefined ? parseInt(e("RELATIONS_AWARENESS_MAX_NOTES")!, 10) : undefined)
-        ?? toNumber(pc.relationsAwarenessMaxNotes) ?? 3,
-    relationsAwarenessMaxTokens:
+        ?? toNumber(pc.relationsAwarenessMaxNotes),
+      1, 100, 3,
+    ),
+    relationsAwarenessMaxTokens: clampInt(
       (e("RELATIONS_AWARENESS_MAX_TOKENS") !== undefined ? parseInt(e("RELATIONS_AWARENESS_MAX_TOKENS")!, 10) : undefined)
-        ?? toNumber(pc.relationsAwarenessMaxTokens) ?? 100,
+        ?? toNumber(pc.relationsAwarenessMaxTokens),
+      1, 10000, 100,
+    ),
     relationsAwarenessDocSurfacing:
       e("RELATIONS_AWARENESS_DOC_SURFACING") !== undefined
         ? e("RELATIONS_AWARENESS_DOC_SURFACING") === "true"
@@ -250,9 +258,11 @@ export function resolveLcmConfig(
       e("RELATIONS_ATTEMPT_TRACKING_ENABLED") !== undefined
         ? e("RELATIONS_ATTEMPT_TRACKING_ENABLED") === "true"
         : toBool(pc.relationsAttemptTrackingEnabled) ?? false,
-    relationsDecayIntervalDays:
+    relationsDecayIntervalDays: clampInt(
       (e("RELATIONS_DECAY_INTERVAL_DAYS") !== undefined ? parseInt(e("RELATIONS_DECAY_INTERVAL_DAYS")!, 10) : undefined)
-        ?? toNumber(pc.relationsDecayIntervalDays) ?? 90,
+        ?? toNumber(pc.relationsDecayIntervalDays),
+      1, 3650, 90,
+    ),
     // ── Horizon 5: Deep Extraction ────────────────────────────────────────
     relationsDeepExtractionEnabled:
       e("RELATIONS_DEEP_EXTRACTION_ENABLED") !== undefined
