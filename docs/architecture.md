@@ -91,7 +91,7 @@ memory-engine/src/relations/
   relation-store.ts   # Entity relationships
   deep-extract.ts     # LLM-powered extraction
   synthesis.ts        # Retrospective narrative
-  tools.ts            # All 22 cc_* tool factories
+  tools.ts            # All 12 cc_* tool factories
   index.ts            # Module exports
 ```
 

@@ -16,7 +16,7 @@ ClawCore's Evidence OS extracts structured knowledge from conversations, documen
 - **Timeline & Snapshots** — Event timeline materialization and point-in-time state reconstruction
 - **Deep Extraction** — Optional LLM-powered relationship extraction and evidence synthesis
 - **Context Compiler** — ROI-scored capsule compilation with configurable token budgets (110-280 tokens)
-- **22 Agent Tools** — `cc_grep`, `cc_describe`, `cc_expand`, `cc_recall`, `cc_conflicts`, `cc_state`, `cc_claims`, `cc_decisions`, `cc_delta`, `cc_capabilities`, `cc_invariants`, `cc_loops`, `cc_attempts`, `cc_antirunbooks`, `cc_branch`, `cc_promote`, `cc_runbooks`, `cc_timeline`, `cc_relate`, `cc_ask`, `cc_diagnostics`, `cc_memory`
+- **12 Agent Tools** — `cc_grep`, `cc_describe`, `cc_expand`, `cc_recall`, `cc_claims`, `cc_decisions`, `cc_loops`, `cc_attempts`, `cc_branch`, `cc_procedures`, `cc_diagnostics`, `cc_memory`
 
 ### CRAM Architecture
 
@@ -57,7 +57,7 @@ ClawCore's Evidence OS extracts structured knowledge from conversations, documen
 [Install](docs/install.md) | [Quick Start](docs/quickstart.md) | [Configuration](docs/configuration.md) | [Migration](docs/migration.md)
 
 **Reference:**
-[Tools (22)](docs/tools.md) | [Schema (21 tables)](docs/schema.md) | [API](docs/api.md) | [FAQ](docs/faq.md)
+[Tools (12)](docs/tools.md) | [Schema (21 tables)](docs/schema.md) | [API](docs/api.md) | [FAQ](docs/faq.md)
 
 **Concepts:**
 [Core Concepts](docs/concepts.md) | [Architecture](docs/architecture.md) | [Scopes & Branches](docs/scopes-and-branches.md) | [Promotion Policies](docs/promotion-policies.md)
@@ -76,7 +76,7 @@ ClawCore's Evidence OS extracts structured knowledge from conversations, documen
 ### Windows
 
 ```bash
-git clone https://github.com/openclaw/clawcore.git
+git clone https://github.com/wbrady-dev/ClawCore.git
 cd clawcore
 install.bat
 ```
@@ -84,7 +84,7 @@ install.bat
 ### Linux / Mac
 
 ```bash
-git clone https://github.com/openclaw/clawcore.git
+git clone https://github.com/wbrady-dev/ClawCore.git
 cd clawcore
 chmod +x install.sh
 ./install.sh
@@ -190,14 +190,13 @@ GET  /collections         — List collections
 POST /collections         — Create collection
 DELETE /collections/:id   — Delete collection (invalidates cache)
 GET  /collections/:id/stats — Collection statistics
-POST /reindex             — Re-ingest all documents with current settings
-POST /reindex/stale       — Re-ingest only modified documents
+POST /reindex             — Re-ingest all documents (localhost only)
+POST /reindex/stale       — Re-ingest only modified documents (localhost only)
 GET  /analytics           — Query performance summary
 GET  /analytics/recent    — Recent queries with full details
 DELETE /analytics         — Clear analytics data
 GET  /sources             — Source adapter status
-POST /sources/reload      — Hot-reload source configuration
-POST /ner                — Extract named entities (spaCy)
+POST /sources/reload      — Hot-reload source configuration (localhost only)
 ```
 
 Default port: 18800 (localhost only; set `CLAWCORE_HOST=0.0.0.0` to expose)
