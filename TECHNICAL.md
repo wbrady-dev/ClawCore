@@ -185,7 +185,7 @@ file → validate → parse → chunk → embed → semantic dedup → store →
 | Plain text | Direct read | Prose chunking |
 
 ### Incremental Indexing
-1. SHA256 hash of content + file modification time
+1. xxhash64 hash of content + file modification time
 2. Same hash → skip (0 cost)
 3. Hash changed → delete old version, re-ingest
 4. Force mode (`--force`) always re-ingests, cleans up old version first
@@ -227,7 +227,10 @@ After ingesting documents with 50+ chunks, an explicit WAL checkpoint runs to pr
 
 ## Storage Layer
 
-SQLite with sqlite-vec for vectors and FTS5 for full-text search. Single file: `clawcore.db`.
+SQLite with sqlite-vec for vectors and FTS5 for full-text search. Three databases in `~/.clawcore/data/`:
+- `clawcore.db` — Document store (RAG: collections, documents, chunks, vectors)
+- `memory.db` — Conversation memory (DAG summaries, context items, messages)
+- `graph.db` — Evidence graph (entities, claims, decisions, loops, attempts, relations)
 
 ### Schema
 - **collections** — named groups (id, name, description)
@@ -323,7 +326,9 @@ Powered by spaCy `en_core_web_sm`. Auto-installed during setup. Falls back to re
 
 ## Memory Engine
 
-DAG-based lossless conversation context, forked from lossless-claw. Surface rebranded (plugin ID `clawcore-memory`, tools `cc_grep`/`cc_recall`/`cc_describe`/`cc_expand`). Internal filenames kept as `lcm-*.ts` for upstream compatibility.
+DAG-based lossless conversation context, forked from lossless-claw. Surface rebranded (plugin ID `clawcore-memory`). Internal filenames kept as `lcm-*.ts` for upstream compatibility.
+
+12 agent tools registered: 4 core (`cc_grep`, `cc_describe`, `cc_expand`, `cc_recall`) + 8 evidence (`cc_memory`, `cc_claims`, `cc_decisions`, `cc_loops`, `cc_attempts`, `cc_branch`, `cc_procedures`, `cc_diagnostics`).
 
 Integrates as an OpenClaw plugin:
 - `plugins.slots.contextEngine = "clawcore-memory"`
@@ -334,7 +339,7 @@ Integrates as an OpenClaw plugin:
 ## OpenClaw Integration
 
 ### What It Does
-1. Installs `SKILL.md` knowledge skill to `~/.openclaw/workspace/skills/knowledge/`
+1. Installs skill definitions to `~/.openclaw/workspace/skills/clawcore-knowledge/` and `clawcore-evidence/`
 2. Loads memory-engine plugin from `~/.openclaw/services/clawcore/memory-engine`
 3. Disables built-in `memory-core` and `memorySearch` (prevents duplicate searches)
 4. Configuration is validated during install via `applyOpenClawIntegration()` and can be verified with `clawcore status`
@@ -351,10 +356,14 @@ The TUI uninstall screen reverts all OpenClaw changes:
 ## Security
 
 - **API bound to localhost** (`127.0.0.1`) by default. Set `CLAWCORE_HOST=0.0.0.0` to expose.
+- **Localhost-only endpoints** — `/shutdown`, `/reset`, `/reindex`, `/reindex/stale`, `/sources/reload`, `/graph/*`, `/analytics/diagnostics` restricted to `127.0.0.1`/`::1` via shared `isLocalRequest` guard.
 - **Rate limiting** — 300 requests/minute per IP (configurable via `RATE_LIMIT_MAX`). `/health` exempt.
-- **Path validation** — ingest endpoint blocks `.env`, credentials, `.git`, SSH keys.
+- **Path validation** — ingest endpoint blocks `.env`, credentials, `.git`, SSH keys. Error responses do not disclose file paths.
+- **Input validation** — collection names trimmed and capped at 100 chars, text ingest capped at 10MB, LIKE wildcards escaped in search queries, query `top_k`/`token_budget` clamped with NaN guards, all 16 numeric config values range-validated.
+- **Transaction safety** — all delete operations (document, collection, vector cleanup) wrapped in atomic transactions.
 - **HuggingFace tokens** — passed via environment variable, never in shell commands.
 - **File permissions** — databases chmod 600, staging 700 on Unix.
+- **Sensitive data** — error text redacted for password/key/token/secret patterns. API key resolution uses auth-profiles, not hardcoded values.
 
 ---
 
@@ -417,19 +426,23 @@ clawcore watch                     Start file watcher
 | POST | /query | Search knowledge base |
 | POST | /search | Simple search (no reranking) |
 | POST | /ingest | Ingest file by path |
-| POST | /ingest/text | Ingest raw text |
+| POST | /ingest/text | Ingest raw text (10MB limit) |
+| GET | /documents | List documents (optional collection filter) |
+| DELETE | /documents/:id | Delete document + vectors + graph data |
 | GET | /collections | List collections |
-| POST | /collections | Create collection |
+| POST | /collections | Create collection (name max 100 chars) |
 | DELETE | /collections/:id | Delete collection + invalidate cache |
 | GET | /collections/:id/stats | Collection statistics |
-| POST | /reindex | Re-ingest all documents with current settings |
-| POST | /reindex/stale | Re-ingest only modified documents |
+| POST | /reindex | Re-ingest all documents (localhost only) |
+| POST | /reindex/stale | Re-ingest only modified documents (localhost only) |
 | GET | /analytics | Query performance summary |
 | GET | /analytics/recent | Recent queries with details |
 | DELETE | /analytics | Clear analytics |
 | GET | /sources | Source adapter status |
-| POST | /sources/reload | Hot-reload source configuration |
-| POST | /ner | Extract named entities (spaCy) |
+| POST | /sources/reload | Hot-reload source configuration (localhost only) |
+| POST | /reset | Clear knowledge base (localhost only) |
+| POST | /shutdown | Graceful shutdown (localhost only) |
+| GET | /graph/entities | Entity graph browser (localhost only) |
 
 ---
 
@@ -439,7 +452,7 @@ clawcore watch                     Start file watcher
 |----------|---------|-------------|
 | `CLAWCORE_PORT` | 18800 | HTTP API port |
 | `CLAWCORE_HOST` | 127.0.0.1 | Bind address (0.0.0.0 for network) |
-| `CLAWCORE_DATA_DIR` | ./data | Data directory |
+| `CLAWCORE_DATA_DIR` | ~/.clawcore/data | Data directory |
 | `EMBEDDING_URL` | http://127.0.0.1:8012/v1 | Embedding endpoint |
 | `EMBEDDING_MODEL` | BAAI/bge-large-en-v1.5 | Model ID |
 | `EMBEDDING_DIMENSIONS` | 1024 | Vector dimensions |
@@ -484,9 +497,12 @@ ClawCoreError (base)
 ### Resilience
 - **Embedding** — 3 retries, exponential backoff, 30s timeout, adaptive batch halving on failure (32→16→8→4→1)
 - **Reranker** — 30s timeout, invalid indices filtered, fallback to original order
-- **Watcher** — per-file error isolation, continues monitoring
-- **Ingestion** — file-level locking, transactional storage (doc + chunks + vectors atomic)
+- **Watcher** — per-file error isolation, queue capped at 1000 entries, single circuit breaker retry timer (no setTimeout leak), `queueMicrotask` for drain continuation (no stack overflow)
+- **Ingestion** — file-level locking, transactional storage (doc + chunks + vectors atomic), all delete operations in transactions
 - **Query expansion** — optional, queries work without it
-- **Database** — WAL mode, 5s busy timeout, auto-checkpoint, explicit checkpoint on close
+- **Database** — WAL mode, 5s busy timeout, foreign key enforcement, `:memory:` guard, auto-checkpoint, explicit checkpoint on close
+- **Memory engine** — fail-safe assembly (returns live messages on any failure), session operation queuing (FIFO serialization), 120s AbortSignal timeout on LLM calls, 60s timeout on file summarization
+- **Evidence extraction** — non-blocking (try/catch per extraction phase), fire-and-forget LLM deep extraction, error text redacted for secrets
 - **Token tracker** — buffered writes (5s), flushed on shutdown
 - **Cache** — invalidated on collection deletion, safe iteration during cleanup
+- **Config** — all 16 numeric values range-clamped (NaN/negative/absurd rejected with safe defaults)
