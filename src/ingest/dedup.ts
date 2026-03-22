@@ -99,7 +99,7 @@ export function findExistingDuplicates(
         const result = (stmt as any).get(new Float32Array(embeddings[i]), 1) as
           { chunk_id: string; distance: number } | undefined;
 
-        if (result && result.distance < L2_THRESHOLD) {
+        if (result && result.distance <= L2_THRESHOLD) {
           if (filterStmt.get(result.chunk_id, collectionId)) {
             dupes.add(i);
           }

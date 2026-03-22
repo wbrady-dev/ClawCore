@@ -20,6 +20,7 @@ import { enrichMetadata } from "./metadata.js";
 import { embedBatch } from "../embeddings/batch.js";
 import { insertMetadata } from "../storage/metadata.js";
 import { findIntraBatchDuplicates, findExistingDuplicates } from "./dedup.js";
+import { invalidateCollection } from "../query/cache.js";
 import { getGraphDb } from "../storage/graph-sqlite.js";
 import { extractEntitiesFromDocument } from "../relations/ingest-hook.js";
 
@@ -282,6 +283,9 @@ async function ingestFileInner(
   });
 
   store();
+
+  // Invalidate query cache for this collection (stale results after new/updated docs)
+  invalidateCollection(collectionName);
 
   // Relations: extract entities from ingested chunks
   if (config.relations.enabled) {

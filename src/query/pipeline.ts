@@ -116,7 +116,7 @@ export async function query(
   const titlesOnly = options.titlesOnly ?? false;
 
   // === Cache Check ===
-  const ck = cacheKey(queryText, collectionName, { topK, brief, titlesOnly });
+  const ck = cacheKey(queryText, collectionName, { topK, brief, titlesOnly, useReranker, useBm25, doExpand, tokenBudget });
   const cached = getCached<QueryResult>(ck);
   if (cached) {
     return { ...cached, queryInfo: { ...cached.queryInfo, cached: true, elapsedMs: Date.now() - start } };
@@ -248,7 +248,7 @@ export async function query(
   let candidateChunkIds: string[];
   if (allBm25Results.length > 0) {
     const hybrid = reciprocalRankFusion(
-      goodVectorResults.length > 0 ? goodVectorResults : allVectorResults,
+      goodVectorResults,
       allBm25Results,
     );
     candidateChunkIds = hybrid.slice(0, retrieveCount).map((r) => r.chunkId);
@@ -256,7 +256,7 @@ export async function query(
   } else {
     const seen = new Set<string>();
     candidateChunkIds = [];
-    const source = goodVectorResults.length > 0 ? goodVectorResults : allVectorResults;
+    const source = goodVectorResults;
     for (const r of source) {
       if (!seen.has(r.chunkId)) {
         seen.add(r.chunkId);
