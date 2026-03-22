@@ -24,8 +24,10 @@ export function registerGraphRoutes(server: FastifyInstance) {
     const { limit: limitStr, offset: offsetStr, search } = req.query as {
       limit?: string; offset?: string; search?: string;
     };
-    const limit = Math.min(200, Math.max(1, parseInt(limitStr ?? "50", 10)));
-    const offset = Math.max(0, parseInt(offsetStr ?? "0", 10));
+    const parsedLimit = parseInt(limitStr ?? "50", 10);
+    const limit = isNaN(parsedLimit) ? 50 : Math.min(200, Math.max(1, parsedLimit));
+    const parsedOffset = parseInt(offsetStr ?? "0", 10);
+    const offset = isNaN(parsedOffset) ? 0 : Math.max(0, parsedOffset);
 
     const graphDbPath = config.relations?.graphDbPath;
     if (!graphDbPath) return reply.status(404).send({ error: "Relations not configured" });
@@ -119,8 +121,12 @@ export function registerGraphRoutes(server: FastifyInstance) {
       .map((t) => t.trim())
       .slice(0, 500);
 
-    mkdirSync(dirname(TERMS_PATH), { recursive: true });
-    writeFileSync(TERMS_PATH, JSON.stringify({ terms: cleaned }, null, 2));
+    try {
+      mkdirSync(dirname(TERMS_PATH), { recursive: true });
+      writeFileSync(TERMS_PATH, JSON.stringify({ terms: cleaned }, null, 2));
+    } catch (e: any) {
+      return reply.status(500).send({ error: "Failed to save terms", detail: e.message });
+    }
 
     return { terms: cleaned, count: cleaned.length };
   });

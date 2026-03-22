@@ -121,8 +121,12 @@ export function EvidenceOsScreen({ onBack }: { onBack: () => void }) {
         cachedTerms = updated;
         setTerms(updated);
         setStatus(`Removed "${term}"`);
+      } else {
+        setStatus(`Failed to remove "${term}"`);
       }
-    } catch {}
+    } catch {
+      setStatus(`Failed to remove "${term}"`);
+    }
   };
 
   // ── Overview ──
