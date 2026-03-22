@@ -32,6 +32,16 @@ import { getAwarenessStats } from "./eval.js";
 import { compileContextCapsules } from "./context-compiler.js";
 import type { LcmContextEngine } from "../engine.js";
 
+// ---------------------------------------------------------------------------
+// REMOVED TOOLS (consolidated from 18 → 8)
+// cc_conflicts, cc_state, cc_delta, cc_capabilities, cc_invariants,
+// cc_relate, cc_timeline, cc_ask → absorbed into cc_memory / cc_diagnostics
+// cc_promote → merged into cc_branch (action: "promote")
+// cc_antirunbooks → merged into cc_procedures
+// ---------------------------------------------------------------------------
+// Legacy functions kept below for reference but no longer exported or registered.
+// ---------------------------------------------------------------------------
+
 const CcConflictsSchema = Type.Object({
   entity: Type.Optional(
     Type.String({
@@ -47,7 +57,7 @@ const CcConflictsSchema = Type.Object({
   ),
 });
 
-export function createCcConflictsTool(input: {
+function createCcConflictsTool(input: {
   deps: LcmDependencies;
   graphDb: GraphDb;
 }): AnyAgentTool {
@@ -181,7 +191,7 @@ const CcStateSchema = Type.Object({
   ),
 });
 
-export function createCcStateTool(input: {
+function createCcStateTool(input: {
   deps: LcmDependencies;
   graphDb: GraphDb;
 }): AnyAgentTool {
@@ -381,7 +391,7 @@ const CcDeltaSchema = Type.Object({
   limit: Type.Optional(Type.Number({ description: "Max deltas (default: 20)", minimum: 1, maximum: 100 })),
 });
 
-export function createCcDeltaTool(input: { deps: LcmDependencies; graphDb: GraphDb }): AnyAgentTool {
+function createCcDeltaTool(input: { deps: LcmDependencies; graphDb: GraphDb }): AnyAgentTool {
   return {
     name: "cc_delta",
     label: "ClawCore Deltas",
@@ -420,7 +430,7 @@ const CcCapabilitiesSchema = Type.Object({
   status: Type.Optional(Type.String({ description: "Filter by status" })),
 });
 
-export function createCcCapabilitiesTool(input: { deps: LcmDependencies; graphDb: GraphDb }): AnyAgentTool {
+function createCcCapabilitiesTool(input: { deps: LcmDependencies; graphDb: GraphDb }): AnyAgentTool {
   return {
     name: "cc_capabilities",
     label: "ClawCore Capabilities",
@@ -456,7 +466,7 @@ const CcInvariantsSchema = Type.Object({
   scope_id: Type.Optional(Type.Number({ description: "Scope ID (default: 1 = global)" })),
 });
 
-export function createCcInvariantsTool(input: { deps: LcmDependencies; graphDb: GraphDb }): AnyAgentTool {
+function createCcInvariantsTool(input: { deps: LcmDependencies; graphDb: GraphDb }): AnyAgentTool {
   return {
     name: "cc_invariants",
     label: "ClawCore Invariants",
@@ -569,59 +579,27 @@ export function createCcAttemptsTool(input: { deps: LcmDependencies; graphDb: Gr
 }
 
 // ---------------------------------------------------------------------------
-// cc_antirunbooks — failure patterns
-// ---------------------------------------------------------------------------
-
-const CcAntiRunbooksSchema = Type.Object({
-  tool_name: Type.Optional(Type.String({ description: "Filter by tool name" })),
-  scope_id: Type.Optional(Type.Number({ description: "Scope ID (default: 1)" })),
-});
-
-export function createCcAntiRunbooksTool(input: { deps: LcmDependencies; graphDb: GraphDb }): AnyAgentTool {
-  return {
-    name: "cc_antirunbooks",
-    label: "ClawCore Anti-Runbooks",
-    description: "Show learned failure patterns to avoid repeating known mistakes.",
-    parameters: CcAntiRunbooksSchema,
-    async execute(_toolCallId, params) {
-      const p = params as Record<string, unknown>;
-      const scopeId = typeof p.scope_id === "number" ? Math.trunc(p.scope_id) : 1;
-      const toolName = typeof p.tool_name === "string" ? p.tool_name.trim() : undefined;
-      try {
-        applyDecay(input.graphDb, scopeId);
-        const antiRbs = getAntiRunbooks(input.graphDb, scopeId, { toolName });
-        if (antiRbs.length === 0) return { content: [{ type: "text", text: "No anti-runbooks recorded." }], details: { count: 0 } };
-        const lines: string[] = [`${antiRbs.length} anti-runbook(s):\n`];
-        for (const ar of antiRbs) {
-          lines.push(`[${ar.tool_name}] AVOID: ${ar.failure_pattern}`);
-          if (ar.description) lines.push(`  ${ar.description}`);
-          lines.push(`  failures: ${ar.failure_count} | confidence: ${ar.confidence.toFixed(2)}`);
-          lines.push("");
-        }
-        return { content: [{ type: "text", text: lines.join("\n") }], details: { count: antiRbs.length } };
-      } catch (err) { return jsonResult({ error: err instanceof Error ? err.message : String(err) }); }
-    },
-  };
-}
-
-// ---------------------------------------------------------------------------
-// cc_branch — speculative branch management
+// cc_branch — speculative branch management + promotion
 // ---------------------------------------------------------------------------
 
 const CcBranchSchema = Type.Object({
   scope_id: Type.Optional(Type.Number({ description: "Scope ID (default: 1)" })),
-  action: Type.Optional(Type.String({ description: "Action: list (default), create, discard" })),
+  action: Type.Optional(Type.String({ description: "Action: list (default), create, discard, promote" })),
   branch_type: Type.Optional(Type.String({ description: "Branch type (for create)" })),
   branch_key: Type.Optional(Type.String({ description: "Branch key (for create)" })),
-  branch_id: Type.Optional(Type.Number({ description: "Branch ID (for discard)" })),
+  branch_id: Type.Optional(Type.Number({ description: "Branch ID (for discard/promote)" })),
   status: Type.Optional(Type.String({ description: "Filter by status (for list)" })),
+  object_type: Type.Optional(Type.String({ description: "Object type for promotion policy check" })),
+  confidence: Type.Optional(Type.Number({ description: "Confidence level for promotion policy check" })),
+  evidence_count: Type.Optional(Type.Number({ description: "Evidence count for promotion policy check" })),
+  user_confirmed: Type.Optional(Type.Boolean({ description: "Whether user has confirmed promotion" })),
 });
 
 export function createCcBranchTool(input: { deps: LcmDependencies; graphDb: GraphDb }): AnyAgentTool {
   return {
     name: "cc_branch",
     label: "ClawCore Branches",
-    description: "Manage speculative branches — create, list, or discard branches for speculative memory.",
+    description: "Manage speculative branches — create, list, discard, or promote branches for speculative memory.",
     parameters: CcBranchSchema,
     async execute(_toolCallId, params) {
       const p = params as Record<string, unknown>;
@@ -646,6 +624,21 @@ export function createCcBranchTool(input: { deps: LcmDependencies; graphDb: Grap
           return { content: [{ type: "text", text: `Branch #${branchId} discarded.` }], details: { branchId } };
         }
 
+        if (action === "promote") {
+          const branchId = typeof p.branch_id === "number" ? Math.trunc(p.branch_id) : 0;
+          if (!branchId) return jsonResult({ error: "branch_id required for promote" });
+          const objectType = typeof p.object_type === "string" ? p.object_type.trim() : "claim";
+          const confidence = typeof p.confidence === "number" ? p.confidence : 0.5;
+          const evidenceCount = typeof p.evidence_count === "number" ? Math.trunc(p.evidence_count) : 1;
+          const userConfirmed = typeof p.user_confirmed === "boolean" ? p.user_confirmed : false;
+          const check = checkPromotionPolicy(input.graphDb, objectType, confidence, evidenceCount, userConfirmed);
+          if (!check.canPromote) {
+            return { content: [{ type: "text", text: `Promotion denied: ${check.reason}` }], details: { canPromote: false, reason: check.reason } };
+          }
+          promoteBranch(input.graphDb, branchId);
+          return { content: [{ type: "text", text: `Branch #${branchId} promoted. ${check.reason}` }], details: { canPromote: true, branchId } };
+        }
+
         // Default: list
         const status = typeof p.status === "string" ? p.status.trim() : undefined;
         const branches = getBranches(input.graphDb, scopeId, status);
@@ -663,79 +656,36 @@ export function createCcBranchTool(input: { deps: LcmDependencies; graphDb: Grap
   };
 }
 
-// ---------------------------------------------------------------------------
-// cc_promote — promote branch with policy validation
-// ---------------------------------------------------------------------------
-
-const CcPromoteSchema = Type.Object({
-  branch_id: Type.Number({ description: "Branch ID to promote" }),
-  object_type: Type.Optional(Type.String({ description: "Object type for policy check (e.g., claim, decision)" })),
-  confidence: Type.Optional(Type.Number({ description: "Confidence level for policy check" })),
-  evidence_count: Type.Optional(Type.Number({ description: "Evidence count for policy check" })),
-  user_confirmed: Type.Optional(Type.Boolean({ description: "Whether user has confirmed promotion" })),
-});
-
-export function createCcPromoteTool(input: { deps: LcmDependencies; graphDb: GraphDb }): AnyAgentTool {
-  return {
-    name: "cc_promote",
-    label: "ClawCore Promote",
-    description: "Promote a speculative branch to shared scope after validating against promotion policies.",
-    parameters: CcPromoteSchema,
-    async execute(_toolCallId, params) {
-      const p = params as Record<string, unknown>;
-      const branchId = typeof p.branch_id === "number" ? Math.trunc(p.branch_id) : 0;
-      if (!branchId) return jsonResult({ error: "branch_id is required" });
-
-      const objectType = typeof p.object_type === "string" ? p.object_type.trim() : "claim";
-      const confidence = typeof p.confidence === "number" ? p.confidence : 0.5;
-      const evidenceCount = typeof p.evidence_count === "number" ? Math.trunc(p.evidence_count) : 1;
-      const userConfirmed = typeof p.user_confirmed === "boolean" ? p.user_confirmed : false;
-
-      try {
-        const check = checkPromotionPolicy(input.graphDb, objectType, confidence, evidenceCount, userConfirmed);
-        if (!check.canPromote) {
-          return {
-            content: [{ type: "text", text: `Promotion denied: ${check.reason}` }],
-            details: { canPromote: false, reason: check.reason },
-          };
-        }
-        promoteBranch(input.graphDb, branchId);
-        return {
-          content: [{ type: "text", text: `Branch #${branchId} promoted. ${check.reason}` }],
-          details: { canPromote: true, reason: check.reason, branchId },
-        };
-      } catch (err) { return jsonResult({ error: err instanceof Error ? err.message : String(err) }); }
-    },
-  };
-}
-
 // ============================================================================
-// Horizon 4 Tools
+// Horizon 3-4: Procedural Memory Tools
 // ============================================================================
 
 // ---------------------------------------------------------------------------
-// cc_runbooks — learned success patterns with evidence
+// cc_procedures — unified success + failure patterns (replaces cc_runbooks + cc_antirunbooks)
 // ---------------------------------------------------------------------------
 
-const CcRunbooksSchema = Type.Object({
+const CcProceduresSchema = Type.Object({
   tool_name: Type.Optional(Type.String({ description: "Filter by tool name" })),
   scope_id: Type.Optional(Type.Number({ description: "Scope ID (default: 1)" })),
+  type: Type.Optional(Type.String({ description: "Filter by type: 'success' (runbooks), 'failure' (anti-runbooks), or 'all' (default)" })),
   runbook_id: Type.Optional(Type.Number({ description: "Get a specific runbook with full evidence chain" })),
 });
 
-export function createCcRunbooksTool(input: { deps: LcmDependencies; graphDb: GraphDb }): AnyAgentTool {
+export function createCcProceduresTool(input: { deps: LcmDependencies; graphDb: GraphDb }): AnyAgentTool {
   return {
-    name: "cc_runbooks",
-    label: "ClawCore Runbooks",
-    description: "List learned success patterns from tool outcomes. Shows confidence, success/failure counts, and evidence chain.",
-    parameters: CcRunbooksSchema,
+    name: "cc_procedures",
+    label: "ClawCore Procedures",
+    description: "Show learned success patterns (runbooks) and failure patterns (anti-runbooks) from tool outcomes.",
+    parameters: CcProceduresSchema,
     async execute(_toolCallId, params) {
       const p = params as Record<string, unknown>;
       const scopeId = typeof p.scope_id === "number" ? Math.trunc(p.scope_id) : 1;
       const toolName = typeof p.tool_name === "string" ? p.tool_name.trim() : undefined;
+      const type = typeof p.type === "string" ? p.type.trim() : "all";
       const runbookId = typeof p.runbook_id === "number" ? Math.trunc(p.runbook_id) : undefined;
 
       try {
+        // Detail view for specific runbook
         if (runbookId) {
           const rb = getRunbookWithEvidence(input.graphDb, runbookId);
           if (!rb) return { content: [{ type: "text", text: `Runbook #${runbookId} not found.` }], details: { found: false } };
@@ -753,19 +703,41 @@ export function createCcRunbooksTool(input: { deps: LcmDependencies; graphDb: Gr
         }
 
         applyDecay(input.graphDb, scopeId);
-        const runbooks = getRunbooks(input.graphDb, scopeId, { toolName });
-        if (runbooks.length === 0) return { content: [{ type: "text", text: "No runbooks recorded." }], details: { count: 0 } };
+        const sections: string[] = [];
 
-        const lines: string[] = [`${runbooks.length} runbook(s):\n`];
-        for (const rb of runbooks) {
-          const rate = (rb.success_count + rb.failure_count) > 0
-            ? ((rb.success_count / (rb.success_count + rb.failure_count)) * 100).toFixed(0)
-            : "N/A";
-          lines.push(`[${rb.tool_name}] ${rb.pattern}`);
-          lines.push(`  success rate: ${rate}% (${rb.success_count}/${rb.success_count + rb.failure_count}) | confidence: ${rb.confidence.toFixed(2)}`);
-          lines.push("");
+        // Success patterns (runbooks)
+        if (type === "all" || type === "success") {
+          const runbooks = getRunbooks(input.graphDb, scopeId, { toolName });
+          if (runbooks.length > 0) {
+            const lines: string[] = [`${runbooks.length} success pattern(s):\n`];
+            for (const rb of runbooks) {
+              const rate = (rb.success_count + rb.failure_count) > 0
+                ? ((rb.success_count / (rb.success_count + rb.failure_count)) * 100).toFixed(0) : "N/A";
+              lines.push(`[${rb.tool_name}] ${rb.pattern}`);
+              lines.push(`  success rate: ${rate}% (${rb.success_count}/${rb.success_count + rb.failure_count}) | confidence: ${rb.confidence.toFixed(2)}`);
+              lines.push("");
+            }
+            sections.push(lines.join("\n"));
+          }
         }
-        return { content: [{ type: "text", text: lines.join("\n") }], details: { count: runbooks.length } };
+
+        // Failure patterns (anti-runbooks)
+        if (type === "all" || type === "failure") {
+          const antiRbs = getAntiRunbooks(input.graphDb, scopeId, { toolName });
+          if (antiRbs.length > 0) {
+            const lines: string[] = [`${antiRbs.length} failure pattern(s) to AVOID:\n`];
+            for (const ar of antiRbs) {
+              lines.push(`[${ar.tool_name}] AVOID: ${ar.failure_pattern}`);
+              if (ar.description) lines.push(`  ${ar.description}`);
+              lines.push(`  failures: ${ar.failure_count} | confidence: ${ar.confidence.toFixed(2)}`);
+              lines.push("");
+            }
+            sections.push(lines.join("\n"));
+          }
+        }
+
+        if (sections.length === 0) return { content: [{ type: "text", text: "No procedures recorded." }], details: { count: 0 } };
+        return { content: [{ type: "text", text: sections.join("\n") }], details: { type } };
       } catch (err) { return jsonResult({ error: err instanceof Error ? err.message : String(err) }); }
     },
   };
@@ -783,7 +755,7 @@ const CcTimelineSchema = Type.Object({
   limit: Type.Optional(Type.Number({ description: "Max events (default: 30)", minimum: 1, maximum: 200 })),
 });
 
-export function createCcTimelineTool(input: { deps: LcmDependencies; graphDb: GraphDb }): AnyAgentTool {
+function createCcTimelineTool(input: { deps: LcmDependencies; graphDb: GraphDb }): AnyAgentTool {
   return {
     name: "cc_timeline",
     label: "ClawCore Timeline",
@@ -826,7 +798,7 @@ const CcRelateSchema = Type.Object({
   limit: Type.Optional(Type.Number({ description: "Max relations (default: 30)", minimum: 1, maximum: 100 })),
 });
 
-export function createCcRelateTool(input: { deps: LcmDependencies; graphDb: GraphDb }): AnyAgentTool {
+function createCcRelateTool(input: { deps: LcmDependencies; graphDb: GraphDb }): AnyAgentTool {
   return {
     name: "cc_relate",
     label: "ClawCore Relations",
@@ -937,7 +909,7 @@ const CcAskSchema = Type.Object({
   extract_claims: Type.Optional(Type.Boolean({ description: "Also extract claims from the question text (default: false)" })),
 });
 
-export function createCcAskTool(input: { deps: LcmDependencies; graphDb: GraphDb }): AnyAgentTool {
+function createCcAskTool(input: { deps: LcmDependencies; graphDb: GraphDb }): AnyAgentTool {
   return {
     name: "cc_ask",
     label: "ClawCore Ask",

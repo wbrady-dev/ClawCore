@@ -14,22 +14,12 @@ import { createLcmExpandQueryTool } from "./src/tools/lcm-expand-query-tool.js";
 import { createLcmExpandTool } from "./src/tools/lcm-expand-tool.js";
 import { createLcmGrepTool } from "./src/tools/lcm-grep-tool.js";
 import {
-  createCcConflictsTool,
-  createCcStateTool,
   createCcClaimsTool,
   createCcDecisionsTool,
-  createCcDeltaTool,
-  createCcCapabilitiesTool,
-  createCcInvariantsTool,
   createCcLoopsTool,
   createCcAttemptsTool,
-  createCcAntiRunbooksTool,
   createCcBranchTool,
-  createCcPromoteTool,
-  createCcRunbooksTool,
-  createCcTimelineTool,
-  createCcRelateTool,
-  createCcAskTool,
+  createCcProceduresTool,
   createCcDiagnosticsTool,
   createCcMemoryTool,
 } from "./src/relations/tools.js";
@@ -1352,17 +1342,9 @@ const lcmPlugin = {
       { name: "cc_recall" },
     );
 
-    // Register cc_conflicts only if relations are enabled and graph DB is available
+    // Register CRAM tools (8 consolidated tools, down from 18)
     const graphDb = lcm.getGraphDb();
     if (deps.config.relationsEnabled && graphDb) {
-      api.registerTool(
-        () => createCcConflictsTool({ deps, graphDb }),
-        { name: "cc_conflicts" },
-      );
-      api.registerTool(
-        () => createCcStateTool({ deps, graphDb }),
-        { name: "cc_state" },
-      );
       api.registerTool(
         () => createCcClaimsTool({ deps, graphDb }),
         { name: "cc_claims" },
@@ -1370,18 +1352,6 @@ const lcmPlugin = {
       api.registerTool(
         () => createCcDecisionsTool({ deps, graphDb }),
         { name: "cc_decisions" },
-      );
-      api.registerTool(
-        () => createCcDeltaTool({ deps, graphDb }),
-        { name: "cc_delta" },
-      );
-      api.registerTool(
-        () => createCcCapabilitiesTool({ deps, graphDb }),
-        { name: "cc_capabilities" },
-      );
-      api.registerTool(
-        () => createCcInvariantsTool({ deps, graphDb }),
-        { name: "cc_invariants" },
       );
       api.registerTool(
         () => createCcLoopsTool({ deps, graphDb }),
@@ -1392,32 +1362,12 @@ const lcmPlugin = {
         { name: "cc_attempts" },
       );
       api.registerTool(
-        () => createCcAntiRunbooksTool({ deps, graphDb }),
-        { name: "cc_antirunbooks" },
-      );
-      api.registerTool(
         () => createCcBranchTool({ deps, graphDb }),
         { name: "cc_branch" },
       );
       api.registerTool(
-        () => createCcPromoteTool({ deps, graphDb }),
-        { name: "cc_promote" },
-      );
-      api.registerTool(
-        () => createCcRunbooksTool({ deps, graphDb }),
-        { name: "cc_runbooks" },
-      );
-      api.registerTool(
-        () => createCcTimelineTool({ deps, graphDb }),
-        { name: "cc_timeline" },
-      );
-      api.registerTool(
-        () => createCcRelateTool({ deps, graphDb }),
-        { name: "cc_relate" },
-      );
-      api.registerTool(
-        () => createCcAskTool({ deps, graphDb }),
-        { name: "cc_ask" },
+        () => createCcProceduresTool({ deps, graphDb }),
+        { name: "cc_procedures" },
       );
       api.registerTool(
         () => createCcDiagnosticsTool({ deps, graphDb, lcm }),
