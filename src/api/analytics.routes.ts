@@ -41,7 +41,7 @@ export function registerAnalyticsRoutes(server: FastifyInstance) {
    * Returns aggregate stats and recent low-confidence queries.
    */
   server.get("/analytics", async (req, reply) => {
-    if (!isLocalRequest(req)) return reply.status(403).send({ error: "Local access only" });
+    if (!isLocalRequest(req)) return reply.status(403).send({ error: "Forbidden" });
     if (records.length === 0) {
       return { message: "No queries recorded yet", total: 0 };
     }
@@ -118,7 +118,7 @@ export function registerAnalyticsRoutes(server: FastifyInstance) {
    * GET /analytics/recent — last N queries with full details.
    */
   server.get("/analytics/recent", async (req, reply) => {
-    if (!isLocalRequest(req)) return reply.status(403).send({ error: "Local access only" });
+    if (!isLocalRequest(req)) return reply.status(403).send({ error: "Forbidden" });
     const { limit } = req.query as { limit?: string };
     const parsed = parseInt(limit ?? "20", 10);
     const n = Math.min(isNaN(parsed) ? 20 : Math.max(1, parsed), 100);
@@ -129,7 +129,7 @@ export function registerAnalyticsRoutes(server: FastifyInstance) {
    * DELETE /analytics — clear analytics data.
    */
   server.delete("/analytics", async (req, reply) => {
-    if (!isLocalRequest(req)) return reply.status(403).send({ error: "Local access only" });
+    if (!isLocalRequest(req)) return reply.status(403).send({ error: "Forbidden" });
     records.length = 0;
     return { cleared: true };
   });
@@ -143,7 +143,8 @@ export function registerAnalyticsRoutes(server: FastifyInstance) {
    *
    * For full awareness metrics, use the eval harness via the OpenClaw plugin API.
    */
-  server.get("/analytics/awareness", async (req) => {
+  server.get("/analytics/awareness", async (req, reply) => {
+    if (!isLocalRequest(req)) return reply.status(403).send({ error: "Forbidden" });
     // The awareness eval module may be loaded into this process if the
     // memory-engine plugin is colocated. Try to access it.
     if (awarenessStatsGetter) {
