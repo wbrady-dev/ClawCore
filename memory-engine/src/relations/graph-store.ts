@@ -39,6 +39,7 @@ export function upsertEntity(db: GraphDb, input: UpsertEntityInput): UpsertEntit
     ON CONFLICT(name) DO UPDATE SET
       mention_count = mention_count + 1,
       last_seen_at = strftime('%Y-%m-%dT%H:%M:%f', 'now'),
+      entity_type = COALESCE(excluded.entity_type, entities.entity_type),
       display_name = CASE
         WHEN excluded.display_name IS NOT NULL AND length(excluded.display_name) > 0
         THEN excluded.display_name

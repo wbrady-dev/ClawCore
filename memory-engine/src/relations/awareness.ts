@@ -180,7 +180,11 @@ function queryMismatches(db: GraphDb, entityIds: number[], limit: number): Misma
     `).all(...entityIds, remaining) as typeof termRows;
   }
 
-  return [...termRows, ...sourceRows].map((r) => ({
+  // Deduplicate: exclude entities already covered by term-based mismatches
+  const termEntityNames = new Set(termRows.map((r) => r.entity_name));
+  const dedupedSourceRows = sourceRows.filter((r) => !termEntityNames.has(r.entity_name));
+
+  return [...termRows, ...dedupedSourceRows].map((r) => ({
     entity: r.entity_name,
     sourceA: r.source_a,
     termsA: safeParse(r.terms_a),

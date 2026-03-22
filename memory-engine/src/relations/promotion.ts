@@ -62,6 +62,9 @@ export function checkPromotionPolicy(
   // Check age limit (if policy specifies max_age_hours and caller provides createdAt)
   if (policy.max_age_hours != null && createdAt) {
     const ageHours = (Date.now() - new Date(createdAt).getTime()) / 3_600_000;
+    if (!Number.isFinite(ageHours)) {
+      return { canPromote: false, reason: "Invalid createdAt timestamp" };
+    }
     if (ageHours > policy.max_age_hours) {
       return {
         canPromote: false,
@@ -155,8 +158,9 @@ export function promoteBranch(db: GraphDb, branchId: number, actor?: string): vo
 
       if (shared) {
         if (bc.confidence > shared.confidence) {
-          // Branch wins: supersede shared, move branch to shared scope
-          db.prepare("UPDATE claims SET status = 'superseded', superseded_by = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%f', 'now') WHERE id = ?").run(bc.id, shared.id);
+          // Branch wins: supersede shared (prefix canonical_key to avoid UNIQUE violation),
+          // then move branch claim to shared scope
+          db.prepare("UPDATE claims SET status = 'superseded', superseded_by = ?, canonical_key = 'superseded:' || canonical_key, updated_at = strftime('%Y-%m-%dT%H:%M:%f', 'now') WHERE id = ?").run(bc.id, shared.id);
           db.prepare("UPDATE claims SET branch_id = 0 WHERE id = ?").run(bc.id);
         } else {
           // Shared wins: mark branch claim as superseded

@@ -124,11 +124,12 @@ export function getOpenLoops(
   limit = 50,
   statusFilter?: string,
 ): LoopRow[] {
-  // Determine status clause based on filter
+  // Determine status clause based on filter (whitelist-validated)
+  const VALID_STATUSES = new Set(["open", "blocked", "closed", "stale"]);
   const statusClause = statusFilter === "all"
     ? "1=1"
-    : statusFilter
-      ? `status = '${statusFilter.replace(/'/g, "''")}'`
+    : statusFilter && VALID_STATUSES.has(statusFilter)
+      ? `status = '${statusFilter}'`
       : "status IN ('open', 'blocked')";
 
   if (branchId != null) {
