@@ -40,7 +40,8 @@ export function registerAnalyticsRoutes(server: FastifyInstance) {
    * GET /analytics — query performance summary.
    * Returns aggregate stats and recent low-confidence queries.
    */
-  server.get("/analytics", async () => {
+  server.get("/analytics", async (req, reply) => {
+    if (!isLocalRequest(req)) return reply.status(403).send({ error: "Local access only" });
     if (records.length === 0) {
       return { message: "No queries recorded yet", total: 0 };
     }
@@ -116,7 +117,8 @@ export function registerAnalyticsRoutes(server: FastifyInstance) {
   /**
    * GET /analytics/recent — last N queries with full details.
    */
-  server.get("/analytics/recent", async (req) => {
+  server.get("/analytics/recent", async (req, reply) => {
+    if (!isLocalRequest(req)) return reply.status(403).send({ error: "Local access only" });
     const { limit } = req.query as { limit?: string };
     const parsed = parseInt(limit ?? "20", 10);
     const n = Math.min(isNaN(parsed) ? 20 : Math.max(1, parsed), 100);
@@ -126,7 +128,8 @@ export function registerAnalyticsRoutes(server: FastifyInstance) {
   /**
    * DELETE /analytics — clear analytics data.
    */
-  server.delete("/analytics", async () => {
+  server.delete("/analytics", async (req, reply) => {
+    if (!isLocalRequest(req)) return reply.status(403).send({ error: "Local access only" });
     records.length = 0;
     return { cleared: true };
   });

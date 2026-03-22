@@ -119,6 +119,21 @@ export async function query(
   const ck = cacheKey(queryText, collectionName, { topK, brief, titlesOnly, useReranker, useBm25, doExpand, tokenBudget });
   const cached = getCached<QueryResult>(ck);
   if (cached) {
+    recordQuery({
+      timestamp: Date.now(),
+      query: queryText,
+      collection: collectionName,
+      strategy: cached.queryInfo.strategy,
+      elapsedMs: Date.now() - start,
+      candidates: 0,
+      chunksReturned: cached.queryInfo.chunksReturned,
+      confidence: cached.queryInfo.confidence,
+      cached: true,
+      vectorHits: cached.queryInfo.retrieval?.vectorHits ?? 0,
+      bm25Hits: cached.queryInfo.retrieval?.bm25Hits ?? 0,
+      bestDistance: cached.queryInfo.retrieval?.bestDistance ?? 0,
+      reranked: cached.queryInfo.retrieval?.reranked ?? false,
+    });
     return { ...cached, queryInfo: { ...cached.queryInfo, cached: true, elapsedMs: Date.now() - start } };
   }
 
@@ -366,7 +381,8 @@ export async function query(
       collectionName: c.collectionName,
       score: c.score,
     }));
-    const briefResult = extractBrief(queryText, briefInput, tokenBudget);
+    const briefBudget = Math.min(tokenBudget, 250);
+    const briefResult = extractBrief(queryText, briefInput, briefBudget);
     context = briefResult.text;
     highlighted = briefResult.highlighted;
     tokensUsed = briefResult.tokenCount;

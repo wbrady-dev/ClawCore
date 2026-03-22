@@ -70,7 +70,7 @@ server.tool(
       const meta = `--- ${result.queryInfo.strategy} | ${result.queryInfo.tokensUsed} tokens | ${conf}% conf | ${result.queryInfo.elapsedMs}ms ---`;
 
       return {
-        content: [{ type: "text", text: `${result.context}\n${meta}` }],
+        content: [{ type: "text", text: `${result.highlighted ?? result.context}\n${meta}` }],
       };
     } catch (err) {
       return {
