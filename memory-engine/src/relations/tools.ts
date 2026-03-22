@@ -33,13 +33,15 @@ import { compileContextCapsules } from "./context-compiler.js";
 import type { LcmContextEngine } from "../engine.js";
 
 // ---------------------------------------------------------------------------
-// REMOVED TOOLS (consolidated from 18 → 8)
+// REMOVED TOOLS (consolidated from 18 → 8 registered tools)
 // cc_conflicts, cc_state, cc_delta, cc_capabilities, cc_invariants,
 // cc_relate, cc_timeline, cc_ask → absorbed into cc_memory / cc_diagnostics
 // cc_promote → merged into cc_branch (action: "promote")
 // cc_antirunbooks → merged into cc_procedures
 // ---------------------------------------------------------------------------
-// Legacy functions kept below for reference but no longer exported or registered.
+// DEAD CODE: Legacy functions below are private (not exported), never called,
+// and never registered as tools. They exist for reference only.
+// Safe to delete when no longer needed for reference.
 // ---------------------------------------------------------------------------
 
 const CcConflictsSchema = Type.Object({
