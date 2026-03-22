@@ -96,7 +96,7 @@ function showInkScreen(screen: "home" | "status" | "sources" | "services" | "con
       setTimeout(() => {
         resetStdin();
         resolveAction(action);
-      }, 60);
+      }, 150);
     };
 
     let ScreenComponent: React.FC;
@@ -516,7 +516,7 @@ function HomeScreen({ onAction }: { onAction: (action: string) => void }) {
 
   const doclingDevice = config?.docling_device ?? "off";
   const doclingOk = modelHealth?.models?.docling?.ready === true;
-  const doclingLabel = doclingOk ? t.ok(doclingDevice.toUpperCase()) : doclingDevice === "off" ? t.dim("off") : t.value(doclingDevice.toUpperCase());
+  const doclingLabel = doclingOk ? t.ok(doclingDevice.toUpperCase()) : doclingDevice === "off" ? t.dim("off") : t.warn(doclingDevice.toUpperCase() + " (not loaded)");
 
   const nerReady = modelHealth?.ner?.ready === true;
 

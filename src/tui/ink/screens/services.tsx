@@ -51,9 +51,15 @@ export function ServicesScreen({
     setTick((value) => value + 1);
   }), []);
 
+  // Read service logs in useEffect to avoid sync I/O in render path
+  const [modelLogLines, setModelLogLines] = useState<string[]>([]);
+  const [apiLogLines, setApiLogLines] = useState<string[]>([]);
+  useEffect(() => {
+    try { setModelLogLines(readServiceLogTail("models", 3)); } catch {}
+    try { setApiLogLines(readServiceLogTail("clawcore", 3)); } catch {}
+  }, [tick]);
+
   const gameModeOn = !services.models.running && !services.clawcore.running;
-  const modelLogLines = readServiceLogTail("models", 3);
-  const apiLogLines = readServiceLogTail("clawcore", 3);
   const anyRunning = services.models.running || services.clawcore.running;
 
   const items: MenuItem[] = [];

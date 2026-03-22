@@ -108,7 +108,7 @@ function runPrompt<T>(factory: (resolvePrompt: (value: T) => void) => React.Reac
       setTimeout(() => {
         resetPromptStdin();
         resolvePrompt(value);
-      }, 60);
+      }, 150);
     };
 
     instance = render(factory(finish), { exitOnCtrlC: false });

@@ -64,6 +64,7 @@ export async function runInkConfigureAction(action: ConfigureAction): Promise<vo
   else if (action === "parser") await configureParser();
   else if (action === "ocr") await configureOcr();
   else if (action === "audio") await configureAudio();
+  else if (action === "ner") await configureNer();
   else if (action === "evidence") await configureEvidence();
   else if (action === "watch") {
     // Legacy tree screen needs full stdin control — reset to non-raw mode
@@ -573,6 +574,55 @@ async function configureAudio(): Promise<void> {
       AUDIO_TRANSCRIPTION_ENABLED: "true",
     });
     await showNotice("Audio Transcription", `Whisper model set to ${selectedModel}.`);
+  }
+}
+
+async function configureNer(): Promise<void> {
+  const python = getPythonCmd();
+  let installed = false;
+  try {
+    execFileSync(python, ["-c", "import spacy; spacy.load('en_core_web_sm')"], { stdio: "pipe", timeout: 10000 });
+    installed = true;
+  } catch {}
+
+  const action = await promptMenu({
+    title: "NER (Entity Extraction)",
+    message: installed
+      ? "spaCy NER model (en_core_web_sm) is installed and available."
+      : "NER model not installed. Entity extraction uses regex fallback.\nNER improves entity extraction accuracy when Evidence OS is enabled.",
+    items: [
+      ...(!installed ? [{ label: "Install NER model", value: "install", description: "Download spaCy en_core_web_sm (~12 MB)" }] : []),
+      ...(installed ? [{ label: "Reinstall / update NER model", value: "install" }] : []),
+      { label: "Back", value: "__back__", color: t.dim },
+    ],
+  });
+
+  if (!action || action === "__back__") return;
+
+  if (action === "install") {
+    const spinner = ora("Installing spaCy NER model...").start();
+    try {
+      execFileSync(python, ["-m", "spacy", "download", "en_core_web_sm"], { stdio: "pipe", timeout: 120000 });
+      spinner.succeed("NER model installed (en_core_web_sm)");
+
+      const restart = await promptConfirm({
+        title: "Restart Required",
+        message: "The model server must be restarted for NER to load. Restart now?",
+      });
+      if (restart) {
+        const { performServiceAction } = await import("../service-actions.js");
+        await performServiceAction("restart", {
+          onStatus: (detail) => process.stdout.write(`\r  ${detail}${"".padEnd(40)}`),
+        });
+        console.log("");
+        await showNotice("NER", "Model server restarted. NER is now active.");
+      } else {
+        await showNotice("NER", "NER will activate on next model server restart.");
+      }
+    } catch (error) {
+      spinner.fail("NER install failed");
+      await showNotice("NER", `Install failed: ${String(error).slice(0, 220)}`);
+    }
   }
 }
 

@@ -127,10 +127,15 @@ export function Spinner({ label }: { label: string }) {
 
 export function useInterval(callback: () => void, delayMs: number) {
   const savedCallback = React.useRef(callback);
+  const running = React.useRef(false);
   savedCallback.current = callback;
 
   React.useEffect(() => {
-    const id = setInterval(() => savedCallback.current(), delayMs);
+    const id = setInterval(async () => {
+      if (running.current) return; // prevent overlapping async calls
+      running.current = true;
+      try { await savedCallback.current(); } finally { running.current = false; }
+    }, delayMs);
     return () => clearInterval(id);
   }, [delayMs]);
 }

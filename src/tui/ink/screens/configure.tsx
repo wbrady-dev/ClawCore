@@ -44,6 +44,7 @@ export function ConfigureScreen({
     { label: "Document parser", value: "configure-parser", description: "Docling off, CPU, or GPU" },
     { label: "Image OCR", value: "configure-ocr", description: "Tesseract install and status" },
     { label: "Audio transcription", value: "configure-audio", description: "Whisper model and enablement" },
+    { label: "NER (Entity Extraction)", value: "configure-ner", description: "spaCy model for named entity recognition" },
     { label: "Evidence OS", value: "configure-evidence", description: "Relations, awareness, claims, deep extraction" },
     { label: "Watch paths", value: "configure-watch", description: "Auto-ingest folders and collections" },
     { label: "Ports & defaults", value: "configure-general", description: "Ports, collection, data path" },

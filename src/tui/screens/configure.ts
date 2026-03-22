@@ -33,6 +33,7 @@ export type ConfigureAction =
   | "parser"
   | "ocr"
   | "audio"
+  | "ner"
   | "evidence"
   | "watch"
   | "general";

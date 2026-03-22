@@ -77,24 +77,24 @@ export function getPythonCmd(): string {
   // Fallback to system Python — resolve full path for Task Scheduler compatibility
   if (getPlatform() === "windows") {
     try {
-      const fullPath = execFileSync("where", ["python"], { stdio: "pipe" }).toString().trim().split("\n")[0].trim();
+      const fullPath = execFileSync("where", ["python"], { stdio: "pipe", timeout: 5000 }).toString().trim().split("\n")[0].trim();
       if (fullPath && existsSync(fullPath)) return fullPath;
     } catch {}
     try {
-      execFileSync("python", ["--version"], { stdio: "pipe" });
+      execFileSync("python", ["--version"], { stdio: "pipe", timeout: 5000 });
       return "python";
     } catch {}
   }
   try {
-    const fullPath = execFileSync("which", ["python3"], { stdio: "pipe" }).toString().trim();
+    const fullPath = execFileSync("which", ["python3"], { stdio: "pipe", timeout: 5000 }).toString().trim();
     if (fullPath && existsSync(fullPath)) return fullPath;
   } catch {}
   try {
-    execFileSync("python3", ["--version"], { stdio: "pipe" });
+    execFileSync("python3", ["--version"], { stdio: "pipe", timeout: 5000 });
     return "python3";
   } catch {}
   try {
-    execFileSync("python", ["--version"], { stdio: "pipe" });
+    execFileSync("python", ["--version"], { stdio: "pipe", timeout: 5000 });
     return "python";
   } catch {}
   return "python";
@@ -104,12 +104,12 @@ export function getPythonCmd(): string {
 export function getSystemPythonCmd(): string {
   if (getPlatform() === "windows") {
     try {
-      execFileSync("python", ["--version"], { stdio: "pipe" });
+      execFileSync("python", ["--version"], { stdio: "pipe", timeout: 5000 });
       return "python";
     } catch {}
   }
   try {
-    execFileSync("python3", ["--version"], { stdio: "pipe" });
+    execFileSync("python3", ["--version"], { stdio: "pipe", timeout: 5000 });
     return "python3";
   } catch {}
   return "python";
@@ -351,11 +351,11 @@ export function checkServices(): ServiceStatus {
     // Check systemd services (Linux)
     if (plat === "linux") {
       try {
-        const out = execFileSync("systemctl", ["--user", "is-active", "clawcore-models"], { stdio: "pipe" }).toString().trim();
+        const out = execFileSync("systemctl", ["--user", "is-active", "clawcore-models"], { stdio: "pipe", timeout: 5000 }).toString().trim();
         if (out === "active") result.models.running = true;
       } catch {}
       try {
-        const out = execFileSync("systemctl", ["--user", "is-active", "clawcore-rag"], { stdio: "pipe" }).toString().trim();
+        const out = execFileSync("systemctl", ["--user", "is-active", "clawcore-rag"], { stdio: "pipe", timeout: 5000 }).toString().trim();
         if (out === "active") result.clawcore.running = true;
       } catch {}
     }
@@ -363,7 +363,7 @@ export function checkServices(): ServiceStatus {
     // Check launchd services (Mac)
     if (plat === "mac") {
       try {
-        const out = execFileSync("launchctl", ["list"], { stdio: "pipe" }).toString();
+        const out = execFileSync("launchctl", ["list"], { stdio: "pipe", timeout: 5000 }).toString();
         if (out.includes("com.clawcore.models")) result.models.running = true;
         if (out.includes("com.clawcore.rag")) result.clawcore.running = true;
       } catch {}
@@ -407,11 +407,11 @@ export function checkServices(): ServiceStatus {
 function isPortOpen(port: number): boolean {
   try {
     if (getPlatform() === "windows") {
-      const out = execFileSync("netstat", ["-an"], { stdio: "pipe" }).toString();
+      const out = execFileSync("netstat", ["-an"], { stdio: "pipe", timeout: 5000 }).toString();
       // Check each line individually — port AND LISTENING must be on the same line
       return out.split("\n").some((line) => line.includes(`:${port}`) && line.includes("LISTENING"));
     } else {
-      execFileSync("lsof", ["-i", `:${port}`, "-sTCP:LISTEN"], { stdio: "pipe" });
+      execFileSync("lsof", ["-i", `:${port}`, "-sTCP:LISTEN"], { stdio: "pipe", timeout: 5000 });
       return true;
     }
   } catch {
@@ -556,11 +556,11 @@ export function stopServices(): { success: boolean; error?: string } {
       try { endTask(TASK_RAG); } catch {}
       try { endTask(TASK_MODELS); } catch {}
     } else if (plat === "linux") {
-      try { execFileSync("systemctl", ["--user", "stop", "clawcore-rag"], { stdio: "pipe" }); } catch {}
-      try { execFileSync("systemctl", ["--user", "stop", "clawcore-models"], { stdio: "pipe" }); } catch {}
+      try { execFileSync("systemctl", ["--user", "stop", "clawcore-rag"], { stdio: "pipe", timeout: 10000 }); } catch {}
+      try { execFileSync("systemctl", ["--user", "stop", "clawcore-models"], { stdio: "pipe", timeout: 10000 }); } catch {}
     } else if (plat === "mac") {
-      try { execFileSync("launchctl", ["stop", "com.clawcore.rag"], { stdio: "pipe" }); } catch {}
-      try { execFileSync("launchctl", ["stop", "com.clawcore.models"], { stdio: "pipe" }); } catch {}
+      try { execFileSync("launchctl", ["stop", "com.clawcore.rag"], { stdio: "pipe", timeout: 10000 }); } catch {}
+      try { execFileSync("launchctl", ["stop", "com.clawcore.models"], { stdio: "pipe", timeout: 10000 }); } catch {}
     }
 
     // 3. Clean up PID files (don't try to kill — HTTP shutdown handles it)
@@ -666,12 +666,12 @@ WantedBy=default.target
   try {
     writeFileSync(resolve(userUnitDir, "clawcore-models.service"), modelsUnit);
     writeFileSync(resolve(userUnitDir, "clawcore-rag.service"), ragUnit);
-    execFileSync("systemctl", ["--user", "daemon-reload"], { stdio: "pipe" });
-    execFileSync("systemctl", ["--user", "enable", "clawcore-models", "clawcore-rag"], { stdio: "pipe" });
-    execFileSync("systemctl", ["--user", "start", "clawcore-models"], { stdio: "pipe" });
-    execFileSync("systemctl", ["--user", "start", "clawcore-rag"], { stdio: "pipe" });
+    execFileSync("systemctl", ["--user", "daemon-reload"], { stdio: "pipe", timeout: 10000 });
+    execFileSync("systemctl", ["--user", "enable", "clawcore-models", "clawcore-rag"], { stdio: "pipe", timeout: 10000 });
+    execFileSync("systemctl", ["--user", "start", "clawcore-models"], { stdio: "pipe", timeout: 10000 });
+    execFileSync("systemctl", ["--user", "start", "clawcore-rag"], { stdio: "pipe", timeout: 10000 });
     // Enable lingering so user services survive logout
-    try { execFileSync("loginctl", ["enable-linger"], { stdio: "pipe" }); } catch {}
+    try { execFileSync("loginctl", ["enable-linger"], { stdio: "pipe", timeout: 10000 }); } catch {}
     return { success: true };
   } catch (e) {
     return { success: false, error: String(e) };
@@ -680,16 +680,16 @@ WantedBy=default.target
 
 export function removeLinuxServices(): { success: boolean } {
   try {
-    execFileSync("systemctl", ["--user", "stop", "clawcore-rag", "clawcore-models"], { stdio: "pipe" });
+    execFileSync("systemctl", ["--user", "stop", "clawcore-rag", "clawcore-models"], { stdio: "pipe", timeout: 10000 });
   } catch {}
   try {
-    execFileSync("systemctl", ["--user", "disable", "clawcore-rag", "clawcore-models"], { stdio: "pipe" });
+    execFileSync("systemctl", ["--user", "disable", "clawcore-rag", "clawcore-models"], { stdio: "pipe", timeout: 10000 });
   } catch {}
   const userUnitDir = resolve(homedir(), ".config", "systemd", "user");
   try { unlinkSync(resolve(userUnitDir, "clawcore-rag.service")); } catch {}
   try { unlinkSync(resolve(userUnitDir, "clawcore-models.service")); } catch {}
   try {
-    execFileSync("systemctl", ["--user", "daemon-reload"], { stdio: "pipe" });
+    execFileSync("systemctl", ["--user", "daemon-reload"], { stdio: "pipe", timeout: 10000 });
   } catch {}
   return { success: true };
 }
@@ -749,10 +749,10 @@ ${entryArgs.map(a => `    <string>${escapeXml(a)}</string>`).join("\n")}
     writeFileSync(modelsPath, modelsPlist);
     writeFileSync(ragPath, ragPlist);
     // Unload first to handle reinstall case
-    try { execFileSync("launchctl", ["unload", modelsPath], { stdio: "pipe" }); } catch {}
-    try { execFileSync("launchctl", ["unload", ragPath], { stdio: "pipe" }); } catch {}
-    execFileSync("launchctl", ["load", modelsPath], { stdio: "pipe" });
-    execFileSync("launchctl", ["load", ragPath], { stdio: "pipe" });
+    try { execFileSync("launchctl", ["unload", modelsPath], { stdio: "pipe", timeout: 10000 }); } catch {}
+    try { execFileSync("launchctl", ["unload", ragPath], { stdio: "pipe", timeout: 10000 }); } catch {}
+    execFileSync("launchctl", ["load", modelsPath], { stdio: "pipe", timeout: 10000 });
+    execFileSync("launchctl", ["load", ragPath], { stdio: "pipe", timeout: 10000 });
     return { success: true };
   } catch (e) {
     return { success: false, error: String(e) };
@@ -763,8 +763,8 @@ export function removeMacServices(): { success: boolean } {
   const plistDir = resolve(homedir(), "Library", "LaunchAgents");
   const modelsPath = resolve(plistDir, "com.clawcore.models.plist");
   const ragPath = resolve(plistDir, "com.clawcore.rag.plist");
-  try { execFileSync("launchctl", ["unload", ragPath], { stdio: "pipe" }); } catch {}
-  try { execFileSync("launchctl", ["unload", modelsPath], { stdio: "pipe" }); } catch {}
+  try { execFileSync("launchctl", ["unload", ragPath], { stdio: "pipe", timeout: 10000 }); } catch {}
+  try { execFileSync("launchctl", ["unload", modelsPath], { stdio: "pipe", timeout: 10000 }); } catch {}
   try { unlinkSync(ragPath); } catch {}
   try { unlinkSync(modelsPath); } catch {}
   return { success: true };
@@ -773,7 +773,7 @@ export function removeMacServices(): { success: boolean } {
 export function isAdmin(): boolean {
   if (getPlatform() !== "windows") return process.getuid?.() === 0;
   try {
-    execFileSync("net", ["session"], { stdio: "pipe" });
+    execFileSync("net", ["session"], { stdio: "pipe", timeout: 10000 });
     return true;
   } catch {
     return false;

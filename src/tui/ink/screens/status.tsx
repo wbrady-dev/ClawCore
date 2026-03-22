@@ -3,7 +3,7 @@
  */
 import React, { useState, useEffect } from "react";
 import { Box, Text } from "ink";
-import { execFileSync } from "child_process";
+import { execFile } from "child_process";
 import { existsSync, readFileSync, statSync } from "fs";
 import { resolve } from "path";
 import { Section, KV, StatusDot, Menu, t, useInterval } from "../components.js";
@@ -101,15 +101,28 @@ export function StatusScreen({ onBack }: { onBack: () => void }) {
   const embedOk = svc.models.running || modelHealth?.models?.embed?.ready === true;
   const rerankOk = svc.models.running || modelHealth?.models?.rerank?.ready === true;
   const doclingOk = modelHealth?.models?.docling?.ready === true;
-  const ocrDetected = (() => {
-    try { execFileSync("tesseract", ["--version"], { stdio: "pipe", timeout: 3000 }); return true; } catch {}
-    if (getPlatform() === "windows") {
-      for (const p of ["C:\\Program Files\\Tesseract-OCR\\tesseract.exe", "C:\\Program Files (x86)\\Tesseract-OCR\\tesseract.exe"]) {
-        try { execFileSync(p, ["--version"], { stdio: "pipe", timeout: 3000 }); return true; } catch {}
+  const doclingDevice = config?.docling_device ?? "off";
+
+  // OCR detection — async to avoid blocking render
+  const [ocrDetected, setOcrDetected] = useState(false);
+  useEffect(() => {
+    let cancelled = false;
+    const tryExec = (cmd: string): Promise<boolean> =>
+      new Promise((res) => execFile(cmd, ["--version"], { timeout: 3000 }, (err) => res(!err)));
+
+    (async () => {
+      let found = await tryExec("tesseract");
+      if (!found && getPlatform() === "windows") {
+        for (const p of ["C:\\Program Files\\Tesseract-OCR\\tesseract.exe", "C:\\Program Files (x86)\\Tesseract-OCR\\tesseract.exe"]) {
+          found = await tryExec(p);
+          if (found) break;
+        }
       }
-    }
-    return false;
-  })();
+      if (!cancelled) setOcrDetected(found);
+    })();
+    return () => { cancelled = true; };
+  }, [tick]);
+
   const embedName = config?.embed_model ?? "not configured";
   const rerankName = config?.rerank_model ?? "not configured";
 
@@ -150,7 +163,7 @@ export function StatusScreen({ onBack }: { onBack: () => void }) {
       <Section title="Models" />
       <Text>{"  " + (embedOk ? t.ok("●") : t.err("○")) + " " + t.label("Embed") + "   " + t.value(embedName)}</Text>
       <Text>{"  " + (rerankOk ? t.ok("●") : t.err("○")) + " " + t.label("Rerank") + "  " + t.value(rerankName)}</Text>
-      <Text>{"  " + (doclingOk ? t.ok("●") : t.dim("○")) + " " + t.label("Docling") + " " + (doclingOk ? t.value(config?.docling_device ?? "cpu") : t.dim("off"))}</Text>
+      <Text>{"  " + (doclingOk ? t.ok("●") : t.dim("○")) + " " + t.label("Docling") + " " + (doclingOk ? t.value(doclingDevice.toUpperCase()) : doclingDevice === "off" ? t.dim("off") : t.warn(doclingDevice.toUpperCase() + " (not loaded)"))}</Text>
       <Text>{"  " + (ocrDetected ? t.ok("●") : t.dim("○")) + " " + t.label("OCR") + "     " + (ocrDetected ? t.value("Tesseract") : t.dim("off"))}</Text>
       <Text>{"  " + (modelHealth?.ner?.ready === true ? t.ok("●") : t.dim("○")) + " " + t.label("NER") + "     " + (modelHealth?.ner?.ready === true ? t.value("en_core_web_sm") : t.dim("off"))}</Text>
       <Text>{"  " + t.dim("○") + " " + t.label("Query Expansion") + " " + expansionLabel}</Text>

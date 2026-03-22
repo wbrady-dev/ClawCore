@@ -83,13 +83,20 @@ async function configureGDrive(): Promise<void> {
   const clientSecret = env.GDRIVE_CLIENT_SECRET ?? "";
   const connected = hasGDriveCredentials();
 
+  let effectiveClientId = clientId;
+  let effectiveClientSecret = clientSecret;
+
   const action = await promptMenu({
     title: "Google Drive",
     message: connected
       ? `${currentFolders.length} configured folder(s), sync every ${currentInterval}s.`
-      : "Add Google Drive OAuth credentials, then connect your account.",
+      : effectiveClientId && effectiveClientSecret
+        ? "Credentials set. Connect your Google account to start syncing."
+        : "Set OAuth credentials from Google Cloud Console, then connect.",
     items: [
-      ...(clientId && clientSecret && !connected ? [{ label: "Connect Google account", value: "auth" }] : []),
+      ...(!effectiveClientId || !effectiveClientSecret ? [{ label: "Set OAuth credentials", value: "credentials", description: "Enter Client ID and Secret from console.cloud.google.com" }] : []),
+      ...(effectiveClientId && effectiveClientSecret && !connected ? [{ label: "Connect Google account", value: "auth" }] : []),
+      ...(effectiveClientId && effectiveClientSecret ? [{ label: "Update OAuth credentials", value: "credentials", description: "Change Client ID or Secret" }] : []),
       ...(connected ? [{
         label: currentEnabled ? "Disable ingestion" : "Enable ingestion",
         value: currentEnabled ? "disable" : "enable",
@@ -104,8 +111,36 @@ async function configureGDrive(): Promise<void> {
 
   if (!action || action === "__back__") return;
 
+  if (action === "credentials") {
+    const newClientId = await promptText({
+      title: "Google Drive — OAuth Client ID",
+      message: "From console.cloud.google.com > APIs > Credentials > OAuth 2.0 Client ID",
+      label: "Client ID",
+      initial: effectiveClientId,
+    });
+    if (!newClientId) return;
+
+    const newClientSecret = await promptText({
+      title: "Google Drive — OAuth Client Secret",
+      message: "The secret associated with your OAuth client",
+      label: "Client Secret",
+      initial: effectiveClientSecret,
+      mask: "*",
+    });
+    if (!newClientSecret) return;
+
+    updateEnvValues(root, {
+      GDRIVE_CLIENT_ID: newClientId,
+      GDRIVE_CLIENT_SECRET: newClientSecret,
+    });
+    effectiveClientId = newClientId;
+    effectiveClientSecret = newClientSecret;
+    await showNotice("Google Drive", "OAuth credentials saved. Use 'Connect Google account' to authenticate.");
+    return;
+  }
+
   if (action === "auth") {
-    const success = await runGDriveOAuth(clientId, clientSecret);
+    const success = await runGDriveOAuth(effectiveClientId, effectiveClientSecret);
     await showNotice("Google Drive", success ? "Google account connected." : "Authentication failed.");
     return;
   }
