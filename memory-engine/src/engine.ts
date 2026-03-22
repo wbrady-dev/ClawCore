@@ -1395,9 +1395,10 @@ export class LcmContextEngine implements ContextEngine {
     const claimExtractionEnabled = this.config.relationsClaimExtractionEnabled || this.config.relationsUserClaimExtractionEnabled;
     if (this.graphDb && claimExtractionEnabled && (stored.role === "user" || stored.role === "assistant")) {
       try {
-        const { extractClaimsFast, extractClaimsFromUserExplicit, extractDecisionsFromText } = await import("./relations/claim-extract.js");
+        const { extractClaimsFast, extractClaimsFromUserExplicit, extractDecisionsFromText, extractLoopsFromText } = await import("./relations/claim-extract.js");
         const { storeClaimExtractionResults } = await import("./relations/claim-store.js");
         const { upsertDecision } = await import("./relations/decision-store.js");
+        const { openLoop } = await import("./relations/loop-store.js");
         const { withWriteTransaction } = await import("./relations/evidence-log.js");
         const graphDb = this.graphDb;
 
@@ -1430,6 +1431,18 @@ export class LcmContextEngine implements ContextEngine {
                 decisionText: d.decisionText,
                 sourceType: d.sourceType,
                 sourceId: d.sourceId,
+              });
+            }
+
+            // Extract loops/tasks (user messages only)
+            const loops = extractLoopsFromText(stored.content, String(msgRecord.messageId));
+            for (const l of loops) {
+              openLoop(graphDb, {
+                scopeId: 1,
+                loopType: l.loopType,
+                text: l.text,
+                sourceType: l.sourceType,
+                sourceId: l.sourceId,
               });
             }
           }

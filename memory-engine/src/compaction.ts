@@ -7,9 +7,10 @@ import type { GraphDb } from "./relations/types.js";
 import { extractFast } from "./relations/entity-extract.js";
 import { storeExtractionResult } from "./relations/graph-store.js";
 import { loadTerms } from "./relations/terms.js";
-import { extractClaimsFast, extractDecisionsFromText } from "./relations/claim-extract.js";
+import { extractClaimsFast, extractDecisionsFromText, extractLoopsFromText } from "./relations/claim-extract.js";
 import { storeClaimExtractionResults } from "./relations/claim-store.js";
 import { upsertDecision } from "./relations/decision-store.js";
+import { openLoop } from "./relations/loop-store.js";
 import { withWriteTransaction } from "./relations/evidence-log.js";
 
 // ── Public types ─────────────────────────────────────────────────────────────
@@ -1118,6 +1119,29 @@ export class CompactionEngine {
       } catch (err) {
         // Non-fatal: decision extraction failure must not break compaction
         console.warn("[cc-mem] compaction decision extraction failed:", err instanceof Error ? err.message : String(err));
+      }
+
+      // Loop/task extraction from user messages
+      try {
+        const graphDb = this.graphDb;
+        withWriteTransaction(graphDb, () => {
+          for (const msg of messageContents) {
+            if (msg.role !== "user") continue;
+            const loops = extractLoopsFromText(msg.content, String(msg.messageId));
+            for (const l of loops) {
+              openLoop(graphDb, {
+                scopeId: 1,
+                loopType: l.loopType,
+                text: l.text,
+                sourceType: l.sourceType,
+                sourceId: l.sourceId,
+              });
+            }
+          }
+        });
+      } catch (err) {
+        // Non-fatal: loop extraction failure must not break compaction
+        console.warn("[cc-mem] compaction loop extraction failed:", err instanceof Error ? err.message : String(err));
       }
     }
 

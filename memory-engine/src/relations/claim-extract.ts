@@ -82,8 +82,9 @@ export function extractClaimsFromToolResult(
 // Strategy 2: User explicit statements (trust 0.9)
 // ---------------------------------------------------------------------------
 
-// Match ALL "Remember:" / "Note:" lines anywhere in text (not just the first at start)
-const USER_EXPLICIT_RE = /(?:^|\n)\s*(?:remember|note|fyi|important|keep\s+in\s+mind)\s*:\s*(.+)/gim;
+// Match ALL "Remember:" / "Remember this:" / "Note:" lines anywhere in text
+// Allows optional words between keyword and colon (e.g., "Remember this:", "Note that:")
+const USER_EXPLICIT_RE = /(?:^|\n)\s*(?:remember(?:\s+\w+)?|note(?:\s+\w+)?|fyi|important|keep\s+in\s+mind|fact)\s*:\s*(.+)/gim;
 
 /**
  * Extract claims from user-prefixed explicit statements.
@@ -338,6 +339,53 @@ export function extractDecisionsFromText(
     results.push({
       topic,
       decisionText,
+      sourceType: "message",
+      sourceId,
+    });
+  }
+
+  return results;
+}
+
+// ---------------------------------------------------------------------------
+// Strategy 6: Loop/task extraction from conversation text
+// ---------------------------------------------------------------------------
+
+const LOOP_RE = /(?:^|\n)\s*(?:task|todo|reminder|action\s*item|open\s*(?:task|item)|follow[\s-]?up)\s*:\s*(.+)/gim;
+
+export interface LoopExtractionResult {
+  text: string;
+  loopType: "task" | "question" | "follow_up";
+  sourceType: string;
+  sourceId: string;
+}
+
+/**
+ * Extract open loops/tasks from conversation text.
+ * Patterns: "Task: ...", "Todo: ...", "Reminder: ...", "Action item: ...", "Follow-up: ..."
+ */
+export function extractLoopsFromText(
+  text: string,
+  sourceId: string,
+): LoopExtractionResult[] {
+  const results: LoopExtractionResult[] = [];
+  LOOP_RE.lastIndex = 0;
+  let match: RegExpExecArray | null;
+
+  while ((match = LOOP_RE.exec(text)) !== null) {
+    const raw = match[1].trim();
+    const sentence = raw.split(/[.!?]\s/)[0].trim();
+    if (sentence.length < 5 || sentence.length > 300) continue;
+
+    // Determine loop type from the matched keyword
+    const fullMatch = match[0].toLowerCase();
+    let loopType: "task" | "question" | "follow_up" = "task";
+    if (fullMatch.includes("follow")) loopType = "follow_up";
+    else if (fullMatch.includes("reminder")) loopType = "follow_up";
+
+    results.push({
+      text: sentence,
+      loopType,
       sourceType: "message",
       sourceId,
     });
