@@ -165,8 +165,15 @@ export function resetKnowledgeBase(db: Database.Database): { collectionsDeleted:
   db.prepare("DELETE FROM collections").run();
 
   // Compact database file — VACUUM reclaims freed pages, checkpoint flushes WAL
-  try { db.exec("VACUUM"); } catch {}
-  try { db.pragma("wal_checkpoint(TRUNCATE)"); } catch {}
+  try {
+    db.pragma("wal_checkpoint(TRUNCATE)");
+  } catch {}
+  try {
+    db.exec("VACUUM");
+  } catch (e) {
+    // VACUUM may fail with sqlite-vec virtual tables; try page-level shrink instead
+    try { db.pragma("incremental_vacuum"); } catch {}
+  }
 
   return { collectionsDeleted: collCount, documentsDeleted: docCount, chunksDeleted: chunkCount };
 }

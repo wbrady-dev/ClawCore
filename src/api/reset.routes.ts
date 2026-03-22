@@ -38,6 +38,7 @@ export function registerResetRoutes(server: FastifyInstance) {
           try { graphDb.prepare("DELETE FROM entities").run(); } catch {}
           try { graphDb.prepare("DELETE FROM evidence_log").run(); } catch {}
           try { graphDb.pragma("wal_checkpoint(TRUNCATE)"); } catch {}
+          try { graphDb.exec("VACUUM"); } catch {}
           graphCleared = true;
         }
       } catch {
