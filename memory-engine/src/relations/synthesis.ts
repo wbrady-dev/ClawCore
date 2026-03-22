@@ -72,7 +72,13 @@ export async function synthesizeScope(
 
   if (sections.length === 0) return null;
 
-  const evidenceText = sections.join("\n");
+  // Token budget: cap evidence text to prevent LLM context overflow
+  const MAX_EVIDENCE_TOKENS = 3000;
+  let evidenceText = sections.join("\n");
+  const estimatedTokens = Math.ceil(evidenceText.length / 4);
+  if (estimatedTokens > MAX_EVIDENCE_TOKENS) {
+    evidenceText = evidenceText.slice(0, MAX_EVIDENCE_TOKENS * 4) + "\n[... truncated]";
+  }
 
   // Resolve model
   const model = config.relationsDeepExtractionModel || config.summaryModel;

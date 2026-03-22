@@ -73,6 +73,7 @@ export function resetEntityCacheForTests(): void {
 
 /** Invalidate the awareness entity cache so it rebuilds on next query. */
 export function invalidateAwarenessCache(): void {
+  entityCache = [];
   cacheBuiltAt = 0;
 }
 
@@ -344,7 +345,9 @@ export function buildAwarenessNote(
       return null;
     }
 
-    let tokenBudget = config.maxTokens;
+    // Reserve tokens for header "[ClawCore Awareness]\n"
+    const headerTokens = estimateTokens("[ClawCore Awareness]\n");
+    let tokenBudget = config.maxTokens - headerTokens;
 
     // Query 1: Mismatches (25ms guard)
     const mismatches = withBudgetGuard(

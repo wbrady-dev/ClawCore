@@ -19,7 +19,8 @@ const cache = new Map<string, CacheEntry>();
  * Generate a cache key from query parameters.
  */
 export function cacheKey(query: string, collection: string, options: Record<string, unknown> = {}): string {
-  return `${query}|${collection}|${JSON.stringify(options)}`;
+  const sorted = Object.keys(options).sort().reduce<Record<string, unknown>>((acc, k) => { acc[k] = options[k]; return acc; }, {});
+  return `${query}|${collection}|${JSON.stringify(sorted)}`;
 }
 
 /**

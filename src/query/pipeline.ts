@@ -224,12 +224,20 @@ export async function query(
 
   for (const collId of searchCollections) {
     for (const emb of allQueryEmbeddings) {
-      allVectorResults.push(...searchVectors(db, emb, retrieveCount, collId));
+      try {
+        allVectorResults.push(...searchVectors(db, emb, retrieveCount, collId));
+      } catch (err) {
+        logger.warn({ err: err instanceof Error ? err.message : String(err) }, "Vector search failed, continuing with BM25");
+      }
     }
     // BM25 on original query (or entity-boosted for short queries).
     // Running BM25 on all variants adds noise without meaningful recall gain.
     if (useBm25) {
-      allBm25Results.push(...searchBm25(db, entityBoostedQuery, retrieveCount, collId));
+      try {
+        allBm25Results.push(...searchBm25(db, entityBoostedQuery, retrieveCount, collId));
+      } catch (err) {
+        logger.warn({ err: err instanceof Error ? err.message : String(err) }, "BM25 search failed");
+      }
     }
   }
 
@@ -339,7 +347,10 @@ export async function query(
   }
 
   // === Confidence ===
-  const confidence = computeConfidence(topChunks);
+  const bestDistance = allVectorResults.length > 0
+    ? Math.min(...allVectorResults.map((r) => r.distance))
+    : undefined;
+  const confidence = computeConfidence(topChunks, bestDistance);
 
   // === Output Mode ===
   let context: string;
@@ -390,10 +401,6 @@ export async function query(
     elapsedMs: elapsed,
   }, "Query complete");
 
-  const bestDistance = allVectorResults.length > 0
-    ? Math.min(...allVectorResults.map((r) => r.distance))
-    : 0;
-
   const result: QueryResult = {
     context,
     highlighted,
@@ -412,7 +419,7 @@ export async function query(
         vectorHits: allVectorResults.length,
         vectorGated: allVectorResults.length - goodVectorResults.length,
         bm25Hits: allBm25Results.length,
-        bestDistance: Math.round(bestDistance * 1000) / 1000,
+        bestDistance: Math.round((bestDistance ?? 0) * 1000) / 1000,
         reranked: strategy.includes("rerank") && !strategy.includes("skip-rerank"),
       },
     },
@@ -482,21 +489,31 @@ function dedupBySources(chunks: PackedChunk[]): PackedChunk[] {
   return Array.from(bySource.values());
 }
 
-function computeConfidence(chunks: PackedChunk[]): number {
+function computeConfidence(chunks: PackedChunk[], bestDistance?: number): number {
   if (chunks.length === 0) return 0;
-  if (chunks.length === 1) return 0.5;
 
+  // Absolute quality factor from best vector distance (L2: lower = better)
+  const distFactor = bestDistance != null
+    ? (bestDistance < 0.5 ? 0.8 : bestDistance < 0.8 ? 0.5 : bestDistance < 1.0 ? 0.3 : 0.1)
+    : 0.5;
+
+  if (chunks.length === 1) return distFactor;
+
+  // Relative spread-based confidence
   const scores = chunks.map((c) => c.score).sort((a, b) => b - a);
   const separation = scores[0] - (scores[1] ?? 0);
   const spread = scores[0] - scores[scores.length - 1];
   const ratio = spread > 0 ? separation / spread : 0;
 
-  let conf = 0.3;
-  conf += ratio * 0.4;
-  if (spread > 0.01) conf += 0.1;
-  if (spread > 0.05) conf += 0.1;
-  if (chunks.length >= 3) conf += 0.1;
-  return Math.min(1, Math.max(0, conf));
+  let spreadConf = 0.3;
+  spreadConf += ratio * 0.4;
+  if (spread > 0.01) spreadConf += 0.1;
+  if (spread > 0.05) spreadConf += 0.1;
+  if (chunks.length >= 3) spreadConf += 0.1;
+  spreadConf = Math.min(1, Math.max(0, spreadConf));
+
+  // Blend absolute quality with relative ranking
+  return Math.min(1, 0.5 * distFactor + 0.5 * spreadConf);
 }
 
 interface ChunkRow {
@@ -526,32 +543,60 @@ function fetchChunks(db: Database.Database, chunkIds: string[]): ChunkRow[] {
 }
 
 function enrichWithParentContext(db: Database.Database, chunks: ChunkRow[]): ChunkRow[] {
+  if (chunks.length === 0) return [];
+
+  // Batch load: fetch all chunks from relevant documents in one query (avoids N+1)
+  const validChunks = chunks.filter((c) => c.documentId && c.position != null);
+  const docIds = [...new Set(validChunks.map((c) => c.documentId))];
+
+  const neighborMap = new Map<string, Map<number, { id: string; text: string; contextPrefix: string | null; position: number }>>();
+
+  if (docIds.length > 0) {
+    try {
+      const placeholders = docIds.map(() => "?").join(",");
+      const allDocChunks = db.prepare(
+        `SELECT document_id, id, text, context_prefix as contextPrefix, position FROM chunks
+         WHERE document_id IN (${placeholders}) ORDER BY document_id, position`,
+      ).all(...docIds) as { document_id: string; id: string; text: string; contextPrefix: string | null; position: number }[];
+
+      for (const c of allDocChunks) {
+        if (!neighborMap.has(c.document_id)) neighborMap.set(c.document_id, new Map());
+        neighborMap.get(c.document_id)!.set(c.position, c);
+      }
+    } catch {
+      // Fall back to returning chunks as-is
+      return chunks;
+    }
+  }
+
   const enriched: ChunkRow[] = [];
   const seen = new Set<string>();
   for (const chunk of chunks) {
     if (seen.has(chunk.id)) continue;
     seen.add(chunk.id);
 
-    // Skip enrichment if we don't have valid document/position info
     if (!chunk.documentId || chunk.position == null) {
       enriched.push(chunk);
       continue;
     }
 
-    try {
-      const neighbors = db.prepare(
-        `SELECT id, text, context_prefix as contextPrefix, position FROM chunks
-         WHERE document_id = ? AND position BETWEEN ? AND ? ORDER BY position`,
-      ).all(chunk.documentId, Math.max(0, chunk.position - 1), chunk.position + 1) as {
-        id: string; text: string; contextPrefix: string | null; position: number;
-      }[];
-      if (neighbors.length > 1) {
-        enriched.push({ ...chunk, text: neighbors.map((n) => n.text).join("\n\n") });
-        for (const n of neighbors) seen.add(n.id);
-      } else {
-        enriched.push(chunk);
-      }
-    } catch {
+    const docChunks = neighborMap.get(chunk.documentId);
+    if (!docChunks) {
+      enriched.push(chunk);
+      continue;
+    }
+
+    // Gather neighbors (position - 1, position, position + 1)
+    const neighbors: { id: string; text: string }[] = [];
+    for (let p = Math.max(0, chunk.position - 1); p <= chunk.position + 1; p++) {
+      const n = docChunks.get(p);
+      if (n) neighbors.push(n);
+    }
+
+    if (neighbors.length > 1) {
+      enriched.push({ ...chunk, text: neighbors.map((n) => n.text).join("\n\n") });
+      for (const n of neighbors) seen.add(n.id);
+    } else {
       enriched.push(chunk);
     }
   }

@@ -93,8 +93,11 @@ export function findExistingDuplicates(
           dupes.add(i);
         }
       }
-    } catch {
-      // Empty index or other issue — skip
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (!msg.includes("no such table") && !msg.includes("no rows")) {
+        logger.warn({ error: msg, chunkIndex: i }, "Unexpected error during semantic dedup");
+      }
     }
   }
 

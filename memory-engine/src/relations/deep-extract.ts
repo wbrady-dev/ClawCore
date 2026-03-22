@@ -11,6 +11,7 @@
 import type { ClaimExtractionResult } from "./types.js";
 import type { LcmDependencies } from "../types.js";
 import type { LcmConfig } from "../db/config.js";
+import { buildCanonicalKey } from "./claim-store.js";
 
 // ---------------------------------------------------------------------------
 // Model resolution
@@ -80,11 +81,14 @@ export async function extractClaimsDeep(
     const parsed = parseJsonArray(content);
     if (!parsed) return [];
 
+    const MAX_FIELD_LENGTH = 500;
+    const MAX_ITEMS = 50;
+
     const results: ClaimExtractionResult[] = [];
-    for (const item of parsed) {
-      const subject = String(item.subject ?? "").toLowerCase().trim();
-      const predicate = String(item.predicate ?? "").toLowerCase().trim();
-      const objectText = String(item.object ?? "").trim();
+    for (const item of parsed.slice(0, MAX_ITEMS)) {
+      const subject = String(item.subject ?? "").toLowerCase().trim().slice(0, MAX_FIELD_LENGTH);
+      const predicate = String(item.predicate ?? "").toLowerCase().trim().slice(0, MAX_FIELD_LENGTH);
+      const objectText = String(item.object ?? "").trim().slice(0, MAX_FIELD_LENGTH);
       const confidence = typeof item.confidence === "number" ? Math.min(1, Math.max(0, item.confidence)) : 0.5;
 
       if (!subject || !predicate || !objectText) continue;
@@ -98,7 +102,7 @@ export async function extractClaimsDeep(
           confidence,
           trustScore: 0.6,
           sourceAuthority: 0.6,
-          canonicalKey: `${subject}::${predicate}::${objectText.toLowerCase().slice(0, 50)}`,
+          canonicalKey: buildCanonicalKey(subject, predicate),
         },
         evidence: {
           sourceType: "deep_extraction",
