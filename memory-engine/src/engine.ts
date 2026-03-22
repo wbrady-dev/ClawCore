@@ -1453,6 +1453,49 @@ export class LcmContextEngine implements ContextEngine {
       }
     }
 
+    // Fast relation extraction (regex-based, zero tokens)
+    // Runs after entity extraction so entity names are available in the DB
+    if (this.graphDb && this.config.relationsEnabled && stored.content.length > 20) {
+      try {
+        const { extractRelationsFast } = await import("./relations/claim-extract.js");
+        const { upsertRelation } = await import("./relations/relation-store.js");
+        const { withWriteTransaction: wt } = await import("./relations/evidence-log.js");
+        const gdb = this.graphDb;
+
+        // Get known entity names from the DB
+        const entityRows = gdb.prepare(
+          "SELECT name FROM entities ORDER BY last_seen_at DESC LIMIT 200",
+        ).all() as Array<{ name: string }>;
+        const entityNames = entityRows.map((r) => r.name);
+
+        if (entityNames.length >= 2) {
+          const relations = extractRelationsFast(stored.content, entityNames, String(msgRecord.messageId));
+          if (relations.length > 0) {
+            wt(gdb, () => {
+              for (const rel of relations) {
+                // Look up entity IDs by name
+                const subj = gdb.prepare("SELECT id FROM entities WHERE name = ?").get(rel.subjectName) as { id: number } | undefined;
+                const obj = gdb.prepare("SELECT id FROM entities WHERE name = ?").get(rel.objectName) as { id: number } | undefined;
+                if (subj && obj) {
+                  upsertRelation(gdb, {
+                    scopeId: 1,
+                    subjectEntityId: subj.id,
+                    predicate: rel.predicate,
+                    objectEntityId: obj.id,
+                    confidence: rel.confidence,
+                    sourceType: rel.sourceType,
+                    sourceId: rel.sourceId,
+                  });
+                }
+              }
+            });
+          }
+        }
+      } catch (err) {
+        console.warn("[cc-mem] fast relation extraction failed:", err instanceof Error ? err.message : String(err));
+      }
+    }
+
     return { ingested: true };
   }
 

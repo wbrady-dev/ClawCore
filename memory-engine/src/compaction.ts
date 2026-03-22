@@ -1143,6 +1143,44 @@ export class CompactionEngine {
         // Non-fatal: loop extraction failure must not break compaction
         console.warn("[cc-mem] compaction loop extraction failed:", err instanceof Error ? err.message : String(err));
       }
+
+      // Fast relation extraction (regex-based, zero tokens)
+      try {
+        const graphDb = this.graphDb;
+        const { extractRelationsFast } = await import("./relations/claim-extract.js");
+        const { upsertRelation } = await import("./relations/relation-store.js");
+
+        // Get known entity names
+        const entityRows = graphDb.prepare(
+          "SELECT name FROM entities ORDER BY last_seen_at DESC LIMIT 200",
+        ).all() as Array<{ name: string }>;
+        const entityNames = entityRows.map((r: { name: string }) => r.name);
+
+        if (entityNames.length >= 2) {
+          withWriteTransaction(graphDb, () => {
+            for (const msg of messageContents) {
+              const relations = extractRelationsFast(msg.content, entityNames, String(msg.messageId));
+              for (const rel of relations) {
+                const subj = graphDb.prepare("SELECT id FROM entities WHERE name = ?").get(rel.subjectName) as { id: number } | undefined;
+                const obj = graphDb.prepare("SELECT id FROM entities WHERE name = ?").get(rel.objectName) as { id: number } | undefined;
+                if (subj && obj) {
+                  upsertRelation(graphDb, {
+                    scopeId: 1,
+                    subjectEntityId: subj.id,
+                    predicate: rel.predicate,
+                    objectEntityId: obj.id,
+                    confidence: rel.confidence,
+                    sourceType: rel.sourceType,
+                    sourceId: rel.sourceId,
+                  });
+                }
+              }
+            }
+          });
+        }
+      } catch (err) {
+        console.warn("[cc-mem] compaction relation extraction failed:", err instanceof Error ? err.message : String(err));
+      }
     }
 
     // Persist the leaf summary

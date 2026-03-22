@@ -395,6 +395,114 @@ export function extractLoopsFromText(
 }
 
 // ---------------------------------------------------------------------------
+// Strategy 7: Fast relation extraction between known entities
+// ---------------------------------------------------------------------------
+
+const RELATION_VERBS: Array<{ re: RegExp; predicate: string }> = [
+  { re: /\bis\s+(?:the\s+)?(?:a\s+)?backup\s+(?:server\s+)?for\b/i, predicate: "backup_for" },
+  { re: /\bbackup(?:s)?\s+(?:server\s+)?(?:for|of)\b/i, predicate: "backup_for" },
+  { re: /\bdepends?\s+on\b/i, predicate: "depends_on" },
+  { re: /\breli(?:es|ed)\s+on\b/i, predicate: "depends_on" },
+  { re: /\buses?\b/i, predicate: "uses" },
+  { re: /\brequires?\b/i, predicate: "requires" },
+  { re: /\bleads?\b/i, predicate: "leads" },
+  { re: /\bowns?\b/i, predicate: "owns" },
+  { re: /\bmanages?\b/i, predicate: "manages" },
+  { re: /\bmaintains?\b/i, predicate: "maintains" },
+  { re: /\bruns?\s+on\b/i, predicate: "runs_on" },
+  { re: /\bconnects?\s+to\b/i, predicate: "connects_to" },
+  { re: /\bhandles?\b/i, predicate: "handles" },
+  { re: /\bprocesses?\b/i, predicate: "processes" },
+  { re: /\bserves?\b/i, predicate: "serves" },
+  { re: /\bpowers?\b/i, predicate: "powers" },
+  { re: /\bis\s+(?:a\s+)?(?:part|component|module|service|member)\s+of\b/i, predicate: "part_of" },
+  { re: /\bbelongs?\s+to\b/i, predicate: "part_of" },
+  { re: /\bcontains?\b/i, predicate: "contains" },
+  { re: /\bincludes?\b/i, predicate: "contains" },
+  { re: /\bdeployed\s+(?:on|to|in)\b/i, predicate: "deployed_on" },
+  { re: /\bhosted\s+(?:on|by|in)\b/i, predicate: "hosted_on" },
+];
+
+export interface RelationExtractionResult {
+  subjectName: string;
+  predicate: string;
+  objectName: string;
+  confidence: number;
+  sourceType: string;
+  sourceId: string;
+}
+
+/**
+ * Extract relations between known entity names using regex patterns.
+ * Pure regex — no LLM calls, zero tokens.
+ * Scans for pairs of entity names in the same sentence with a relationship verb between them.
+ */
+export function extractRelationsFast(
+  text: string,
+  entityNames: string[],
+  sourceId: string,
+): RelationExtractionResult[] {
+  if (!text || entityNames.length < 2) return [];
+
+  const results: RelationExtractionResult[] = [];
+  const seen = new Set<string>();
+
+  // Split into sentences for locality
+  const sentences = text.split(/[.!?\n]+/).filter((s) => s.trim().length > 10);
+
+  for (const sentence of sentences) {
+    const lowerSentence = sentence.toLowerCase();
+
+    // Find which entities appear in this sentence
+    const presentEntities: string[] = [];
+    for (const name of entityNames) {
+      if (lowerSentence.includes(name.toLowerCase())) {
+        presentEntities.push(name);
+      }
+    }
+    if (presentEntities.length < 2) continue;
+
+    // For each pair of entities, check for relationship verbs between them
+    for (let i = 0; i < presentEntities.length; i++) {
+      for (let j = 0; j < presentEntities.length; j++) {
+        if (i === j) continue;
+        const subj = presentEntities[i];
+        const obj = presentEntities[j];
+
+        // Find positions in sentence
+        const subjIdx = lowerSentence.indexOf(subj.toLowerCase());
+        const objIdx = lowerSentence.indexOf(obj.toLowerCase());
+        if (subjIdx < 0 || objIdx < 0 || subjIdx >= objIdx) continue;
+
+        // Extract text between the two entities
+        const between = sentence.substring(subjIdx + subj.length, objIdx).trim();
+        if (between.length < 2 || between.length > 100) continue;
+
+        // Check for relationship verbs
+        for (const { re, predicate } of RELATION_VERBS) {
+          if (re.test(between)) {
+            const key = `${subj.toLowerCase()}::${predicate}::${obj.toLowerCase()}`;
+            if (seen.has(key)) break;
+            seen.add(key);
+            results.push({
+              subjectName: subj.toLowerCase(),
+              predicate,
+              objectName: obj.toLowerCase(),
+              confidence: 0.7,
+              sourceType: "message",
+              sourceId,
+            });
+            break; // One predicate per entity pair per sentence
+          }
+        }
+      }
+    }
+  }
+
+  return results;
+}
+
+// ---------------------------------------------------------------------------
 // Sensitive content filter
 // ---------------------------------------------------------------------------
 
