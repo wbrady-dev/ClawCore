@@ -31,7 +31,7 @@ function validateIngestPath(filePath: string): string | null {
   if (basename.startsWith(".env.")) return `Blocked path: '${basename}'`;
 
   // Sensitive directory segments
-  const blockedSegments = new Set([".git", ".ssh"]);
+  const blockedSegments = new Set([".git", ".ssh", ".aws", ".docker", ".gnupg"]);
   for (const seg of segments) {
     if (blockedSegments.has(seg)) return `Blocked path: contains '${seg}/'`;
   }

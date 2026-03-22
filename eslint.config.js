@@ -17,7 +17,7 @@ export default tseslint.config(
         "warn",
         { argsIgnorePattern: "^_", varsIgnorePattern: "^_" },
       ],
-      "@typescript-eslint/no-unused-expressions": "off",
+      "@typescript-eslint/no-unused-expressions": "warn",
       "@typescript-eslint/no-require-imports": "off",
       "no-empty": ["error", { allowEmptyCatch: true }],
       "no-useless-assignment": "warn",

@@ -64,7 +64,10 @@ server.tool(
       }
 
       // Append concise query metadata
-      const meta = `--- ${result.queryInfo.strategy} | ${result.queryInfo.tokensUsed} tokens | ${Math.round(result.queryInfo.confidence * 100)}% conf | ${result.queryInfo.elapsedMs}ms ---`;
+      const conf = Number.isFinite(result.queryInfo.confidence)
+        ? Math.round(result.queryInfo.confidence * 100)
+        : 0;
+      const meta = `--- ${result.queryInfo.strategy} | ${result.queryInfo.tokensUsed} tokens | ${conf}% conf | ${result.queryInfo.elapsedMs}ms ---`;
 
       return {
         content: [{ type: "text", text: `${result.context}\n${meta}` }],
