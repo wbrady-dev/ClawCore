@@ -1,4 +1,3 @@
-const FILE_BLOCK_RE = /<file\b([^>]*)>([\s\S]*?)<\/file>/gi;
 const FILE_ID_RE = /\bfile_[a-f0-9]{16}\b/gi;
 
 const CODE_EXTENSIONS = new Set([
@@ -182,7 +181,12 @@ function uniqueOrdered(values: Iterable<string>): string[] {
 }
 
 function exploreJson(content: string): string {
-  const parsed = JSON.parse(content) as unknown;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(content);
+  } catch {
+    return "Structured summary (JSON): failed to parse as valid JSON.";
+  }
 
   const describe = (value: unknown, depth = 0): string => {
     if (depth >= 2) {
@@ -243,7 +247,7 @@ function exploreYaml(content: string): string {
     content
       .split(/\r?\n/)
       .map((line) => {
-        const match = line.match(/^([A-Za-z0-9_.-]+):\s*(?:#.*)?$/);
+        const match = line.match(/^([A-Za-z0-9_.-]+):(?:\s|$)/);
         return match ? match[1] : "";
       })
       .filter((key) => key.length > 0),
@@ -277,6 +281,15 @@ export function exploreStructuredData(
   mimeType?: string,
   fileName?: string,
 ): string {
+  const MAX_STRUCTURED_CHARS = 10_000_000; // 10MB
+  if (content.length > MAX_STRUCTURED_CHARS) {
+    const lineCount = content.slice(0, MAX_STRUCTURED_CHARS).split(/\r?\n/).length;
+    return [
+      `Structured summary: file too large for detailed analysis (${(content.length / 1_000_000).toFixed(1)} MB).`,
+      `Estimated lines: ${lineCount.toLocaleString("en-US")}+.`,
+    ].join("\n");
+  }
+
   const extension = collectFileNameExtension(fileName) ?? guessMimeExtension(mimeType);
   const normalizedMime = mimeType?.trim().toLowerCase() ?? "";
 
@@ -434,13 +447,21 @@ async function exploreText(params: ExplorationSummaryInput): Promise<string> {
       headers,
     });
 
+    const SUMMARIZE_TIMEOUT_MS = 60_000;
+
     try {
-      const summary = await params.summarizeText(prompt);
+      const summary = await Promise.race([
+        params.summarizeText(prompt),
+        new Promise<null>((resolve) => setTimeout(() => resolve(null), SUMMARIZE_TIMEOUT_MS)),
+      ]);
       if (typeof summary === "string" && summary.trim().length > 0) {
         return summary.trim();
       }
-    } catch {
-      // Use deterministic fallback if model summarization fails.
+      if (summary === null) {
+        console.warn("[cc-mem] LLM text summarization timed out, using deterministic fallback");
+      }
+    } catch (err) {
+      console.warn(`[cc-mem] LLM text summarization failed, using deterministic fallback: ${err instanceof Error ? err.message : String(err)}`);
     }
   }
 
@@ -448,10 +469,10 @@ async function exploreText(params: ExplorationSummaryInput): Promise<string> {
 }
 
 export function parseFileBlocks(content: string): FileBlock[] {
+  const FILE_BLOCK_RE = /<file\b([^>]*)>([\s\S]*?)<\/file>/gi;
   const blocks: FileBlock[] = [];
   let match: RegExpExecArray | null;
 
-  FILE_BLOCK_RE.lastIndex = 0;
   while ((match = FILE_BLOCK_RE.exec(content)) !== null) {
     const fullMatch = match[0];
     const rawAttrs = match[1] ?? "";
