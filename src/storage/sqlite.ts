@@ -1,13 +1,24 @@
 import Database from "better-sqlite3";
 import * as sqliteVec from "sqlite-vec";
 import { mkdirSync } from "fs";
-import { dirname } from "path";
+import { dirname, resolve } from "path";
 import { logger } from "../utils/logger.js";
 
 let db: Database.Database | null = null;
+let storedPath: string | null = null;
 
 export function getDb(dbPath: string): Database.Database {
-  if (db) return db;
+  const normalized = resolve(dbPath);
+  if (db) {
+    if (storedPath && storedPath !== normalized) {
+      logger.warn(
+        { expected: storedPath, received: normalized },
+        "getDb called with different path — returning existing connection",
+      );
+    }
+    return db;
+  }
+  storedPath = normalized;
 
   mkdirSync(dirname(dbPath), { recursive: true });
 

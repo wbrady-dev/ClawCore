@@ -7,12 +7,24 @@
 
 import Database from "better-sqlite3";
 import { mkdirSync } from "fs";
-import { dirname } from "path";
+import { dirname, resolve } from "path";
+import { logger } from "../utils/logger.js";
 
 let graphDb: Database.Database | null = null;
+let storedGraphPath: string | null = null;
 
 export function getGraphDb(dbPath: string): Database.Database {
-  if (graphDb) return graphDb;
+  const normalized = resolve(dbPath);
+  if (graphDb) {
+    if (storedGraphPath && storedGraphPath !== normalized) {
+      logger.warn(
+        { expected: storedGraphPath, received: normalized },
+        "getGraphDb called with different path — returning existing connection",
+      );
+    }
+    return graphDb;
+  }
+  storedGraphPath = normalized;
 
   mkdirSync(dirname(dbPath), { recursive: true });
 

@@ -252,8 +252,8 @@ def embeddings():
         "model": EMBED_MODEL_ID,
         "created": int(time.time()),
         "usage": {
-            "prompt_tokens": sum(len(t.split()) for t in input_text),
-            "total_tokens": sum(len(t.split()) for t in input_text),
+            "prompt_tokens": sum(max(len(t) // 4, 1) for t in input_text),
+            "total_tokens": sum(max(len(t) // 4, 1) for t in input_text),
         },
     })
 

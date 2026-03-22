@@ -28,6 +28,15 @@ const SIMILARITY_THRESHOLD = 0.95; // cosine similarity above this = duplicate
 export function findIntraBatchDuplicates(embeddings: number[][]): Set<number> {
   if (embeddings.length < 2) return new Set();
 
+  const MAX_PAIRWISE = 500;
+  if (embeddings.length > MAX_PAIRWISE) {
+    logger.warn(
+      { count: embeddings.length, limit: MAX_PAIRWISE },
+      "Batch too large for pairwise dedup — skipping intra-batch check",
+    );
+    return new Set();
+  }
+
   const dupes = new Set<number>();
   for (let i = 1; i < embeddings.length; i++) {
     if (dupes.has(i)) continue;
@@ -83,23 +92,27 @@ export function findExistingDuplicates(
     WHERE c.id = ? AND d.collection_id = ?
   `);
 
-  for (let i = 0; i < embeddings.length; i++) {
-    try {
-      const result = (stmt as any).get(new Float32Array(embeddings[i]), 1) as
-        { chunk_id: string; distance: number } | undefined;
+  // Wrap in a transaction for better WAL lock efficiency (single lock acquisition)
+  const scan = db.transaction(() => {
+    for (let i = 0; i < embeddings.length; i++) {
+      try {
+        const result = (stmt as any).get(new Float32Array(embeddings[i]), 1) as
+          { chunk_id: string; distance: number } | undefined;
 
-      if (result && result.distance < L2_THRESHOLD) {
-        if (filterStmt.get(result.chunk_id, collectionId)) {
-          dupes.add(i);
+        if (result && result.distance < L2_THRESHOLD) {
+          if (filterStmt.get(result.chunk_id, collectionId)) {
+            dupes.add(i);
+          }
+        }
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        if (!msg.includes("no such table") && !msg.includes("no rows")) {
+          logger.warn({ error: msg, chunkIndex: i }, "Unexpected error during semantic dedup");
         }
       }
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      if (!msg.includes("no such table") && !msg.includes("no rows")) {
-        logger.warn({ error: msg, chunkIndex: i }, "Unexpected error during semantic dedup");
-      }
     }
-  }
+  });
+  scan();
 
   if (dupes.size > 0) {
     logger.info({ duplicates: dupes.size, total: embeddings.length }, "Existing semantic duplicates found");
