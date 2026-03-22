@@ -540,7 +540,7 @@ function HomeScreen({ onAction }: { onAction: (action: string) => void }) {
     if (ec.includes("APPLE_NOTES_ENABLED=true")) sourceIcons.push(`${t.ok("●")} Apple Notes`);
     cachedParsedEnv = {
       deepEnabled: ec.match(/CLAWCORE_MEMORY_RELATIONS_DEEP_EXTRACTION_ENABLED=(\w+)/)?.[1] === "true",
-      relationsEnabled: ec.match(/CLAWCORE_MEMORY_RELATIONS_ENABLED=(\w+)/)?.[1] === "true",
+      relationsEnabled: ec.match(/CLAWCORE_RELATIONS_ENABLED=(\w+)/)?.[1] === "true" || ec.match(/CLAWCORE_MEMORY_RELATIONS_ENABLED=(\w+)/)?.[1] === "true",
       awarenessEnabled: ec.match(/CLAWCORE_MEMORY_RELATIONS_AWARENESS_ENABLED=(\w+)/)?.[1] === "true",
       claimsEnabled: ec.match(/CLAWCORE_MEMORY_RELATIONS_CLAIM_EXTRACTION_ENABLED=(\w+)/)?.[1] === "true",
       attemptEnabled: ec.match(/CLAWCORE_MEMORY_RELATIONS_ATTEMPT_TRACKING_ENABLED=(\w+)/)?.[1] === "true",

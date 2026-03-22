@@ -90,13 +90,13 @@ export async function performUninstall(options: { deleteData: boolean }): Promis
     sp = ora("Reverting OpenClaw configuration...").start();
     const revertLog: string[] = [];
 
-    // Remove knowledge skill
-    const skillDir = resolve(openclawDir, "workspace", "skills", "knowledge");
-    const skillPath = resolve(skillDir, "SKILL.md");
-    if (existsSync(skillPath)) {
-      unlinkSync(skillPath);
-      try { rmSync(skillDir, { recursive: true }); } catch {}
-      revertLog.push("Removed knowledge skill");
+    // Remove all shipped skill directories (current + legacy names)
+    for (const skillName of ["knowledge", "clawcore-knowledge", "clawcore-evidence"]) {
+      const dir = resolve(openclawDir, "workspace", "skills", skillName);
+      if (existsSync(dir)) {
+        rmSync(dir, { recursive: true, force: true });
+        revertLog.push(`Removed ${skillName} skill`);
+      }
     }
 
     // Revert openclaw.json

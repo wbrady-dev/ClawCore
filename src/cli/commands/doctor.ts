@@ -33,6 +33,20 @@ export const doctorCommand = new Command("doctor")
   .option("--json", "Output as JSON")
   .option("--fix", "Alias for 'clawcore integrate --apply'")
   .action(async (opts: { json?: boolean; fix?: boolean }) => {
+    // --fix: alias for integrate --apply
+    if (opts.fix) {
+      try {
+        const { applyOpenClawIntegration } = await import("../../integration.js");
+        const rootDir = resolve(homedir(), ".openclaw", "services", "clawcore");
+        const memoryEnginePath = resolve(rootDir, "memory-engine");
+        applyOpenClawIntegration(memoryEnginePath);
+        console.log(chalk.green("Integration applied successfully."));
+      } catch (e) {
+        console.error(chalk.red(`Fix failed: ${e instanceof Error ? e.message : String(e)}`));
+      }
+      return;
+    }
+
     const manifest = readManifest();
     const appVersion = getAppVersion();
     let totalPass = 0;

@@ -81,7 +81,8 @@ export function Menu({ items, onSelect }: { items: MenuItem[]; onSelect: (value:
     if (key.upArrow || input === "k") setSelected((prev) => (prev - 1 + items.length) % items.length);
     else if (key.downArrow || input === "j") setSelected((prev) => (prev + 1) % items.length);
     else if (key.return) onSelect(items[selected].value);
-    else if (input === "q" || key.escape) onSelect("exit");
+    else if (input === "q") onSelect("exit");
+    else if (key.escape) onSelect("__back__");
     else if (input === "\u0003") process.exit(0);
   });
 
