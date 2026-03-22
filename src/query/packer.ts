@@ -151,14 +151,19 @@ export function packTitles(chunks: { sourcePath: string | null; collectionName: 
 
   const lines: string[] = [];
   const sources: SourceInfo[] = [];
+  let tokenCount = 0;
   for (const [src, info] of bySource) {
     const name = extractFileName(src);
-    lines.push(`${name} (${info.collection}, ${info.count} chunks)`);
+    const line = `${name} (${info.collection}, ${info.count} chunks)`;
+    const lineTokens = estimateTokens(line);
+    if (lines.length > 0 && tokenCount + lineTokens > 50) break; // Cap at ~50 tokens, but always include at least 1
+    lines.push(line);
+    tokenCount += lineTokens;
     sources.push({ source: name, chunkCount: info.count, avgScore: 0, collection: info.collection });
   }
 
   const text = lines.join("\n");
-  return { text, sources, tokenCount: estimateTokens(text) };
+  return { text, sources, tokenCount };
 }
 
 function extractFileName(filePath: string): string {

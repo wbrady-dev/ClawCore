@@ -69,6 +69,7 @@ export function extractBrief(
   // Collect all sentences from all chunks with scores
   const allSentences: ScoredSentence[] = [];
   const sources = new Set<string>();
+  const maxScore = Math.max(...chunks.map((c) => c.score), 0.01);
 
   for (let ci = 0; ci < chunks.length; ci++) {
     const chunk = chunks[ci];
@@ -110,7 +111,6 @@ export function extractBrief(
       else if (wordCount > 50) lengthMultiplier = 0.6;
 
       // Score: chunk relevance normalized to [0, 1]
-      const maxScore = Math.max(...chunks.map((c) => c.score), 0.01);
       const normalizedRelevance = (chunk.score > 0 ? chunk.score : 0) / maxScore;
 
       // Final score: 70% retrieval relevance, 30% term match
@@ -183,8 +183,8 @@ export function extractBrief(
   let highlighted: string | undefined;
   if (queryTerms.length > 0) {
     const escapedTerms = queryTerms.map((t) => t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
-    const pattern = new RegExp(`\\b(${escapedTerms.join("|")})`, "gi");
-    const highlightedText = selected.map((s) => s.text.replace(pattern, "**$1**")).join(" ");
+    const pattern = new RegExp(`\\b(${escapedTerms.join("|")})\\b`, "gi");
+    const highlightedText = selected.map((s) => s.text.replace(/\*\*/g, "").replace(pattern, "**$1**")).join(" ");
     highlighted = `${highlightedText}\n${citation}`;
   }
 

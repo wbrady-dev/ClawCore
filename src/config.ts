@@ -41,6 +41,7 @@ const hotConfig = {
   audioTranscriptionEnabled: envBool("AUDIO_TRANSCRIPTION_ENABLED", false),
   whisperModel: env("WHISPER_MODEL", "base"),
   relationsEnabled: envBool("CLAWCORE_RELATIONS_ENABLED", false),
+  queryExpansionEnabled: envBool("QUERY_EXPANSION_ENABLED", false),
 };
 
 /** Re-read hot-reloadable settings from .env without restarting. */
@@ -66,6 +67,7 @@ function reloadHotConfig(): void {
     hotConfig.audioTranscriptionEnabled = getBool("AUDIO_TRANSCRIPTION_ENABLED", false);
     hotConfig.whisperModel = get("WHISPER_MODEL", "base");
     hotConfig.relationsEnabled = getBool("CLAWCORE_RELATIONS_ENABLED", false);
+    hotConfig.queryExpansionEnabled = getBool("QUERY_EXPANSION_ENABLED", false);
   } catch {
     // Non-fatal — keep existing values
   }
@@ -105,7 +107,7 @@ export const config = {
   },
 
   queryExpansion: {
-    enabled: envBool("QUERY_EXPANSION_ENABLED", false),
+    get enabled() { return hotConfig.queryExpansionEnabled; },
     url: env("QUERY_EXPANSION_URL", "http://127.0.0.1:1234/v1"),
     model: env("QUERY_EXPANSION_MODEL", ""),
   },

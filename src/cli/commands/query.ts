@@ -31,6 +31,10 @@ export const queryCommand = new Command("query")
       },
     ) => {
       try {
+        // --full overrides --brief and --titles (mutual exclusion)
+        const brief = opts.brief && !opts.full;
+        const titlesOnly = opts.titles && !opts.full && !opts.brief;
+
         const result = await query(question, {
           collection: opts.collection,
           topK: parseInt(opts.topK, 10) || 3,
@@ -38,8 +42,8 @@ export const queryCommand = new Command("query")
           useBm25: opts.bm25,
           expand: opts.expand || undefined,
           tokenBudget: parseInt(opts.budget, 10) || 1500,
-          brief: opts.brief,
-          titlesOnly: opts.titles,
+          brief,
+          titlesOnly,
         });
 
         if (opts.json) {
