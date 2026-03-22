@@ -22,6 +22,7 @@ import { SourcesScreen } from "./screens/sources.js";
 import { StatusScreen } from "./screens/status.js";
 import { ServicesScreen } from "./screens/services.js";
 import { ConfigureScreen } from "./screens/configure.js";
+import { DocumentsScreen } from "./screens/documents.js";
 
 export async function launchInkTui(): Promise<void> {
   while (true) {
@@ -52,6 +53,16 @@ export async function launchInkTui(): Promise<void> {
       continue;
     }
 
+    if (action === "documents") {
+      await showInkScreen("documents");
+      continue;
+    }
+
+    if (action === "reset-kb") {
+      await runResetKnowledgeBase();
+      continue;
+    }
+
     if (action === "uninstall") {
       const completed = await runUninstallAction();
       if (completed) {
@@ -72,7 +83,7 @@ export async function launchInkTui(): Promise<void> {
   }
 }
 
-function showInkScreen(screen: "home" | "status" | "sources" | "services" | "configure"): Promise<string> {
+function showInkScreen(screen: "home" | "status" | "sources" | "services" | "configure" | "documents"): Promise<string> {
   return new Promise((resolveAction) => {
     resetStdin();
     clearScreen();
@@ -116,6 +127,8 @@ function showInkScreen(screen: "home" | "status" | "sources" | "services" | "con
           onAction={(action) => onAction(action)}
         />
       );
+    } else if (screen === "documents") {
+      ScreenComponent = () => <DocumentsScreen onBack={() => onAction("__back__")} />;
     } else if (screen === "configure") {
       ScreenComponent = () => (
         <ConfigureScreen
@@ -165,6 +178,65 @@ async function runUninstallAction(): Promise<boolean> {
     console.error(t.err(`\n  Error: ${String(error)}`));
     await sleep(1500);
     return false;
+  } finally {
+    resetStdin();
+  }
+}
+
+async function runResetKnowledgeBase(): Promise<void> {
+  process.stdin.resume();
+  if (process.stdin.isTTY) {
+    try { process.stdin.setRawMode(true); } catch {}
+  }
+  clearScreen();
+
+  try {
+    const prompts = await import("prompts");
+    const ora = (await import("ora")).default;
+
+    console.log(t.err("\n  ⚠  Reset Knowledge Base\n"));
+    console.log(t.err("  This will permanently delete ALL documents, chunks, collections,"));
+    console.log(t.err("  and vector embeddings. This cannot be undone.\n"));
+
+    const { confirm } = await prompts.default({
+      type: "confirm",
+      name: "confirm",
+      message: t.err("Are you sure you want to reset the knowledge base?"),
+      initial: false,
+    });
+    if (!confirm) { console.log(t.dim("\n  Cancelled.\n")); return; }
+
+    const { clearGraph } = await prompts.default({
+      type: "confirm",
+      name: "clearGraph",
+      message: "Also clear Evidence OS graph data (entities, claims)?",
+      initial: true,
+    });
+
+    const sp = ora("Resetting knowledge base...").start();
+    try {
+      const res = await fetch(`${getApiBaseUrl()}/reset`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ clearGraph }),
+        signal: AbortSignal.timeout(30000),
+      });
+      if (res.ok) {
+        const data = await res.json() as any;
+        sp.succeed(`Knowledge base reset: ${data.documentsDeleted} documents, ${data.chunksDeleted} chunks removed`);
+        if (data.graphCleared) console.log(t.dim("  Evidence OS graph data cleared."));
+      } else {
+        sp.fail("Reset failed — check if services are running");
+      }
+    } catch {
+      sp.fail("Reset failed — start services first");
+    }
+
+    console.log("");
+    await sleep(2000);
+  } catch (error) {
+    console.error(t.err(`\n  Error: ${String(error)}`));
+    await sleep(1500);
   } finally {
     resetStdin();
   }
@@ -550,6 +622,7 @@ function HomeScreen({ onAction }: { onAction: (action: string) => void }) {
   const items: MenuItem[] = [
     { label: "Status & Health", value: "status" },
     { label: "Sources", value: "sources" },
+    { label: "Documents", value: "documents", description: docCount > 0 ? `${docCount} documents` : undefined },
     { label: "Configure", value: "configure" },
     { label: "Services", value: "services" },
   ];
@@ -559,6 +632,7 @@ function HomeScreen({ onAction }: { onAction: (action: string) => void }) {
     items.push({ label: "Restart Services", value: "restart" });
     items.push({ label: "Stop Services", value: "stop" });
   }
+  items.push({ label: "Reset Knowledge Base", value: "reset-kb", color: t.err });
   items.push({ label: "Uninstall", value: "uninstall", color: t.err });
   items.push({ label: "Exit", value: "exit", color: t.dim });
 

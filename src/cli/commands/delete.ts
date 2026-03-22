@@ -137,5 +137,17 @@ function deleteDocument(
   }
 
   db.prepare("DELETE FROM documents WHERE id = ?").run(documentId);
+
+  // Clean up entity mentions in graph DB (if relations enabled)
+  try {
+    if (config.relations?.graphDbPath) {
+      // Dynamic import — graph-sqlite may not be available in all builds
+      import("../../storage/graph-sqlite.js").then(({ getGraphDb }) => {
+        const graphDb = getGraphDb(config.relations.graphDbPath);
+        graphDb.prepare("DELETE FROM entity_mentions WHERE source_type = 'document' AND source_id = ?").run(documentId);
+      }).catch(() => {});
+    }
+  } catch {}
+
   return chunkIds.length;
 }

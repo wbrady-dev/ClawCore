@@ -106,6 +106,70 @@ export function getCollectionStats(
   };
 }
 
+export interface DocumentInfo {
+  id: string;
+  source_path: string;
+  collection_id: string;
+  collection_name: string;
+  size_bytes: number;
+  chunk_count: number;
+  created_at: string;
+}
+
+export function listDocuments(
+  db: Database.Database,
+  collectionId?: string,
+): DocumentInfo[] {
+  const sql = `
+    SELECT d.id, d.source_path, d.collection_id, c.name as collection_name,
+           d.size_bytes, COUNT(ch.id) as chunk_count, d.created_at
+    FROM documents d
+    JOIN collections c ON c.id = d.collection_id
+    LEFT JOIN chunks ch ON ch.document_id = d.id
+    ${collectionId ? "WHERE d.collection_id = ?" : ""}
+    GROUP BY d.id
+    ORDER BY d.created_at DESC
+  `;
+  return collectionId
+    ? (db.prepare(sql).all(collectionId) as DocumentInfo[])
+    : (db.prepare(sql).all() as DocumentInfo[]);
+}
+
+export function deleteDocument(db: Database.Database, documentId: string): { chunksDeleted: number } {
+  // Get chunk IDs for vector cleanup
+  const chunks = db.prepare("SELECT id FROM chunks WHERE document_id = ?").all(documentId) as { id: string }[];
+  const chunkIds = chunks.map((c) => c.id);
+
+  // Delete vectors explicitly (virtual table, not cascade-aware)
+  if (chunkIds.length > 0) {
+    const placeholders = chunkIds.map(() => "?").join(",");
+    db.prepare(`DELETE FROM chunk_vectors WHERE chunk_id IN (${placeholders})`).run(...chunkIds);
+  }
+
+  // Delete document (cascades to chunks, metadata_index; FTS triggers handle chunk_fts)
+  db.prepare("DELETE FROM documents WHERE id = ?").run(documentId);
+
+  return { chunksDeleted: chunkIds.length };
+}
+
+export function resetKnowledgeBase(db: Database.Database): { collectionsDeleted: number; documentsDeleted: number; chunksDeleted: number } {
+  // Count before deletion for stats
+  const docCount = (db.prepare("SELECT COUNT(*) as n FROM documents").get() as { n: number }).n;
+  const chunkCount = (db.prepare("SELECT COUNT(*) as n FROM chunks").get() as { n: number }).n;
+  const collCount = (db.prepare("SELECT COUNT(*) as n FROM collections").get() as { n: number }).n;
+
+  // Delete all vectors (virtual table, must be explicit)
+  db.prepare("DELETE FROM chunk_vectors").run();
+
+  // Delete all collections (cascades: documents, chunks, metadata_index, watch_paths; triggers: chunk_fts)
+  db.prepare("DELETE FROM collections").run();
+
+  // Checkpoint WAL to reclaim disk space
+  try { db.pragma("wal_checkpoint(TRUNCATE)"); } catch {}
+
+  return { collectionsDeleted: collCount, documentsDeleted: docCount, chunksDeleted: chunkCount };
+}
+
 export function ensureCollection(
   db: Database.Database,
   name: string,
