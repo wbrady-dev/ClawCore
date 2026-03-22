@@ -13,6 +13,7 @@ function db() {
 
 export function registerDocumentRoutes(server: FastifyInstance) {
   server.get("/documents", async (req, reply) => {
+    if (!isLocalRequest(req)) return reply.status(403).send({ error: "Forbidden" });
     const { collection } = req.query as { collection?: string };
     const database = db();
 

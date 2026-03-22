@@ -59,6 +59,7 @@ export function registerCollectionRoutes(server: FastifyInstance) {
   });
 
   server.delete("/collections/:id", async (req, reply) => {
+    if (!isLocalRequest(req)) return reply.status(403).send({ error: "Forbidden" });
     const { id } = req.params as { id: string };
     const collection = getCollection(db(), id);
     if (!collection) {

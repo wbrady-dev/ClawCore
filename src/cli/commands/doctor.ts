@@ -37,7 +37,7 @@ export const doctorCommand = new Command("doctor")
     if (opts.fix) {
       try {
         const { applyOpenClawIntegration } = await import("../../integration.js");
-        const rootDir = resolve(homedir(), ".openclaw", "services", "clawcore");
+        const rootDir = resolve(__dirname, "..", "..", "..");
         const memoryEnginePath = resolve(rootDir, "memory-engine");
         applyOpenClawIntegration(memoryEnginePath);
         console.log(chalk.green("Integration applied successfully."));
