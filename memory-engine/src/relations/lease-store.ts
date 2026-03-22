@@ -6,7 +6,7 @@
  */
 
 import type { GraphDb } from "./types.js";
-import { logEvidence } from "./evidence-log.js";
+import { logEvidence, withWriteTransaction } from "./evidence-log.js";
 
 export interface AcquireLeaseInput {
   scopeId: number;
@@ -33,40 +33,44 @@ export function acquireLease(
   db: GraphDb,
   input: AcquireLeaseInput,
 ): LeaseRow | null {
+  if (input.durationMs <= 0) return null;
   const leaseUntil = new Date(Date.now() + input.durationMs).toISOString();
 
-  // Clean expired leases for this resource first
-  db.prepare(
-    "DELETE FROM work_leases WHERE scope_id = ? AND resource_key = ? AND lease_until < strftime('%Y-%m-%dT%H:%M:%f', 'now')",
-  ).run(input.scopeId, input.resourceKey);
+  // Atomic: BEGIN IMMEDIATE prevents concurrent writers between delete and insert
+  return withWriteTransaction(db, () => {
+    // Clean expired leases for this resource
+    db.prepare(
+      "DELETE FROM work_leases WHERE scope_id = ? AND resource_key = ? AND lease_until < strftime('%Y-%m-%dT%H:%M:%f', 'now')",
+    ).run(input.scopeId, input.resourceKey);
 
-  // Try to insert (will fail if active lease exists due to UNIQUE constraint)
-  try {
-    db.prepare(`
-      INSERT INTO work_leases (scope_id, agent_id, resource_key, lease_until)
-      VALUES (?, ?, ?, ?)
-    `).run(input.scopeId, input.agentId, input.resourceKey, leaseUntil);
-  } catch {
-    // UNIQUE constraint violation — lease held by another agent
-    return null;
-  }
+    // Try to insert (will fail if active lease exists due to UNIQUE constraint)
+    try {
+      db.prepare(`
+        INSERT INTO work_leases (scope_id, agent_id, resource_key, lease_until)
+        VALUES (?, ?, ?, ?)
+      `).run(input.scopeId, input.agentId, input.resourceKey, leaseUntil);
+    } catch {
+      // UNIQUE constraint violation — lease held by another agent
+      return null;
+    }
 
-  const row = db.prepare(
-    "SELECT * FROM work_leases WHERE scope_id = ? AND resource_key = ?",
-  ).get(input.scopeId, input.resourceKey) as LeaseRow | undefined;
+    const row = db.prepare(
+      "SELECT * FROM work_leases WHERE scope_id = ? AND resource_key = ?",
+    ).get(input.scopeId, input.resourceKey) as LeaseRow | undefined;
 
-  if (row) {
-    logEvidence(db, {
-      scopeId: input.scopeId,
-      objectType: "lease",
-      objectId: row.id,
-      eventType: "acquire",
-      actor: input.agentId,
-      payload: { resourceKey: input.resourceKey, leaseUntil },
-    });
-  }
+    if (row) {
+      logEvidence(db, {
+        scopeId: input.scopeId,
+        objectType: "lease",
+        objectId: row.id,
+        eventType: "acquire",
+        actor: input.agentId,
+        payload: { resourceKey: input.resourceKey, leaseUntil },
+      });
+    }
 
-  return row ?? null;
+    return row ?? null;
+  });
 }
 
 /** Renew an existing lease by extending its duration. */

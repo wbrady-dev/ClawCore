@@ -29,6 +29,21 @@ export function decayAntiRunbooks(db: GraphDb, scopeId: number, decayDays = 90):
       AND updated_at < datetime('now', ?)
   `).run(scopeId, `-${decayDays} days`);
 
+  // Also decay anti-runbooks whose tool has recent successes
+  const successDecayed = db.prepare(`
+    UPDATE anti_runbooks
+    SET confidence = confidence * 0.7,
+        updated_at = strftime('%Y-%m-%dT%H:%M:%f', 'now')
+    WHERE scope_id = ?
+      AND status = 'active'
+      AND confidence > 0.3
+      AND tool_name IN (
+        SELECT DISTINCT tool_name FROM attempts
+        WHERE scope_id = ? AND status = 'success'
+        AND created_at > datetime('now', ?)
+      )
+  `).run(scopeId, scopeId, `-${decayDays} days`);
+
   // Mark very low confidence for review
   const reviewed = db.prepare(`
     UPDATE anti_runbooks
@@ -59,7 +74,7 @@ export function decayAntiRunbooks(db: GraphDb, scopeId: number, decayDays = 90):
  * Apply decay to runbooks with high failure rates or no recent usage.
  */
 export function decayRunbooks(db: GraphDb, scopeId: number, staleDays = 180): number {
-  // Demote runbooks with failure_rate > 0.5
+  // Demote runbooks with failure_rate > 0.5 (at most once per staleDays/2 interval)
   const demoted = db.prepare(`
     UPDATE runbooks
     SET confidence = confidence * 0.5,
@@ -68,7 +83,8 @@ export function decayRunbooks(db: GraphDb, scopeId: number, staleDays = 180): nu
       AND status = 'active'
       AND (success_count + failure_count) > 0
       AND CAST(failure_count AS REAL) / (success_count + failure_count) > 0.5
-  `).run(scopeId);
+      AND updated_at < datetime('now', ?)
+  `).run(scopeId, `-${Math.floor(staleDays / 2)} days`);
 
   // Mark stale if no usage in staleDays
   const staled = db.prepare(`

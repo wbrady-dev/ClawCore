@@ -32,16 +32,18 @@ export interface AwarenessStats {
 // ---------------------------------------------------------------------------
 
 const MAX_EVENTS = 2000;
-const events: AwarenessEvent[] = [];
+const events: (AwarenessEvent | undefined)[] = new Array(MAX_EVENTS);
+let writeIndex = 0;
+let totalWritten = 0;
 
 /**
  * Record an awareness event (called from buildAwarenessNote on every invocation).
+ * Uses circular buffer for O(1) insertion without array shifting.
  */
 export function recordAwarenessEvent(event: Omit<AwarenessEvent, "timestamp">): void {
-  events.push({ ...event, timestamp: Date.now() });
-  if (events.length > MAX_EVENTS) {
-    events.splice(0, events.length - MAX_EVENTS);
-  }
+  events[writeIndex % MAX_EVENTS] = { ...event, timestamp: Date.now() };
+  writeIndex = (writeIndex + 1) % MAX_EVENTS;
+  totalWritten++;
 }
 
 /**
@@ -51,7 +53,7 @@ export function recordAwarenessEvent(event: Omit<AwarenessEvent, "timestamp">): 
  */
 export function getAwarenessStats(windowMs = 86_400_000): AwarenessStats {
   const cutoff = Date.now() - windowMs;
-  const recent = events.filter((e) => e.timestamp > cutoff);
+  const recent = events.filter((e): e is AwarenessEvent => e != null && e.timestamp > cutoff);
 
   if (recent.length === 0) {
     return {
@@ -93,5 +95,7 @@ export function getAwarenessStats(windowMs = 86_400_000): AwarenessStats {
  * Clear all events (for tests).
  */
 export function resetAwarenessEventsForTests(): void {
-  events.length = 0;
+  events.fill(undefined);
+  writeIndex = 0;
+  totalWritten = 0;
 }

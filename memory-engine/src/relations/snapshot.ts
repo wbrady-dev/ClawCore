@@ -39,7 +39,8 @@ export function getStateAtTime(
   const claims = db.prepare(`
     SELECT * FROM claims
     WHERE scope_id = ? AND created_at <= ?
-      AND (status = 'active' OR updated_at > ?)
+      AND (status = 'active'
+           OR (status != 'superseded' AND updated_at > ?))
     ORDER BY confidence DESC
     LIMIT 50
   `).all(scopeId, timestamp, timestamp) as ClaimRow[];
@@ -64,11 +65,12 @@ export function getStateAtTime(
     LIMIT 50
   `).all(scopeId, timestamp, timestamp) as LoopRow[];
 
-  // Invariants active at timestamp: same pattern as claims
+  // Invariants active at timestamp: exclude revoked regardless of updated_at
   const invariants = db.prepare(`
     SELECT * FROM invariants
     WHERE scope_id = ? AND created_at <= ?
-      AND (status = 'active' OR updated_at > ?)
+      AND (status = 'active'
+           OR (status != 'revoked' AND updated_at > ?))
     ORDER BY severity DESC
     LIMIT 50
   `).all(scopeId, timestamp, timestamp) as InvariantRow[];

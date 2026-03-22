@@ -294,8 +294,8 @@ function archiveOldEvents(
 
   // Process in batches
   while (true) {
-    if (++iterations >= 1000) {
-      console.warn("[cc-mem] archive: hit iteration limit");
+    if (++iterations >= 10000) {
+      console.warn("[cc-mem] archive: hit iteration limit (10000 batches), some events may remain unarchived");
       break;
     }
 

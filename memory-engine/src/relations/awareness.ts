@@ -29,6 +29,8 @@ export interface AwarenessConfig {
   minMentions: number;
   /** Reserved for future unseen-doc surfacing fallback (not yet implemented). */
   docSurfacing: boolean;
+  /** Number of recent messages to scan for entity mentions (default 3). */
+  messageLookback?: number;
   knowledgeApiUrl?: string;
 }
 
@@ -141,6 +143,8 @@ function queryMismatches(db: GraphDb, entityIds: number[], limit: number): Misma
       AND m2.context_terms IS NOT NULL AND m2.context_terms != '[]'
       AND m1.context_terms != m2.context_terms
       AND m1.source_id != m2.source_id
+      AND m1.created_at > datetime('now', '-90 days')
+      AND m2.created_at > datetime('now', '-90 days')
     ORDER BY m2.created_at DESC
     LIMIT ?
   `).all(...entityIds, limit) as Array<{
@@ -316,8 +320,9 @@ export function buildAwarenessNote(
   const noteTypes: string[] = [];
 
   try {
-    // Extract text from recent messages (last 3 for relevance)
-    const recentMessages = messages.slice(-3);
+    // Extract text from recent messages for entity detection
+    const lookback = config.messageLookback ?? 3;
+    const recentMessages = messages.slice(-lookback);
     const text = recentMessages.map(extractTextFromAgentMessage).join(" ");
     if (!text.trim()) {
       recordAwarenessEvent({ fired: false, noteCount: 0, noteTypes: [], latencyMs: 0, terms: [], tokensAdded: 0 });
@@ -385,6 +390,9 @@ export function buildAwarenessNote(
       noteTypes.push("connection");
       tokenBudget -= cost;
     }
+
+    // TODO: implement doc surfacing — surface unseen documents relevant to current entities
+    // when config.docSurfacing is true (config plumbing already in place)
 
     const latencyMs = Date.now() - start;
     const tokensAdded = config.maxTokens - tokenBudget;

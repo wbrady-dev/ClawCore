@@ -82,10 +82,15 @@ interface CapsuleCandidate {
 
 function estimateTokens(text: string): number {
   // Type-aware estimation: code/JSON ~3 chars/token, prose ~4 chars/token
-  // Detect dominant type by sampling first 200 chars
-  const sample = text.slice(0, 200);
-  const codeSignals = (sample.match(/[{}\[\]();=<>]/g) || []).length;
-  const ratio = codeSignals > 10 ? 3 : codeSignals > 5 ? 3.5 : 4;
+  // Sample 3 positions (start, middle, end) for more representative detection
+  const positions = [0, Math.floor(text.length / 2), Math.max(0, text.length - 200)];
+  let totalSignals = 0;
+  for (const pos of positions) {
+    const sample = text.slice(pos, pos + 200);
+    totalSignals += (sample.match(/[{}\[\]();=<>]/g) || []).length;
+  }
+  const avgSignals = totalSignals / positions.length;
+  const ratio = avgSignals > 10 ? 3 : avgSignals > 5 ? 3.5 : 4;
   return Math.ceil(text.length / ratio);
 }
 
@@ -102,16 +107,13 @@ const LOW_VALUE_SUBJECTS = new Set([
 function claimCapsules(claims: ClaimRow[]): CapsuleCandidate[] {
   return claims.map((c) => {
     const daysSince = daysSinceIso(c.last_seen_at);
-    const conf = effectiveConfidence(c.confidence, 3, daysSince);
+    const conf = effectiveConfidence(c.confidence, Math.max(1, Math.round(c.trust_score * 10)), daysSince);
     const text = `[claim] ${c.subject} ${c.predicate}: ${c.object_text ?? "(no value)"} (conf=${c.confidence.toFixed(2)})`;
     const tokens = estimateTokens(text);
 
     // Demote identity/meta claims so project facts rank higher
     const subjectLower = c.subject.toLowerCase().trim();
-    const isLowValue = LOW_VALUE_SUBJECTS.has(subjectLower)
-      || subjectLower.startsWith("document ")
-      || subjectLower.includes(" vibe")
-      || subjectLower.includes(" identity");
+    const isLowValue = LOW_VALUE_SUBJECTS.has(subjectLower);
     const valuePenalty = isLowValue ? 0.2 : 1.0;
 
     const score = conf * c.trust_score * valuePenalty;
@@ -225,7 +227,7 @@ function daysSinceIso(isoDate: string): number {
 // ---------------------------------------------------------------------------
 
 export interface ContextCompilerConfig {
-  tier: string;
+  tier: string | number;
   scopeId: number;
   maxClaims?: number;
   maxDecisions?: number;
@@ -255,7 +257,7 @@ export function compileContextCapsules(
   db: GraphDb,
   config: ContextCompilerConfig,
 ): CompilerResult | null {
-  const budget = BUDGET_TIERS[config.tier] ?? BUDGET_TIERS.standard;
+  const budget = typeof config.tier === "number" ? config.tier : (BUDGET_TIERS[config.tier] ?? BUDGET_TIERS.standard);
   const scopeId = config.scopeId;
 
   // Apply lazy decay + auto-archive before gathering candidates

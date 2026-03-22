@@ -40,7 +40,7 @@ export function upsertRelation(
       (scope_id, subject_entity_id, predicate, object_entity_id, confidence, source_type, source_id)
     VALUES (?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(scope_id, subject_entity_id, predicate, object_entity_id) DO UPDATE SET
-      confidence = MAX(entity_relations.confidence, excluded.confidence)
+      confidence = (entity_relations.confidence + excluded.confidence) / 2.0
   `).run(
     input.scopeId, input.subjectEntityId, input.predicate, input.objectEntityId,
     input.confidence ?? 0.5, input.sourceType, input.sourceId,

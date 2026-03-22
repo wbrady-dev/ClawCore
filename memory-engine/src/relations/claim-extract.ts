@@ -145,7 +145,7 @@ export function extractClaimsFromUserExplicit(
         confidence: 0.9,
         trustScore: SOURCE_TRUST.user_explicit,
         sourceAuthority: SOURCE_TRUST.user_explicit,
-        canonicalKey: buildCanonicalKey(subject, predicate + ":" + objectText.substring(0, 40)),
+        canonicalKey: buildCanonicalKey(subject, predicate),
       },
       evidence: {
         sourceType: "user_explicit",
@@ -455,7 +455,7 @@ function extractNarrativeFacts(text: string, sourceId: string): ClaimExtractionR
           confidence: 0.6,
           trustScore: 0.6,
           sourceAuthority: 0.6,
-          canonicalKey: buildCanonicalKey(subject, predicate + ":" + fullObjectText.substring(0, 40)),
+          canonicalKey: buildCanonicalKey(subject, predicate),
         },
         evidence: {
           sourceType: "narrative",

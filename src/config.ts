@@ -129,7 +129,8 @@ export const config = {
     get enabled() { return hotConfig.relationsEnabled; },
     graphDbPath: env(
       "CLAWCORE_RELATIONS_GRAPH_DB_PATH",
-      resolve(homedir(), ".clawcore", "data", "graph.db"),
+      env("CLAWCORE_MEMORY_RELATIONS_GRAPH_DB_PATH",
+        resolve(homedir(), ".clawcore", "data", "graph.db")),
     ),
   },
 

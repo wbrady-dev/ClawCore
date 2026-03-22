@@ -506,6 +506,15 @@ export function runGraphMigrations(db: GraphDb, dbPath?: string): void {
     markMigrationApplied(db, 7);
   }
 
+  if (!isMigrationApplied(db, 8)) {
+    db.exec(`
+      CREATE INDEX IF NOT EXISTS idx_mentions_created ON entity_mentions(created_at);
+      CREATE INDEX IF NOT EXISTS idx_claims_confidence ON claims(scope_id, confidence DESC);
+      CREATE INDEX IF NOT EXISTS idx_decisions_topic_status ON decisions(topic, status);
+    `);
+    markMigrationApplied(db, 8);
+  }
+
   // File permissions: chmod 600 on Unix/macOS, skip on Windows
   if (dbPath && process.platform !== "win32") {
     try {

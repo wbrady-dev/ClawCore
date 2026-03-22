@@ -1346,20 +1346,23 @@ export class LcmContextEngine implements ContextEngine {
     }
 
     // Real-time claim + decision extraction (don't wait for compaction)
-    if (this.graphDb && this.config.relationsClaimExtractionEnabled && stored.role === "user") {
+    const claimExtractionEnabled = this.config.relationsClaimExtractionEnabled || this.config.relationsUserClaimExtractionEnabled;
+    if (this.graphDb && claimExtractionEnabled && stored.role === "user") {
       try {
-        const { extractClaimsFast, extractDecisionsFromText } = await import("./relations/claim-extract.js");
+        const { extractClaimsFast, extractClaimsFromUserExplicit, extractDecisionsFromText } = await import("./relations/claim-extract.js");
         const { storeClaimExtractionResults } = await import("./relations/claim-store.js");
         const { upsertDecision } = await import("./relations/decision-store.js");
         const { withWriteTransaction } = await import("./relations/evidence-log.js");
         const graphDb = this.graphDb;
 
         withWriteTransaction(graphDb, () => {
-          // Extract claims
-          const claimResults = extractClaimsFast(stored.content, {
-            sourceType: "message",
-            sourceId: String(msgRecord.messageId),
-          });
+          // Extract claims (full or user-explicit only depending on config)
+          const claimResults = this.config.relationsClaimExtractionEnabled
+            ? extractClaimsFast(stored.content, {
+                sourceType: "message",
+                sourceId: String(msgRecord.messageId),
+              })
+            : extractClaimsFromUserExplicit(stored.content, String(msgRecord.messageId));
           if (claimResults.length > 0) {
             storeClaimExtractionResults(graphDb, claimResults, {
               scopeId: 1,

@@ -40,13 +40,21 @@ export function isIdempotencyConflict(err: unknown): boolean {
 /**
  * Execute a write with idempotency protection.
  * If the idempotency key already exists, the transaction rolls back
- * and null is returned (safe no-op).
+ * and null is returned (safe no-op). Check wasIdempotencyHit() after
+ * a null return to distinguish "already processed" from "fn returned null".
  */
+let _lastIdempotencyHit = false;
+
+/** Check if the last writeWithIdempotency call hit an idempotency conflict. */
+export function wasIdempotencyHit(): boolean { return _lastIdempotencyHit; }
+
 export function writeWithIdempotency<T>(
   db: GraphDb,
   idempotencyKey: string | undefined,
   fn: () => T,
 ): T | null {
+  _lastIdempotencyHit = false;
+
   if (!idempotencyKey) {
     return withWriteTransaction(db, fn);
   }
@@ -55,6 +63,7 @@ export function writeWithIdempotency<T>(
     return withWriteTransaction(db, fn);
   } catch (err) {
     if (isIdempotencyConflict(err)) {
+      _lastIdempotencyHit = true;
       return null; // already processed — mutation was rolled back
     }
     throw err;

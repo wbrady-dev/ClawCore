@@ -19,7 +19,7 @@ export function upsertAntiRunbook(
     VALUES (?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(scope_id, anti_runbook_key) DO UPDATE SET
       failure_count = anti_runbooks.failure_count + COALESCE(excluded.failure_count, 1),
-      confidence = MIN(1.0, anti_runbooks.confidence + 0.1),
+      confidence = MIN(1.0, 0.3 + 0.7 * (1.0 - 1.0 / (1.0 + (anti_runbooks.failure_count + COALESCE(excluded.failure_count, 1)) * 0.5))),
       description = COALESCE(excluded.description, anti_runbooks.description),
       updated_at = strftime('%Y-%m-%dT%H:%M:%f', 'now')
   `).run(
