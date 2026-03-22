@@ -440,7 +440,7 @@ export async function query(
     cached: false,
     vectorHits: allVectorResults.length,
     bm25Hits: allBm25Results.length,
-    bestDistance: Math.round(bestDistance * 1000) / 1000,
+    bestDistance: Math.round((bestDistance ?? 0) * 1000) / 1000,
     reranked: strategy.includes("rerank") && !strategy.includes("skip-rerank"),
   });
 
