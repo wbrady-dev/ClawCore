@@ -273,7 +273,7 @@ describe("H3 Context Compiler with Anti-Runbooks", () => {
 // ============================================================================
 
 describe("H3 Anti-runbook confidence increment", () => {
-  it("confidence increases by 0.1 on each repeated upsert (capped at 1.0)", () => {
+  it("confidence increases via logistic formula on repeated upsert (capped at 1.0)", () => {
     const db = createDb();
     upsertAntiRunbook(db, {
       scopeId: 1, antiRunbookKey: "arb1", toolName: "test",
@@ -286,7 +286,7 @@ describe("H3 Anti-runbook confidence increment", () => {
     const arb = db.prepare(
       "SELECT confidence FROM anti_runbooks WHERE anti_runbook_key = 'arb1'",
     ).get() as { confidence: number };
-    expect(arb.confidence).toBeCloseTo(0.6); // 0.5 + 0.1
+    expect(arb.confidence).toBeCloseTo(0.65); // logistic: 0.3 + 0.7*(1 - 1/(1 + 2*0.5))
   });
 });
 
@@ -314,7 +314,7 @@ describe("H3 Runbook high failure rate demotion", () => {
     // Insert runbook with high failure rate (6 failures, 4 successes = 60% failure)
     db.prepare(`
       INSERT INTO runbooks (scope_id, runbook_key, tool_name, pattern, success_count, failure_count, confidence, status, updated_at)
-      VALUES (1, 'fragile', 'deploy', 'pattern', 4, 6, 0.8, 'active', datetime('now'))
+      VALUES (1, 'fragile', 'deploy', 'pattern', 4, 6, 0.8, 'active', datetime('now', '-100 days'))
     `).run();
 
     decayRunbooks(db, 1, 180);

@@ -24,8 +24,9 @@ const MEMORY_SRC = resolve(__dirname, "..", "src");
  */
 function findRerankServer(): string | null {
   const candidates = [
-    resolve(CLAWCORE_ROOT, "..", "rerank-server.py"),   // live install layout
-    resolve(CLAWCORE_ROOT, "server", "rerank-server.py"), // distribution layout
+    resolve(CLAWCORE_ROOT, "..", "rerank-server.py"),      // legacy live install layout
+    resolve(CLAWCORE_ROOT, "server", "rerank-server.py"),  // legacy distribution layout
+    resolve(CLAWCORE_ROOT, "server", "server.py"),         // current layout (renamed)
   ];
   return candidates.find((p) => existsSync(p)) ?? null;
 }

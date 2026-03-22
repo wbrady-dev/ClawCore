@@ -60,11 +60,11 @@ describe("CRAM Stress: Infrastructure", () => {
     }
   });
 
-  it("global scope seeded + all 7 migrations applied", () => {
+  it("global scope seeded + all 9 migrations applied", () => {
     const scope = db.prepare("SELECT * FROM state_scopes WHERE id = 1").get() as any;
     expect(scope.scope_key).toBe("global");
     const versions = (db.prepare("SELECT version FROM _evidence_migrations ORDER BY version").all() as Array<{ version: number }>).map((r) => r.version);
-    expect(versions).toEqual([1, 2, 3, 4, 5, 6, 7]);
+    expect(versions).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9]);
   });
 
   it("promotion policies seeded (10+ types)", () => {
