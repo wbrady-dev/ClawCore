@@ -4,7 +4,6 @@ import { config } from "../config.js";
 import { ingestFile } from "../ingest/pipeline.js";
 import { getSupportedExtensions } from "../ingest/parsers/index.js";
 import { isCircuitBreakerOpen } from "../embeddings/client.js";
-import { getDb } from "../storage/index.js";
 import { logger } from "../utils/logger.js";
 
 export interface WatchConfig {
@@ -22,6 +21,7 @@ export interface WatchConfig {
 
 const DEFAULT_DEBOUNCE = 2000;
 const MAX_CONCURRENT_INGESTS = 5;
+const MAX_QUEUE_SIZE = 1000;
 const supportedExts = new Set(getSupportedExtensions());
 
 function log(msg: string): void {
@@ -54,10 +54,6 @@ export class ClawCoreWatcher {
   }
 
   async start(): Promise<void> {
-    // Ensure DB handle is available (migrations already ran at server startup)
-    const dbPath = resolve(config.dataDir, "clawcore.db");
-    getDb(dbPath);
-
     for (const wc of this.configs) {
       log(`Watching: ${wc.paths.join(", ")} -> collection "${wc.collection}"`);
 
@@ -107,6 +103,7 @@ export class ClawCoreWatcher {
 
   private ingestQueue: { filePath: string; wc: WatchConfig }[] = [];
   private activeIngests = 0;
+  private retryPending = false;
 
   private handleFile(filePath: string, wc: WatchConfig): void {
     const ext = extname(filePath).toLowerCase();
@@ -121,6 +118,10 @@ export class ClawCoreWatcher {
 
     const timer = setTimeout(() => {
       this.debounceTimers.delete(filePath);
+      if (this.ingestQueue.length >= MAX_QUEUE_SIZE) {
+        logger.warn(`Watcher queue full (${MAX_QUEUE_SIZE}), dropping: ${filePath.split(/[\\/]/).pop()}`);
+        return;
+      }
       this.ingestQueue.push({ filePath, wc });
       this.drainQueue();
     }, wc.debounceMs ?? DEFAULT_DEBOUNCE);
@@ -131,8 +132,14 @@ export class ClawCoreWatcher {
   private drainQueue(): void {
     // Pause ingestion while the embedding server is unreachable
     if (isCircuitBreakerOpen()) {
-      // Re-check after cooldown
-      setTimeout(() => this.drainQueue(), 5000);
+      // Single retry timer — prevents unbounded setTimeout chains during outages
+      if (!this.retryPending) {
+        this.retryPending = true;
+        setTimeout(() => {
+          this.retryPending = false;
+          this.drainQueue();
+        }, 5000);
+      }
       return;
     }
 
@@ -145,7 +152,7 @@ export class ClawCoreWatcher {
       this.ingestSafe(item.filePath, item.wc).finally(() => {
         this.processing.delete(item.filePath);
         this.activeIngests--;
-        this.drainQueue();
+        queueMicrotask(() => this.drainQueue());
       });
     }
   }

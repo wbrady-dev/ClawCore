@@ -3,6 +3,13 @@ import { resolve } from "path";
 import { config } from "../../config.js";
 import { getDb, runMigrations } from "../../storage/index.js";
 
+/** Escape LIKE special chars. Set keepPercent=true for patterns that use % as intentional wildcards. */
+function escapeLike(s: string, keepPercent = false): string {
+  let result = s.replace(/\\/g, "\\\\").replace(/_/g, "\\_");
+  if (!keepPercent) result = result.replace(/%/g, "\\%");
+  return result;
+}
+
 export const chunksCommand = new Command("chunks")
   .description("Inspect chunks produced from a document")
   .argument("<source>", "Source file path or partial match")
@@ -18,14 +25,16 @@ export const chunksCommand = new Command("chunks")
         const db = getDb(dbPath);
         runMigrations(db);
 
+        const escaped = escapeLike(source);
         const searchTerm = source.replace(/[\\/]/g, "%");
+        const searchTermEscaped = escapeLike(searchTerm, true);
         let query = `
           SELECT d.id as docId, d.source_path, d.content_hash, d.metadata_json,
                  col.name as collectionName
           FROM documents d
           JOIN collections col ON col.id = d.collection_id
-          WHERE (d.source_path LIKE ? OR d.source_path LIKE ?)`;
-        const params: string[] = [`%${source}%`, `%${searchTerm}%`];
+          WHERE (d.source_path LIKE ? ESCAPE '\\' OR d.source_path LIKE ? ESCAPE '\\')`;
+        const params: string[] = [`%${escaped}%`, `%${searchTermEscaped}%`];
 
         if (opts.collection) {
           query += ` AND col.name = ?`;

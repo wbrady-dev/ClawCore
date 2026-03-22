@@ -1,5 +1,6 @@
 import { Command } from "commander";
 import { resolve } from "path";
+import { existsSync } from "fs";
 import { ClawCoreWatcher } from "../../watcher/index.js";
 
 export const watchCommand = new Command("watch")
@@ -21,6 +22,12 @@ export const watchCommand = new Command("watch")
     ) => {
       const tags = opts.tags?.split(",").map((t) => t.trim()) ?? [];
       const resolvedPaths = paths.map((p) => resolve(p));
+
+      for (const p of resolvedPaths) {
+        if (!existsSync(p)) {
+          console.warn(`Warning: path does not exist: ${p}`);
+        }
+      }
 
       console.log(`Watching for changes:`);
       for (const p of resolvedPaths) {

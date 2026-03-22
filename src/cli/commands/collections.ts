@@ -9,10 +9,13 @@ import {
   getCollectionStats,
 } from "../../storage/collections.js";
 
+let _db: ReturnType<typeof getDb> | null = null;
 function db() {
-  const d = getDb(resolve(config.dataDir, "clawcore.db"));
-  runMigrations(d);
-  return d;
+  if (!_db) {
+    _db = getDb(resolve(config.dataDir, "clawcore.db"));
+    runMigrations(_db);
+  }
+  return _db;
 }
 
 export const collectionsCommand = new Command("collections")

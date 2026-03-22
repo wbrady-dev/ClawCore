@@ -36,10 +36,9 @@ function loadSourceConfigs(): Map<string, SourceConfig> {
     if (existsSync(envPath)) env = readFileSync(envPath, "utf-8");
   } catch {}
 
-  // --- Local adapter: parse WATCH_PATHS ---
-  const watchRaw = env.match(/WATCH_PATHS=(.*)/)?.[1]?.trim() ?? "";
-  if (watchRaw) {
-    const collections = watchRaw
+  // --- Local adapter: use canonical config (process.env via dotenv) ---
+  if (config.watch.paths) {
+    const collections = config.watch.paths
       .split(",")
       .map((e) => e.trim())
       .filter(Boolean)
@@ -47,7 +46,7 @@ function loadSourceConfigs(): Map<string, SourceConfig> {
         const pipe = entry.lastIndexOf("|");
         return {
           path: pipe > 0 ? entry.slice(0, pipe).trim() : entry.trim(),
-          collection: pipe > 0 ? entry.slice(pipe + 1).trim() : "default",
+          collection: pipe > 0 ? entry.slice(pipe + 1).trim() : config.defaults.collection,
         };
       });
     configs.set("local", {

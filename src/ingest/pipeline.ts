@@ -318,20 +318,18 @@ async function ingestFileInner(
  * Remove a document and all its chunks/vectors/metadata.
  */
 function removeDocument(db: Database.Database, documentId: string): void {
-  // Get chunk IDs for vector deletion
   const chunkIds = db
     .prepare("SELECT id FROM chunks WHERE document_id = ?")
     .all(documentId) as { id: string }[];
 
-  if (chunkIds.length > 0) {
-    deleteVectors(
-      db,
-      chunkIds.map((c) => c.id),
-    );
-  }
-
-  // Cascading deletes handle chunks + metadata_index
-  db.prepare("DELETE FROM documents WHERE id = ?").run(documentId);
+  // Atomic: delete vectors + document in a single transaction
+  db.transaction(() => {
+    if (chunkIds.length > 0) {
+      deleteVectors(db, chunkIds.map((c) => c.id));
+    }
+    // Cascading deletes handle chunks + metadata_index
+    db.prepare("DELETE FROM documents WHERE id = ?").run(documentId);
+  })();
 }
 
 /**

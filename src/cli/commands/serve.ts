@@ -47,12 +47,6 @@ export const serveCommand = new Command("serve")
     // Stop any existing services/processes on our ports
     console.log(`${prefix.sys} Checking for existing services...`);
 
-    // Stop Windows services if they exist
-    if (process.platform === "win32") {
-      try { execFileSync("net", ["stop", "ClawCoreRAG"], { stdio: "pipe" }); console.log(`${prefix.sys} Stopped ClawCoreRAG service`); } catch {}
-      try { execFileSync("net", ["stop", "ClawCoreModels"], { stdio: "pipe" }); console.log(`${prefix.sys} Stopped ClawCoreModels service`); } catch {}
-    }
-
     // Kill anything on our ports (cross-platform)
     for (const port of [getModelPort(), getApiPort()]) {
       try {
@@ -72,7 +66,7 @@ export const serveCommand = new Command("serve")
             for (const pid of out.split("\n")) {
               const trimmed = pid.trim();
               if (/^\d+$/.test(trimmed)) {
-                try { process.kill(Number(trimmed), "SIGKILL"); } catch {}
+                try { process.kill(Number(trimmed), "SIGTERM"); } catch {}
               }
             }
           }

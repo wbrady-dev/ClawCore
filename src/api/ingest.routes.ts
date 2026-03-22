@@ -1,6 +1,7 @@
 import type { FastifyInstance } from "fastify";
 import { resolve } from "path";
 import { existsSync } from "fs";
+import { tmpdir } from "os";
 import { randomUUID } from "crypto";
 import { ingestFile } from "../ingest/pipeline.js";
 import { config } from "../config.js";
@@ -58,9 +59,14 @@ export function registerIngestRoutes(server: FastifyInstance) {
       return reply.status(400).send({ error: "text required" });
     }
 
+    const MAX_TEXT_SIZE = 10_000_000; // 10MB
+    if (text.length > MAX_TEXT_SIZE) {
+      return reply.status(413).send({ error: `Text too large (${(text.length / 1_000_000).toFixed(1)} MB). Maximum: ${MAX_TEXT_SIZE / 1_000_000} MB` });
+    }
+
     // Write to temp file and ingest
     const { writeFile, unlink } = await import("fs/promises");
-    const tmpPath = resolve(config.dataDir, `_tmp_${randomUUID()}.md`);
+    const tmpPath = resolve(tmpdir(), `clawcore_tmp_${randomUUID()}.md`);
 
     const content = title ? `# ${title}\n\n${text}` : text;
     await writeFile(tmpPath, content, "utf-8");

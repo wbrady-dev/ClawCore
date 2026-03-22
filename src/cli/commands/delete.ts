@@ -3,6 +3,13 @@ import { resolve } from "path";
 import { config } from "../../config.js";
 import { getDb, runMigrations, deleteVectors } from "../../storage/index.js";
 
+/** Escape LIKE special chars. Set keepPercent=true for patterns that use % as intentional wildcards. */
+function escapeLike(s: string, keepPercent = false): string {
+  let result = s.replace(/\\/g, "\\\\").replace(/_/g, "\\_");
+  if (!keepPercent) result = result.replace(/%/g, "\\%");
+  return result;
+}
+
 export const deleteCommand = new Command("delete")
   .description("Delete a document from the knowledge base")
   .option("-c, --collection <name>", "Collection to delete from")
@@ -67,9 +74,11 @@ export const deleteCommand = new Command("delete")
 
         if (opts.source) {
           // Delete by source path (partial match) — search both slash styles
+          const escaped = escapeLike(opts.source);
           const searchTerm = opts.source.replace(/[\\/]/g, "%");
-          let query = "SELECT id, source_path, collection_id FROM documents WHERE (source_path LIKE ? OR source_path LIKE ?)";
-          const params: string[] = [`%${opts.source}%`, `%${searchTerm}%`];
+          const searchTermEscaped = escapeLike(searchTerm, true);
+          let query = "SELECT id, source_path, collection_id FROM documents WHERE (source_path LIKE ? ESCAPE '\\' OR source_path LIKE ? ESCAPE '\\')";
+          const params: string[] = [`%${escaped}%`, `%${searchTermEscaped}%`];
 
           if (opts.collection) {
             const coll = db
@@ -146,7 +155,9 @@ async function deleteDocument(
       const graphDb = getGraphDb(config.relations.graphDbPath);
       deleteSourceData(graphDb, "document", documentId);
     }
-  } catch {}
+  } catch (e) {
+    console.warn(`Warning: graph cleanup failed for document ${documentId}: ${e instanceof Error ? e.message : String(e)}`);
+  }
 
   return chunkIds.length;
 }

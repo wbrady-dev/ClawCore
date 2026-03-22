@@ -41,8 +41,10 @@ relationsCommand
 
     let totalChunks = 0;
     let processedDocs = 0;
+    let errors = 0;
 
-    for (const doc of documents) {
+    for (let di = 0; di < documents.length; di++) {
+      const doc = documents[di];
       const chunks = db.prepare(
         "SELECT text, position FROM chunks WHERE document_id = ? ORDER BY position",
       ).all(doc.id) as Array<{ text: string; position: number }>;
@@ -50,11 +52,17 @@ relationsCommand
       if (chunks.length === 0) continue;
 
       totalChunks += chunks.length;
-      await extractEntitiesFromDocument(graphDb, doc.id, chunks);
-      processedDocs++;
 
-      if (processedDocs % 100 === 0) {
-        console.log(`  Processed ${processedDocs}/${documents.length} documents...`);
+      try {
+        await extractEntitiesFromDocument(graphDb, doc.id, chunks);
+        processedDocs++;
+      } catch (e) {
+        errors++;
+        console.warn(`  Warning: failed to process ${doc.source_path}: ${e instanceof Error ? e.message : String(e)}`);
+      }
+
+      if ((di + 1) % 100 === 0) {
+        console.log(`  Processed ${di + 1}/${documents.length} documents...`);
       }
     }
 
@@ -68,6 +76,7 @@ relationsCommand
     console.log(`  Chunks scanned: ${totalChunks}`);
     console.log(`  Entities in graph: ${entityCount}`);
     console.log(`  Total mentions: ${mentionCount}`);
+    if (errors > 0) console.log(`  Errors: ${errors}`);
     console.log(`  Elapsed: ${(elapsed / 1000).toFixed(1)}s`);
 
     closeGraphDb();

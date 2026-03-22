@@ -7,11 +7,8 @@ import { logger } from "./utils/logger.js";
 import { getDb, closeDb, runMigrations } from "./storage/index.js";
 import { registerRoutes } from "./api/routes.js";
 import { registerRateLimit } from "./api/ratelimit.js";
-import { ClawCoreWatcher } from "./watcher/index.js";
 import { startSources, stopSources } from "./sources/index.js";
 import { flushTokens } from "./utils/token-tracker.js";
-
-let watcher: ClawCoreWatcher | null = null;
 
 /**
  * Check OpenClaw integration on startup (read-only).
@@ -100,12 +97,7 @@ export async function startServer() {
   // Register all routes
   registerRoutes(server);
 
-  // Start file watcher if configured
-  if (config.watch.paths) {
-    watcher = startWatcher();
-  }
-
-  // Start polling source adapters (Google Drive, Notion, Apple Notes)
+  // Start source adapters (LocalAdapter handles file watching via WATCH_PATHS)
   startSources().catch((err) => {
     logger.error({ error: String(err) }, "Failed to start source adapters");
   });
@@ -115,7 +107,6 @@ export async function startServer() {
     logger.info("Shutting down...");
     flushTokens();
     await stopSources();
-    if (watcher) await watcher.stop();
     await server.close();
     closeDb();
     process.exit(0);
@@ -134,40 +125,3 @@ export async function startServer() {
   return server;
 }
 
-/**
- * Parse WATCH_PATHS config and start the file watcher.
- * Format: "path1|collection1,path2|collection2" (pipe-separated)
- * Pipe is used instead of colon because Windows paths contain colons (C:\...).
- * If no collection specified, uses the default collection.
- */
-function startWatcher(): ClawCoreWatcher {
-  const entries = config.watch.paths
-    .split(",")
-    .map((entry) => entry.trim())
-    .filter((entry) => entry.length > 0);
-
-  const watchConfigs = entries.map((entry) => {
-    const pipeIdx = entry.lastIndexOf("|");
-    const watchPath = pipeIdx > 0 ? entry.slice(0, pipeIdx) : entry;
-    const collection = pipeIdx > 0 ? entry.slice(pipeIdx + 1) : "";
-    return {
-      paths: [resolve(watchPath.trim())],
-      collection: collection?.trim() || config.defaults.collection,
-      debounceMs: config.watch.debounceMs,
-    };
-  });
-
-  if (watchConfigs.length === 0) return new ClawCoreWatcher([]);
-
-  logger.info(
-    { watchConfigs: watchConfigs.map((w) => `${w.paths[0]} -> ${w.collection}`) },
-    "Starting file watchers",
-  );
-
-  const w = new ClawCoreWatcher(watchConfigs);
-  w.start().catch((err) => {
-    logger.error({ error: String(err) }, "Failed to start file watcher");
-  });
-
-  return w;
-}

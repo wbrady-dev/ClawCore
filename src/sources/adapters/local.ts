@@ -6,6 +6,7 @@
  */
 import { existsSync } from "fs";
 import { resolve } from "path";
+import { config } from "../../config.js";
 import { ClawCoreWatcher } from "../../watcher/index.js";
 import type { SourceAdapter, SourceConfig, SourceStatus } from "../types.js";
 
@@ -57,7 +58,7 @@ export class LocalAdapter implements SourceAdapter {
       .map((c) => ({
         paths: [resolve(c.path)],
         collection: c.collection,
-        debounceMs: 3000,
+        debounceMs: config.watch.debounceMs,
         ingestExisting: false,
       }));
 
