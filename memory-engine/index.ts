@@ -847,6 +847,28 @@ function readLatestAssistantReply(messages: unknown[]): string | undefined {
 
 /** Construct LCM dependencies from plugin API/runtime surfaces. */
 function createLcmDependencies(api: OpenClawPluginApi): LcmDependencies {
+  // Load ClawCore .env into process.env so RSMA extraction config is visible.
+  // The memory-engine runs inside the OpenClaw gateway process, which doesn't
+  // load ClawCore's .env by default.
+  try {
+    const { resolve, dirname } = require("path");
+    const { readFileSync } = require("fs");
+    const envPath = resolve(dirname(require.resolve("./package.json")), "..", ".env");
+    const envContent = readFileSync(envPath, "utf8");
+    for (const line of envContent.split("\n")) {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith("#")) continue;
+      const eqIdx = trimmed.indexOf("=");
+      if (eqIdx < 0) continue;
+      const key = trimmed.substring(0, eqIdx).trim();
+      const value = trimmed.substring(eqIdx + 1).trim();
+      // Don't override existing env vars (system env takes precedence)
+      if (!process.env[key]) {
+        process.env[key] = value;
+      }
+    }
+  } catch { /* .env file may not exist — non-fatal */ }
+
   const envSnapshot = snapshotPluginEnv();
   envSnapshot.openclawDefaultModel = readDefaultModelFromConfig(api.config);
   const modelAuth = getRuntimeModelAuth(api);
