@@ -1054,18 +1054,24 @@ export class CompactionEngine {
       },
     });
 
-    // Relations: extract entities from compacted messages
+    // Relations: extract entities from compacted messages.
+    // Each message is processed independently — idempotency collisions are
+    // expected when messages were already extracted during initial ingest.
     if (this.graphDb && this.relationsEnabled && messageContents.length > 0) {
       try {
         const terms = loadTerms();
         for (const msg of messageContents) {
-          const entities = extractFast(msg.content, terms);
-          if (entities.length > 0) {
-            storeExtractionResult(this.graphDb, entities, {
-              sourceType: "message",
-              sourceId: String(msg.messageId),
-              actor: "system",
-            });
+          try {
+            const entities = extractFast(msg.content, terms);
+            if (entities.length > 0) {
+              storeExtractionResult(this.graphDb, entities, {
+                sourceType: "message",
+                sourceId: String(msg.messageId),
+                actor: "system",
+              });
+            }
+          } catch {
+            // Expected: idempotency collision when re-extracting already-processed messages
           }
         }
       } catch (err) {
