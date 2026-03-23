@@ -1628,6 +1628,7 @@ export class LcmContextEngine implements ContextEngine {
         if (writerResult.objects.length > 0) {
           const { reconcile } = await import("./ontology/truth.js");
           const { projectProvenance, recordSupersession, recordConflict, recordEvidence } = await import("./ontology/projector.js");
+          const { withWriteTransaction } = await import("./relations/evidence-log.js");
 
           const reconciled = reconcile(graphDb, writerResult.objects, {
             isCorrection: writerResult.signals.isCorrection,
@@ -1647,6 +1648,71 @@ export class LcmContextEngine implements ContextEngine {
               projectProvenance(graphDb, action.newObject);
               recordEvidence(graphDb, action.newObject.id, action.existingObjectId, action.predicate, 1.0, action.reason);
             }
+          }
+
+          // Write to LEGACY tables so existing tools (cc_claims, cc_decisions, cc_loops) can see results.
+          // This bridges provenance_links ↔ legacy tables until tools migrate to MemoryReader.
+          try {
+            const { upsertClaim } = await import("./relations/claim-store.js");
+            const { upsertDecision } = await import("./relations/decision-store.js");
+            const { openLoop } = await import("./relations/loop-store.js");
+            const { storeExtractionResult } = await import("./relations/graph-store.js");
+
+            withWriteTransaction(graphDb, () => {
+              for (const obj of writerResult.objects) {
+                const s = obj.structured as Record<string, unknown> | undefined;
+                if (!s) continue;
+
+                if (obj.kind === "claim" && s.subject && s.predicate) {
+                  upsertClaim(graphDb, {
+                    scopeId: 1,
+                    subject: String(s.subject),
+                    predicate: String(s.predicate),
+                    objectText: String(s.objectText ?? s.value ?? ""),
+                    confidence: obj.confidence,
+                    trustScore: obj.provenance.trust,
+                    sourceAuthority: obj.provenance.trust,
+                    canonicalKey: obj.canonical_key ?? `claim::${String(s.subject).toLowerCase()}::${String(s.predicate).toLowerCase()}`,
+                  });
+                }
+
+                if (obj.kind === "decision" && s.topic) {
+                  upsertDecision(graphDb, {
+                    scopeId: 1,
+                    topic: String(s.topic),
+                    decisionText: String(s.decisionText ?? obj.content),
+                    sourceType: "message",
+                    sourceId: obj.provenance.source_id,
+                  });
+                }
+
+                if (obj.kind === "loop") {
+                  openLoop(graphDb, {
+                    scopeId: 1,
+                    loopType: String(s.loopType ?? "task") as "task" | "question" | "follow_up" | "dependency",
+                    text: obj.content,
+                    sourceType: "message",
+                    sourceId: obj.provenance.source_id,
+                  });
+                }
+
+                if (obj.kind === "entity") {
+                  storeExtractionResult(graphDb, [{
+                    name: String(s.name ?? obj.content),
+                    confidence: obj.confidence,
+                    strategy: "ner:llm" as any,
+                    entityType: String(s.entityType ?? "semantic"),
+                  }], {
+                    sourceType: "message",
+                    sourceId: obj.provenance.source_id,
+                    actor: "system",
+                  });
+                }
+              }
+            });
+          } catch (err) {
+            // Non-fatal: legacy write failure doesn't break RSMA
+            console.debug("[rsma] legacy table write failed:", err instanceof Error ? err.message : String(err));
           }
         }
       } catch (err) {
