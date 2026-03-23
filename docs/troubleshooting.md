@@ -54,18 +54,27 @@ All databases rebuild automatically on next startup.
 ### Claims not being extracted
 **Check**:
 1. `CLAWCORE_MEMORY_RELATIONS_CLAIM_EXTRACTION_ENABLED=true`
-2. Claims are extracted during compaction (after conversation summarization)
-3. Fast extraction only works with structured signals: "Remember:", heading+bullets, YAML frontmatter, tool results
+2. Claims are extracted from every message (ingest-time, no compaction required)
+3. In **fast** extraction mode, only structured signals are detected: "Remember:", heading+bullets, YAML frontmatter, tool results
+4. In **smart** extraction mode, natural language claims are also detected (e.g. "The API runs on port 8080")
+5. Check extraction mode: `CLAWCORE_MEMORY_RELATIONS_EXTRACTION_MODE` (default: smart)
 
 ### Anti-runbooks not decaying
-Decay is applied **lazily** — only when anti-runbooks are queried (via `cc_antirunbooks` tool or context compiler). Decay won't happen until something reads the data.
+Decay is applied **lazily** — only when anti-runbooks are queried (via `cc_procedures` tool or context compiler). Decay won't happen until something reads the data.
 
-### cc_ask returns "Deep extraction is not enabled"
-Set `CLAWCORE_MEMORY_RELATIONS_DEEP_EXTRACTION_ENABLED=true` and configure a model:
-```bash
-CLAWCORE_MEMORY_RELATIONS_DEEP_EXTRACTION_MODEL=claude-sonnet-4-20250514
-CLAWCORE_MEMORY_RELATIONS_DEEP_EXTRACTION_PROVIDER=anthropic
-```
+### Smart extraction not working (falling back to fast mode)
+**Check**:
+1. `CLAWCORE_MEMORY_RELATIONS_DEEP_EXTRACTION_ENABLED=true` (smart mode requires this)
+2. `CLAWCORE_MEMORY_RELATIONS_DEEP_EXTRACTION_MODEL` is set to a valid model
+3. `CLAWCORE_MEMORY_RELATIONS_DEEP_EXTRACTION_PROVIDER` is set (anthropic, openai, etc.)
+4. `CLAWCORE_MEMORY_RELATIONS_EXTRACTION_MODE` is not set to `fast`
+
+Smart extraction uses the same model as deep extraction — no extra model to configure. If the LLM call fails, it falls back to fast (regex) extraction silently.
+
+### Extraction mode defaults
+- If `EXTRACTION_MODE` is not set and deep extraction is enabled: **smart** mode is used
+- If `EXTRACTION_MODE` is not set and deep extraction is disabled: **smart** is still the default in config, but since `useLlm` requires deep extraction to be enabled, it will use regex extraction in practice
+- To force regex-only: set `CLAWCORE_MEMORY_RELATIONS_EXTRACTION_MODE=fast`
 
 ## Search Issues
 
@@ -112,7 +121,7 @@ rm ~/.clawcore/data/clawcore.db
 **Cause**: OpenClaw doesn't have `clawcore-memory` in its trusted plugin list.
 **Fix**: Run `clawcore integrate --apply` to set `plugins.allow` automatically.
 
-### Evidence tools not showing up (cc_state, cc_claims, etc.)
+### Evidence tools not showing up (cc_memory, cc_claims, etc.)
 **Cause**: The graph database isn't at the expected path, so `graphDb` is null and evidence tools don't register.
 **Fix**:
 1. Run `clawcore doctor` to check data paths

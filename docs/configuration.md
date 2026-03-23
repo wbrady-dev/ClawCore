@@ -102,6 +102,7 @@ All configuration is via environment variables. Copy `.env.example` to `.env` an
 | `CLAWCORE_MEMORY_RELATIONS_DEEP_EXTRACTION_ENABLED` | `false` | Enable LLM-powered deep extraction |
 | `CLAWCORE_MEMORY_RELATIONS_DEEP_EXTRACTION_MODEL` | `` | Model for deep extraction (falls back to summary model) |
 | `CLAWCORE_MEMORY_RELATIONS_DEEP_EXTRACTION_PROVIDER` | `` | Provider for deep extraction |
+| `CLAWCORE_MEMORY_RELATIONS_EXTRACTION_MODE` | `smart` | Extraction mode: `smart` (LLM-based semantic extraction) or `fast` (regex-only, no LLM, <5ms). Smart mode uses the same model as deep extraction. |
 
 ## Source Adapters
 

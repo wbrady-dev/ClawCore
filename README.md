@@ -14,6 +14,9 @@ ClawCore's Evidence OS extracts structured knowledge from conversations, documen
 - **Runbooks & Anti-Runbooks** — Learns success patterns and failure patterns from tool history
 - **Branch Promotion** — Speculative memory with policy-validated promotion to shared scope
 - **Timeline & Snapshots** — Event timeline materialization and point-in-time state reconstruction
+- **Semantic Extraction** — Two modes: **Smart** (LLM-based, understands natural language without magic prefixes) and **Fast** (regex-only, no LLM, <5ms). Configurable via `CLAWCORE_MEMORY_RELATIONS_EXTRACTION_MODE=smart|fast`
+- **Unified Ontology** — Single `MemoryObject` type with 13 kinds (event, chunk, message, summary, claim, decision, entity, loop, attempt, procedure, invariant, delta, conflict) and a `provenance_links` table replacing 7 legacy join tables
+- **TruthEngine** — Reconciles new knowledge against existing beliefs: 6 rules covering supersession, conflict creation, confidence resolution, value contradiction detection, correction guards, and provisional handling
 - **Deep Extraction** — Optional LLM-powered relationship extraction and evidence synthesis
 - **Context Compiler** — ROI-scored capsule compilation with configurable token budgets (110-280 tokens)
 - **12 Agent Tools** — `cc_grep`, `cc_describe`, `cc_expand`, `cc_recall`, `cc_claims`, `cc_decisions`, `cc_loops`, `cc_attempts`, `cc_branch`, `cc_procedures`, `cc_diagnostics`, `cc_memory`

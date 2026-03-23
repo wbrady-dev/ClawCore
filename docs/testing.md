@@ -68,6 +68,54 @@ const events = db.prepare(
 expect(events.length).toBeGreaterThan(0);
 ```
 
+### Testing Semantic Extraction (Smart Mode)
+
+Mock the `CompleteFn` to simulate LLM responses:
+```typescript
+import { semanticExtract, type CompleteFn } from "../src/ontology/semantic-extractor.js";
+
+const mockComplete: CompleteFn = async () => ({
+  content: JSON.stringify({
+    events: [{
+      type: "decision",
+      content: "Use Postgres for staging",
+      subject: "staging database",
+      predicate: "technology",
+      value: "Postgres",
+      confidence: 0.9,
+    }],
+  }),
+});
+
+const result = await semanticExtract(
+  "We're going with Postgres for staging",
+  "msg:001",
+  "user",
+  { complete: mockComplete, model: "test-model" },
+);
+expect(result.objects.length).toBeGreaterThan(0);
+expect(result.objects.some(o => o.kind === "decision")).toBe(true);
+```
+
+### Testing the TruthEngine
+
+```typescript
+import { reconcile } from "../src/ontology/truth.js";
+
+// Provide a real or mocked GraphDb and test reconciliation rules:
+const result = reconcile(db, [candidateObject], { isCorrection: true, correctionSignal: "actually" });
+expect(result.stats.supersessions).toBe(1);
+```
+
+### Testing the MemoryReader
+
+```typescript
+import { readMemoryObjects } from "../src/ontology/reader.js";
+
+const objects = readMemoryObjects(db, { kinds: ["claim"], keyword: "postgres" });
+// Returns MemoryObject[] sorted by relevance-to-action ranking
+```
+
 ## Running
 
 ```bash

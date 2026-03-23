@@ -25,6 +25,10 @@ When a conversation grows beyond the model's context window, OpenClaw normally t
 
 Nothing is lost. Raw messages stay in the database. Summaries link back to their source messages. Agents can drill into any summary to recover the original detail.
 
+6. **Extracts structured knowledge** via the RSMA semantic extraction pipeline — claims, decisions, entities, tasks, and corrections are extracted from every message using either **smart** (LLM-based) or **fast** (regex-only) mode
+7. **Reconciles new knowledge** via the TruthEngine — supersession, conflict detection, evidence accumulation, and correction handling with a 5-point safety guard
+8. **Tracks provenance** via a unified `provenance_links` table — every relationship between knowledge objects is typed (derived_from, supports, contradicts, supersedes, mentioned_in, relates_to, resolved_by)
+
 **It feels like talking to an agent that never forgets. Because it doesn't.**
 
 ## Quick start
@@ -248,6 +252,17 @@ src/
     conversation-store.ts   # Message persistence and retrieval
     summary-store.ts        # Summary DAG persistence and context item management
     fts5-sanitize.ts        # FTS5 query sanitization
+  ontology/                 # RSMA unified ontology
+    types.ts                # MemoryObject, MemoryKind (13 kinds), ProvenanceLink, RelevanceSignals
+    canonical.ts            # Per-kind canonical key generation for dedup/supersession
+    writer.ts               # Fast mode: regex-based message understanding (<5ms)
+    semantic-extractor.ts   # Smart mode: LLM-based semantic extraction (single structured call)
+    truth.ts                # TruthEngine: 6 reconciliation rules, 5-point correction guard
+    reader.ts               # Unified read layer with relevance-to-action ranking
+    projector.ts            # provenance_links writer, supersession/conflict recording
+    correction.ts           # Signal detection: correction, uncertainty, preference, temporal
+    migration.ts            # Backfill legacy join tables → provenance_links
+    index.ts                # Barrel exports
   tools/
     lcm-grep-tool.ts        # cc_grep tool implementation
     lcm-describe-tool.ts    # cc_describe tool implementation

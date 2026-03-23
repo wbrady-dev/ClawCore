@@ -9,11 +9,21 @@ ClawCore automatically extracts and tracks structured knowledge from conversatio
 
 **Most of RSMA is automatic. You do not need to call tools for it to work.**
 
+## Extraction Modes
+
+ClawCore uses one of two extraction modes (configured via `CLAWCORE_MEMORY_RELATIONS_EXTRACTION_MODE`):
+
+- **Smart** (default when deep extraction model is configured): LLM-based semantic extraction. A single structured LLM call understands natural language without magic prefixes — "We're going with Postgres" is understood as a decision, "Actually no" as a correction. Uses the same model as deep extraction.
+- **Fast** (default when no model is configured): Regex-only extraction, no LLM calls, <5ms. Detects structured patterns like "Remember:", "We decided...", YAML frontmatter, tool results.
+
+Both modes produce the same types of knowledge (claims, decisions, entities, loops, etc.). Smart mode extracts more from natural language; fast mode requires more explicit patterns.
+
 ## What happens automatically (no tool call needed)
 - **Awareness notes** injected into your system prompt every turn — surfaces mismatches, stale references, and entity connections
 - **Named entity extraction** via spaCy NER — people, organizations, locations, dates extracted from all ingested content and conversations
-- **Claims** extracted from "Remember:" statements, narrative facts, tool results, document headings, YAML frontmatter, and assistant project descriptions
-- **Decisions** extracted from "We decided..." and similar patterns (user messages only)
+- **Claims** extracted from natural language (smart mode) or structured patterns like "Remember:" statements, tool results, document headings, YAML frontmatter (fast mode)
+- **Decisions** extracted from natural language (smart mode) or "We decided..." patterns (fast mode, user messages only)
+- **TruthEngine reconciliation** — new knowledge is automatically reconciled against existing beliefs (supersession, conflict detection, evidence accumulation)
 - **Tool outcomes** tracked from every tool execution (success/fail, duration, error)
 - **Procedures** learned automatically — success patterns (runbooks) and failure patterns (anti-runbooks)
 - **Context capsules** compiled and injected each turn (top claims, decisions, warnings, constraints) within a token budget
@@ -119,7 +129,9 @@ You do not need to call any tool for awareness — it runs every turn automatica
 
 All RSMA tools require Evidence OS to be enabled (`CLAWCORE_MEMORY_RELATIONS_ENABLED=true`).
 
-The 4 core tools (`cc_memory`, `cc_grep`, `cc_describe`, `cc_expand`) are always available regardless of Evidence OS settings.
+The 4 core tools (`cc_grep`, `cc_describe`, `cc_expand`, `cc_recall`) are always available regardless of Evidence OS settings. `cc_memory` requires Evidence OS.
+
+The extraction mode is transparent to tools — the same tools work regardless of whether smart or fast extraction is active.
 
 ## Setup
 

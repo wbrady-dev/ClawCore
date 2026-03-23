@@ -75,3 +75,7 @@ Show internal RSMA health: summary counts, claim counts, awareness stats, contex
 - **Requires `CLAWCORE_MEMORY_RELATIONS_ENABLED=true`** (8): `cc_memory`, `cc_claims`, `cc_decisions`, `cc_loops`, `cc_attempts`, `cc_branch`, `cc_procedures`, `cc_diagnostics`
 
 All tools handle empty results gracefully and wrap queries in try/catch for non-fatal error handling.
+
+## Extraction Mode
+
+The extraction mode (`CLAWCORE_MEMORY_RELATIONS_EXTRACTION_MODE=smart|fast`) is transparent to tools. The same 12 tools work regardless of whether smart (LLM) or fast (regex) extraction is active. The extraction mode only affects how incoming messages are processed into MemoryObjects — tools read from the same underlying stores either way.

@@ -2,6 +2,24 @@
 
 All notable changes to ClawCore are documented here.
 
+## [0.3.1] — 2026-03-22
+
+### RSMA Unified Ontology
+- **MemoryObject type** — single unified type for all 13 knowledge kinds: event, chunk, message, summary, claim, decision, entity, loop, attempt, procedure, invariant, delta, conflict
+- **provenance_links table** — replaces 7 legacy join tables (entity_mentions, claim_evidence, entity_relations, runbook_evidence, anti_runbook_evidence, summary linkage, conflict linkage) with a single typed-predicate table (derived_from, supports, contradicts, supersedes, mentioned_in, relates_to, resolved_by)
+- **TruthEngine** — 6 reconciliation rules: confidence-based supersession, recency tie-breaking, evidence accumulation, value contradiction → first-class Conflict objects, correction-triggered supersession with 5-point guard, provisional gating
+- **Canonical keys** — per-kind dedup/supersession keys (claim::subject::predicate, decision::topic, entity::name, loop::hash, proc::tool::key, inv::key, conflict::hash)
+- **MemoryReader** — unified read layer across graph.db with relevance-to-action ranking using task-mode weights (coding, planning, troubleshooting, recall, default)
+- **StoreProjector** — dual-write to legacy tables + provenance_links; provenance link insertion for supersession, conflict, mention, evidence, derivation, and resolution
+- **Historical data migration** — idempotent backfill from legacy join tables into provenance_links (INSERT OR IGNORE)
+
+### Semantic Extraction
+- **Smart mode** (default) — single structured LLM call extracts all memory events from a message. Understands natural language without magic prefixes ("We're going with Postgres" → decision, "Actually no" → correction). Uses same model as deep extraction.
+- **Fast mode** — regex-only extraction, no LLM calls, <5ms. Fallback when no model configured.
+- **Config**: `CLAWCORE_MEMORY_RELATIONS_EXTRACTION_MODE=smart|fast`
+- **Signal detection** — correction, uncertainty, preference, and temporal signals detected via regex in both modes. Smart mode merges regex signals with LLM output.
+- **Automatic fallback** — smart mode falls back to fast (regex) if LLM call fails or returns unparseable output
+
 ## [0.3.0] — 2026-03-20
 
 ### TUI Overhaul

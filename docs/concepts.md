@@ -63,5 +63,31 @@ Claims have a trust score based on their source:
 - Summaries: 0.3
 - Inferred: 0.2 (lowest)
 
+## Extraction & Provenance
+
+### Extraction Modes
+ClawCore extracts structured knowledge from every message using one of two modes:
+
+**Smart mode** (default when deep extraction model is configured): A single structured LLM call classifies the message and extracts all memory events in one pass. The LLM understands natural language without magic prefixes — "We're going with Postgres" is recognized as a decision, "Actually no, use MySQL" as a correction, "I think it's port 8080" as an uncertain claim. Uses the same model configured for deep extraction. Falls back to fast mode if the LLM call fails.
+
+**Fast mode** (default when no model is configured): Regex-only extraction with no LLM calls, completing in <5ms. Detects structured signals: "Remember:" statements, heading+bullet patterns, YAML frontmatter, tool results, "We decided..." patterns, capitalized entity names, and correction/uncertainty/preference/temporal signals.
+
+Configure with: `CLAWCORE_MEMORY_RELATIONS_EXTRACTION_MODE=smart|fast`
+
+### Unified Ontology
+All extracted knowledge is represented as `MemoryObject` instances. There are 13 kinds: event, chunk, message, summary, claim, decision, entity, loop, attempt, procedure, invariant, delta, and conflict. Each MemoryObject carries provenance (where it came from), confidence, freshness, a lifecycle status, and an influence weight.
+
+### Provenance Links
+Cross-object relationships are stored in a single `provenance_links` table with typed predicates: derived_from, supports, contradicts, supersedes, mentioned_in, relates_to, resolved_by. This replaces 7 legacy join tables (entity_mentions, claim_evidence, entity_relations, runbook_evidence, anti_runbook_evidence, and implicit summary/conflict linkage).
+
+### TruthEngine
+When new MemoryObjects are extracted, the TruthEngine reconciles them against existing knowledge using 6 rules:
+1. Higher confidence supersedes lower
+2. Equal confidence — newer wins
+3. Lower confidence adds supporting evidence
+4. Contradictory values create first-class Conflict objects
+5. Correction signals ("actually...") trigger auto-supersession with a 5-point safety guard
+6. Provisional statements ("I think...") don't override established beliefs
+
 ## Context Compiler & ROI Governor
 The context compiler scores every evidence capsule on usefulness, confidence, freshness, and scope fit. It ranks by score-per-token and fills the budget greedily. Budget tiers: Lite (110 tokens), Standard (190), Premium (280).

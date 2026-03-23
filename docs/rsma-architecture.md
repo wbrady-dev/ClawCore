@@ -41,7 +41,7 @@
 
 | Gap | Risk | Mitigation |
 |-----|------|-----------|
-| End-to-end through OpenClaw agent conversation | Low | Live-tested with Copper: cc_claims, cc_decisions, cc_state, cc_recall all verified |
+| End-to-end through OpenClaw agent conversation | Low | Live-tested with Copper: cc_claims, cc_decisions, cc_memory, cc_recall all verified |
 | Deep extraction with real LLM call | Low | Config gate verified; extraction logic tested with mock; real LLM quality depends on model |
 | Awareness note quality (does it actually help?) | Medium | Eval harness records metrics; fire rate 75-94% in live sessions; quality needs human eval |
 | cc_recall full delegated expansion | Low | Requires OpenClaw gateway context; lightweight mode auto-activates as fallback |
@@ -60,11 +60,15 @@
 | cc_diagnostics | Full RSMA health check: memory stats, evidence counts, awareness metrics, compiler state, archive stats |
 | /analytics/diagnostics | HTTP endpoint for external monitoring (JSON) |
 | Search tuning | Configurable rerank threshold, top-K, smart skip, similarity gate, prefix mode, batch size |
-| "Has more" indicator | Truncated results signal availability of more data, guide agent to cc_claims/cc_state |
+| "Has more" indicator | Truncated results signal availability of more data, guide agent to cc_claims/cc_decisions |
+| Unified ontology | MemoryObject type with 13 kinds, provenance_links table replacing 7 legacy join tables |
+| TruthEngine | 6 reconciliation rules with 5-point correction guard and first-class Conflict objects |
+| Smart extraction | LLM-based semantic extraction mode — single structured call understands natural language |
+| Fast extraction | Regex-only extraction mode — no LLM, <5ms, default when no model configured |
 
 ### Known limits
 
-- Entity extraction is regex-based (fast, but misses some entities a language model would catch)
+- In fast mode, entity extraction is regex-based (fast, but misses some entities a language model would catch). Smart mode uses LLM extraction for richer results.
 - Context compiler estimates tokens at 4 chars/token (approximation, not exact tokenization)
 - Deep extraction requires an LLM and costs tokens — not free
 - Branch promotion policies are seeded defaults — may need tuning per deployment
@@ -86,8 +90,20 @@
 ## File Structure
 
 ```
-memory-engine/src/relations/
-  schema.ts           — 7 migrations, 22 tables, all indexes
+memory-engine/src/ontology/           — RSMA unified ontology (new)
+  types.ts            — MemoryObject, MemoryKind (13 kinds), SourceKind, ProvenanceLink, RelevanceSignals, TaskMode weights
+  canonical.ts        — per-kind canonical key generation (claim::subject::predicate, decision::topic, etc.)
+  writer.ts           — regex-based message understanding (fast mode), produces MemoryObjects
+  semantic-extractor.ts — LLM-based message understanding (smart mode), single structured LLM call
+  truth.ts            — TruthEngine: 6 reconciliation rules, 5-point correction guard, conflict creation
+  reader.ts           — unified read layer across graph.db, relevance-to-action ranking
+  projector.ts        — provenance_links writer, supersession/conflict/evidence/mention recording
+  correction.ts       — signal detection: correction, uncertainty, preference, temporal (regex, <1ms)
+  migration.ts        — backfill legacy join tables → provenance_links (idempotent)
+  index.ts            — barrel exports
+
+memory-engine/src/relations/          — Evidence OS stores (legacy, still active)
+  schema.ts           — 10 migrations, 23 tables (incl. provenance_links), all indexes
   evidence-log.ts     — withWriteTransaction, writeWithIdempotency, logEvidence, nextScopeSeq
   entity-extract.ts   — extractFast (3 strategies: capitalized, terms-list, quoted)
   graph-store.ts      — upsertEntity, insertMention, deleteGraphDataForSource
@@ -113,7 +129,7 @@ memory-engine/src/relations/
   decay.ts            — applyDecay (runbook staleness, anti-runbook confidence decay)
   terms.ts            — loadTerms (validated, cached 60s)
   eval.ts             — recordAwarenessEvent, getAwarenessStats (ring buffer, percentiles)
-  tools.ts            — 16 cc_* agent tools
+  tools.ts            — 8 cc_* evidence tools (cc_memory, cc_claims, cc_decisions, cc_loops, cc_attempts, cc_branch, cc_procedures, cc_diagnostics)
   index.ts            — exports
 ```
 
@@ -134,3 +150,4 @@ memory-engine/src/relations/
 | v0.2.0 | 2026-03-19 | Sidecar architecture: data consolidation (~/.clawcore/data/), manifest versioning, clawcore doctor/upgrade/integrate, managed OpenClaw integration (check-only startup), lock-protected transactional upgrades, backup validation, post-upgrade smoke test, PID-aware stale lock, backup retention, search tuning (rerank threshold/top-K/smart skip, similarity gate, prefix mode, batch size), ingest-time claim+decision extraction (no /compact required), cc_recall lightweight mode with evidence fallback (summaries→claims→decisions→messages), FTS5 OR fallback for long queries, LIKE partial match for claim/decision search, cold structured archive (hot/cold/RAG tiers with copy-then-delete safety, run tracking, restore, auto-trigger at 5000 events, VACUUM), cc_diagnostics observability tool + /analytics/diagnostics HTTP endpoint, "has more" truncation indicator with agent-guided follow-up |
 | v0.2.1 | 2026-03-19 | Security hardening: command injection prevention (shell:false everywhere), binary dedup, query DoS protection, regression tests, docs audit |
 | v0.3.0 | 2026-03-20 | TUI overhaul (Ink primary, capability detection, live status), spaCy NER integration (/ner endpoint, hybrid entity extraction), recommended install includes OCR + Whisper + NER, RSMA EEL fixes (scope_id propagation, decay evidence logging), awareness cache invalidation, token estimation improvements, port architecture (centralized constants), 1,197 tests passing (643 ClawCore + 554 memory-engine) |
+| v0.3.1 | 2026-03-22 | RSMA unified ontology: MemoryObject type (13 kinds), provenance_links table (replaces 7 legacy join tables), TruthEngine (6 reconciliation rules, 5-point correction guard), MemoryReader (relevance-to-action ranking), StoreProjector (dual-write), semantic extraction (smart: LLM + fast: regex), historical data migration |

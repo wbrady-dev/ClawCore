@@ -37,6 +37,18 @@ CLAWCORE_MEMORY_RELATIONS_DEEP_EXTRACTION_MODEL=claude-sonnet-4-20250514
 CLAWCORE_MEMORY_RELATIONS_DEEP_EXTRACTION_PROVIDER=anthropic
 ```
 
+### Phase 5: Extraction Mode (Optional)
+```bash
+# Smart: LLM-based semantic extraction (default when deep extraction is enabled)
+# Understands natural language without magic prefixes.
+CLAWCORE_MEMORY_RELATIONS_EXTRACTION_MODE=smart
+
+# Fast: Regex-only, no LLM calls, <5ms (default when no model configured)
+CLAWCORE_MEMORY_RELATIONS_EXTRACTION_MODE=fast
+```
+
+Smart mode uses the same model as deep extraction — no extra model to configure. If deep extraction is enabled and extraction mode is not explicitly set, smart mode is used automatically.
+
 ## Schema Migrations
 
 Migrations are tracked in `_evidence_migrations` table and run idempotently:
@@ -49,6 +61,9 @@ Migrations are tracked in `_evidence_migrations` table and run idempotently:
 | v4 | H3 | work_leases |
 | v5 | H4 | runbook_evidence |
 | v6 | H5 | entity_relations |
+| v7 | H5 | anti_runbook_evidence |
+| v8-v9 | H5 | Indexes and constraints |
+| v10 | RSMA | provenance_links (unified, replaces 7 legacy join tables) |
 
 ## Renamed Concepts
 

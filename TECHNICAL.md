@@ -225,12 +225,50 @@ After ingesting documents with 50+ chunks, an explicit WAL checkpoint runs to pr
 
 ---
 
+## Semantic Extraction Pipeline
+
+Every message processed by ClawCore passes through the RSMA extraction pipeline. The pipeline has two modes, controlled by `CLAWCORE_MEMORY_RELATIONS_EXTRACTION_MODE`:
+
+### Smart Mode (default)
+LLM-based semantic extraction. A single structured LLM call classifies the message and extracts all memory-relevant objects in one pass. The LLM understands natural language without magic prefixes:
+- "We're going with Postgres" is understood as a decision
+- "Actually no, use MySQL" is understood as a correction + decision
+- "I think it's port 8080" is understood as an uncertain claim
+- "Need to rotate the API key" is understood as a task
+
+Uses the same model as deep extraction (`CLAWCORE_MEMORY_RELATIONS_DEEP_EXTRACTION_MODEL`). Falls back to regex extraction if the LLM call fails.
+
+### Fast Mode
+Regex-only extraction. No LLM calls. <5ms per message. Detects:
+- Correction signals ("actually", "scratch that", "not anymore")
+- Uncertainty signals ("I think", "maybe", "for now")
+- Preference signals ("I prefer", "never suggest")
+- Temporal signals ("by Friday", "starting next Monday")
+- Structured claims ("Remember:", heading+bullets, YAML frontmatter, tool results)
+- Decisions ("We decided...", "Going with...")
+- Entities (capitalized names, quoted terms, terms list)
+
+Fast mode is the default when deep extraction is not enabled.
+
+### Reconciliation
+After extraction, the **TruthEngine** reconciles candidate MemoryObjects against existing knowledge using 6 rules:
+1. **Higher confidence supersedes** — new belief with higher confidence replaces old
+2. **Same confidence, newer wins** — tie-breaking by recency
+3. **Lower confidence adds evidence** — weaker claims support but don't replace
+4. **Value contradiction creates Conflict** — contradictory values produce first-class Conflict objects
+5. **Correction signal auto-supersedes** — "actually..." triggers supersession with a 5-point guard (canonical key match, same scope, same kind family, minimum confidence 0.3, auditable reason trace)
+6. **Provisional objects don't supersede firm beliefs** — "I think..." doesn't override established facts
+
+All extracted objects are unified as `MemoryObject` instances with 13 kinds (event, chunk, message, summary, claim, decision, entity, loop, attempt, procedure, invariant, delta, conflict). Cross-object relationships are stored in the `provenance_links` table with typed predicates (derived_from, supports, contradicts, supersedes, mentioned_in, relates_to, resolved_by), replacing 7 legacy join tables.
+
+---
+
 ## Storage Layer
 
 SQLite with sqlite-vec for vectors and FTS5 for full-text search. Three databases in `~/.clawcore/data/`:
 - `clawcore.db` — Document store (RAG: collections, documents, chunks, vectors)
 - `memory.db` — Conversation memory (DAG summaries, context items, messages)
-- `graph.db` — Evidence graph (entities, claims, decisions, loops, attempts, relations)
+- `graph.db` — Evidence graph (entities, claims, decisions, loops, attempts, relations, provenance_links)
 
 ### Schema
 - **collections** — named groups (id, name, description)
@@ -329,6 +367,8 @@ Powered by spaCy `en_core_web_sm`. Auto-installed during setup. Falls back to re
 DAG-based lossless conversation context, forked from lossless-claw. Surface rebranded (plugin ID `clawcore-memory`). Internal filenames kept as `lcm-*.ts` for upstream compatibility.
 
 12 agent tools registered: 4 core (`cc_grep`, `cc_describe`, `cc_expand`, `cc_recall`) + 8 evidence (`cc_memory`, `cc_claims`, `cc_decisions`, `cc_loops`, `cc_attempts`, `cc_branch`, `cc_procedures`, `cc_diagnostics`).
+
+Extraction mode is transparent to tools — the same 12 tools work regardless of whether smart or fast extraction is active. The extraction mode only affects how incoming messages are processed into MemoryObjects.
 
 Integrates as an OpenClaw plugin:
 - `plugins.slots.contextEngine = "clawcore-memory"`
@@ -480,6 +520,7 @@ clawcore watch                     Start file watcher
 | `NOTION_ENABLED` | false | Enable Notion adapter |
 | `OBSIDIAN_ENABLED` | false | Enable Obsidian adapter |
 | `APPLE_NOTES_ENABLED` | false | Enable Apple Notes (macOS) |
+| `CLAWCORE_MEMORY_RELATIONS_EXTRACTION_MODE` | smart | Extraction mode: `smart` (LLM) or `fast` (regex-only, <5ms) |
 
 ---
 

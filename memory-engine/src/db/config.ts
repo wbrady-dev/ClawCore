@@ -287,8 +287,9 @@ export function resolveLcmConfig(
       ?? "",
     // ── RSMA Extraction Mode ────────────────────────────────────────────
     relationsExtractionMode:
-      (e("RELATIONS_EXTRACTION_MODE")?.trim()
-      ?? toStr(pc.relationsExtractionMode)
-      ?? "smart") as "smart" | "fast",
+      (() => {
+        const mode = e("RELATIONS_EXTRACTION_MODE")?.trim() ?? toStr(pc.relationsExtractionMode) ?? "smart";
+        return mode === "fast" ? "fast" : "smart"; // Validate: only "smart" or "fast"
+      })(),
   };
 }

@@ -45,25 +45,37 @@ This enables:
 - Awareness notes injected into agent prompts
 - Evidence graph (claims, decisions, loops, etc.)
 
-## 7. Verify Awareness
+## 7. Configure Extraction Mode (Optional)
+
+By default, ClawCore uses **smart** extraction (LLM-based) when deep extraction is enabled, and **fast** extraction (regex-only) otherwise. To set explicitly:
+
+```bash
+# In .env:
+CLAWCORE_MEMORY_RELATIONS_EXTRACTION_MODE=smart   # LLM-based, understands natural language
+# or
+CLAWCORE_MEMORY_RELATIONS_EXTRACTION_MODE=fast     # Regex-only, no LLM, <5ms
+```
+
+Smart mode uses the same model as deep extraction — no extra model to configure.
+
+## 8. Verify Awareness
 
 After a few conversations with entity mentions, check:
 
 ```bash
 # Via CLI tools (from agent)
-cc_state          # View active claims, decisions, open loops
-cc_conflicts      # Check for entity mismatches
-cc_timeline       # View evidence event log
+cc_diagnostics    # View RSMA health: memory stats, evidence counts, awareness metrics
+cc_memory { "query": "what we discussed" }  # Search everything
 ```
 
-## 8. Inspect State
+## 9. Inspect State
 
 ```bash
 cc_claims         # List claims with evidence chain
 cc_decisions      # View decision history
 cc_loops          # View open tasks and dependencies
-cc_invariants     # View durable constraints
-cc_capabilities   # View known tools/services
+cc_procedures     # View learned success and failure patterns
+cc_attempts       # View tool execution history
 ```
 
 ## Next Steps
