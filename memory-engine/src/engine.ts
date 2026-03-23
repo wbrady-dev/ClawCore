@@ -1576,13 +1576,13 @@ export class LcmContextEngine implements ContextEngine {
     }
 
     // ── RSMA extraction: semantic (LLM) or fast (regex) ────────────────
-    // Extracts from both user and assistant messages, but with different rules:
-    // - User: extract everything (facts, decisions, preferences, tasks, corrections)
-    // - Assistant: only extract verified facts from tool results, skip narrative/guesses
-    if (this.graphDb && this.config.relationsEnabled && stored.content.length > 5) {
+    // RSMA extraction: only runs on USER messages. LLM call adds ~1-2s latency
+    // which is acceptable for user input but doubles response time if run on assistant too.
+    // Entity extraction from assistant text is handled by the legacy regex pipeline above.
+    if (this.graphDb && this.config.relationsEnabled && stored.content.length > 5 && stored.role === "user") {
       try {
         const graphDb = this.graphDb;
-        const role = stored.role === "user" ? "user" as const : "assistant" as const;
+        const role = "user" as const;
         const extractionMode = this.config.relationsExtractionMode ?? "smart";
         const useLlm = extractionMode !== "fast" && this.config.relationsDeepExtractionEnabled;
 
