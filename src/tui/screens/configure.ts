@@ -1515,33 +1515,47 @@ async function configureDeepExtractionModel(
   setVal: (key: string, val: string) => void,
 ): Promise<void> {
   clearScreen();
-  console.log(section("Deep Extraction Model"));
+  console.log(section("Extraction Model (RSMA Smart Mode)"));
   const currentModel = getVal("CLAWCORE_MEMORY_RELATIONS_DEEP_EXTRACTION_MODEL");
   const currentProvider = getVal("CLAWCORE_MEMORY_RELATIONS_DEEP_EXTRACTION_PROVIDER");
   const currentLabel = currentModel && currentModel !== "false"
     ? `${currentProvider || "default"}/${currentModel}`
-    : "summary/OpenClaw default";
+    : t.dim("not configured — using regex only");
 
   console.log(kvLine("Current", currentLabel));
-  console.log(kvLine("Requirement", t.dim("Chat model with reliable JSON output")));
+  console.log("");
+  console.log(t.dim("  Smart extraction uses an LLM to understand natural language."));
+  console.log(t.dim("  A small/cheap model works great — extraction is simple structured output."));
+  console.log(t.dim("  Uses your existing OpenClaw OAuth credentials (no extra API keys needed)."));
   console.log("");
 
   const modelChoice = await selectMenu([
-    { label: "Use OpenClaw's current model (strongest, may cost tokens)", value: "openclaw" },
-    { label: "Use the summary model (already configured for memory)", value: "summary" },
-    { label: "Ollama local model (free, private, 7B+ recommended)", value: "ollama" },
+    { label: "Anthropic Haiku (cheapest, uses your Claude OAuth)", value: "anthropic_haiku" },
+    { label: "OpenAI GPT-4o-mini (cheapest, uses your OpenAI OAuth)", value: "openai_mini" },
+    { label: "Ollama local model (free, private, no cloud)", value: "ollama" },
+    { label: "Use agent's primary model (most accurate, uses agent tokens)", value: "openclaw" },
     { label: "LM Studio local model", value: "lmstudio" },
-    { label: "Cloud API (Anthropic, OpenAI, etc.)", value: "cloud" },
+    { label: "Other cloud model (Gemini, etc.)", value: "cloud" },
     { label: "Custom (enter model + provider)", value: "custom" },
     { label: "Back", value: "__back__" },
   ]);
 
   if (!modelChoice || modelChoice === "__back__") return;
 
-  if (modelChoice === "openclaw" || modelChoice === "summary") {
+  if (modelChoice === "anthropic_haiku") {
+    setVal("CLAWCORE_MEMORY_RELATIONS_DEEP_EXTRACTION_MODEL", "claude-haiku-4-5-20251001");
+    setVal("CLAWCORE_MEMORY_RELATIONS_DEEP_EXTRACTION_PROVIDER", "anthropic");
+    console.log(t.ok("\n  Set to Anthropic Haiku — cheapest cloud option (~$0.25/M tokens)."));
+    console.log(t.dim("  Uses your existing Claude OAuth credentials.\n"));
+  } else if (modelChoice === "openai_mini") {
+    setVal("CLAWCORE_MEMORY_RELATIONS_DEEP_EXTRACTION_MODEL", "gpt-4o-mini");
+    setVal("CLAWCORE_MEMORY_RELATIONS_DEEP_EXTRACTION_PROVIDER", "openai");
+    console.log(t.ok("\n  Set to OpenAI GPT-4o-mini — cheapest cloud option (~$0.15/M tokens)."));
+    console.log(t.dim("  Uses your existing OpenAI OAuth credentials.\n"));
+  } else if (modelChoice === "openclaw") {
     setVal("CLAWCORE_MEMORY_RELATIONS_DEEP_EXTRACTION_MODEL", "");
     setVal("CLAWCORE_MEMORY_RELATIONS_DEEP_EXTRACTION_PROVIDER", "");
-    console.log(t.ok("\n  Will use the summary/OpenClaw default model.\n"));
+    console.log(t.ok("\n  Will use the agent's primary model.\n"));
   } else if (modelChoice === "ollama") {
     console.log(t.dim("\n  Popular Ollama models for extraction:\n"));
     const ollamaModel = await selectMenu([
