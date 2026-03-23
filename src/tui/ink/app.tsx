@@ -208,7 +208,8 @@ async function runResetKnowledgeBase(): Promise<void> {
       message: "This will permanently delete documents, chunks, collections, and embeddings.\nThis cannot be undone. What would you like to reset?",
       items: [
         { label: "Reset knowledge base only", value: "kb-only", description: "Delete all documents and embeddings. Keep Evidence OS graph." },
-        { label: "Reset everything", value: "full", description: "Delete all documents, embeddings, AND Evidence OS graph data." },
+        { label: "Reset KB + Evidence OS", value: "full", description: "Delete all documents, embeddings, AND Evidence OS graph data." },
+        { label: "FULL WIPE (everything)", value: "nuke", description: "Delete ALL data: KB + Evidence OS + conversation memory + summaries." },
         { label: "Cancel", value: "__back__" },
       ],
     });
@@ -216,22 +217,37 @@ async function runResetKnowledgeBase(): Promise<void> {
     if (!scope || scope === "__back__") return;
 
     // Step 2: Final confirmation
-    const confirm = await promptMenu({
-      title: "Are you sure?",
-      message: scope === "full"
-        ? "ALL documents, chunks, embeddings, entities, and claims will be permanently deleted."
-        : "ALL documents, chunks, and embeddings will be permanently deleted.\nEvidence OS graph data (entities, claims) will be preserved.",
-      items: [
-        { label: "Yes, reset now", value: "yes", description: "This cannot be undone" },
-        { label: "No, go back", value: "__back__" },
-      ],
-    });
+    if (scope === "nuke") {
+      // Extra-dangerous: require typing confirmation
+      const { promptText } = await import("./prompts.js");
+      console.log(t.err("\n  ⚠  WARNING: FULL WIPE — THIS WILL PERMANENTLY DELETE ALL DATA"));
+      console.log(t.err("  This includes: documents, embeddings, Evidence OS graph,"));
+      console.log(t.err("  ALL conversation history, summaries, and memory."));
+      console.log(t.err("  This cannot be undone.\n"));
+      const typed = await promptText({ title: "Confirm Full Wipe", message: 'Type "DELETE EVERYTHING" to confirm:', label: "Confirmation", placeholder: "DELETE EVERYTHING" });
+      if (typed?.trim() !== "DELETE EVERYTHING") {
+        console.log(t.dim("\n  Reset cancelled.\n"));
+        return;
+      }
+    } else {
+      const confirm = await promptMenu({
+        title: "Are you sure?",
+        message: scope === "full"
+          ? "ALL documents, chunks, embeddings, entities, and claims will be permanently deleted."
+          : "ALL documents, chunks, and embeddings will be permanently deleted.\nEvidence OS graph data (entities, claims) will be preserved.",
+        items: [
+          { label: "Yes, reset now", value: "yes", description: "This cannot be undone" },
+          { label: "No, go back", value: "__back__" },
+        ],
+      });
 
-    if (!confirm || confirm === "__back__") return;
+      if (!confirm || confirm === "__back__") return;
+    }
 
     // Step 3: Execute reset — works with or without services running
-    const clearGraph = scope === "full";
-    const sp = ora("Resetting knowledge base...").start();
+    const clearGraph = scope === "full" || scope === "nuke";
+    const clearMemory = scope === "nuke";
+    const sp = ora(clearMemory ? "Full wipe in progress..." : "Resetting knowledge base...").start();
     try {
       // Try API first (if services running), fall back to direct DB access
       let data: any = null;
@@ -239,7 +255,7 @@ async function runResetKnowledgeBase(): Promise<void> {
         const res = await fetch(`${getApiBaseUrl()}/reset`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ clearGraph }),
+          body: JSON.stringify({ clearGraph, clearMemory }),
           signal: AbortSignal.timeout(10000),
         });
         if (res.ok) data = await res.json();
@@ -265,9 +281,25 @@ async function runResetKnowledgeBase(): Promise<void> {
             data.graphCleared = true;
           } catch {}
         }
+
+        if (clearMemory) {
+          try {
+            const { DatabaseSync } = await import("node:sqlite");
+            const memPath = resolve(appConfig.dataDir, "memory.db");
+            const memDb = new DatabaseSync(memPath);
+            const memTables = ["context_items", "summary_parents", "summary_messages", "message_parts", "large_files", "summaries", "messages", "conversations"];
+            for (const tbl of memTables) { try { memDb.exec(`DELETE FROM ${tbl}`); } catch {} }
+            try { memDb.exec("DELETE FROM messages_fts"); } catch {}
+            try { memDb.exec("DELETE FROM summaries_fts"); } catch {}
+            try { memDb.exec("VACUUM"); } catch {}
+            memDb.close();
+            data.memoryCleared = true;
+          } catch {}
+        }
       }
 
       sp.succeed(`Reset complete: ${data.documentsDeleted} documents, ${data.chunksDeleted} chunks, ${data.collectionsDeleted} collections removed`);
+      if (data.memoryCleared) console.log(t.err("  ALL conversation memory wiped."));
       if (data.graphCleared) console.log(t.ok("  Evidence OS graph data cleared."));
       else if (clearGraph) console.log(t.dim("  Evidence OS graph data not found or already empty."));
       else console.log(t.dim("  Evidence OS graph data preserved."));

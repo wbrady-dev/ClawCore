@@ -18,9 +18,9 @@ export function registerResetRoutes(server: FastifyInstance) {
       return reply.status(403).send({ error: "Forbidden — reset only allowed from localhost" });
     }
 
-    const { clearGraph = true } = (req.body as { clearGraph?: boolean }) ?? {};
+    const { clearGraph = true, clearMemory = false } = (req.body as { clearGraph?: boolean; clearMemory?: boolean }) ?? {};
 
-    logger.warn("Knowledge base reset requested");
+    logger.warn({ clearGraph, clearMemory }, "Knowledge base reset requested");
 
     const database = db();
     const stats = resetKnowledgeBase(database);
@@ -49,12 +49,33 @@ export function registerResetRoutes(server: FastifyInstance) {
       }
     }
 
+    let memoryCleared = false;
+    if (clearMemory) {
+      try {
+        const { DatabaseSync } = await import("node:sqlite");
+        const memPath = resolve(config.dataDir, "memory.db");
+        const memDb = new DatabaseSync(memPath);
+        // Delete in FK-safe order: children first, then parents
+        const memTables = ["context_items", "summary_parents", "summary_messages", "message_parts", "large_files", "summaries", "messages", "conversations"];
+        for (const tbl of memTables) { try { memDb.exec(`DELETE FROM ${tbl}`); } catch {} }
+        try { memDb.exec("DELETE FROM messages_fts"); } catch {}
+        try { memDb.exec("DELETE FROM summaries_fts"); } catch {}
+        try { memDb.exec("VACUUM"); } catch {}
+        memDb.close();
+        memoryCleared = true;
+        logger.warn("Conversation memory wiped");
+      } catch (e: any) {
+        logger.warn({ error: e?.message ?? String(e) }, "Memory reset failed");
+      }
+    }
+
     logger.warn(stats, "Knowledge base reset complete");
 
     return {
       reset: true,
       ...stats,
       graphCleared,
+      memoryCleared,
     };
   });
 }

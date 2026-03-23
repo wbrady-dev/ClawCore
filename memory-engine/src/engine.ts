@@ -1809,8 +1809,12 @@ export class LcmContextEngine implements ContextEngine {
 
                     // Create entity relations from relationship events
                     // "Cassidy is my wife" → relation: Cassidy --married_to--> user
-                    if (claim.objectText
-                        && !["is", "states", "has", "user_i", "user_my"].includes(claim.predicate)) {
+                    const junkPredicates = new Set([
+                      "is", "states", "has", "user_i", "user_my",
+                      "sent", "contains", "timestamp", "received", "delivered",
+                      "file_path", "sender", "sent_by", "from", "type", "size", "format",
+                    ]);
+                    if (claim.objectText && !junkPredicates.has(claim.predicate)) {
                       try {
                         const subjEntity = upsertEntity(graphDb, { name: claim.subject });
                         const objEntity = upsertEntity(graphDb, { name: claim.objectText });
