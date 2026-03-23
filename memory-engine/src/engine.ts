@@ -1575,42 +1575,47 @@ export class LcmContextEngine implements ContextEngine {
       }
     }
 
-    // ── RSMA extraction: semantic (LLM) or fast (regex) ────────────────
-    // RSMA extraction: only runs on USER messages. LLM call adds ~1-2s latency
-    // which is acceptable for user input but doubles response time if run on assistant too.
-    // Entity extraction from assistant text is handled by the legacy regex pipeline above.
+    // ── RSMA extraction: fire-and-forget (non-blocking) ──────────────
+    // Runs in background so it doesn't delay Copper's response.
+    // The LLM call (GPT-4o-mini) is independent of the agent model (GPT-5.4).
+    // Results populate memory for FUTURE turns, not the current response.
     if (this.graphDb && this.config.relationsEnabled && stored.content.length > 5 && stored.role === "user") {
-      try {
-        const graphDb = this.graphDb;
+      const _graphDb = this.graphDb;
+      const _content = stored.content;
+      const _messageId = String(msgRecord.messageId);
+      const _config = this.config;
+      const _deps = this.deps;
+      (async () => { try {
+        const graphDb = _graphDb;
         const role = "user" as const;
-        const extractionMode = this.config.relationsExtractionMode ?? "smart";
-        const useLlm = extractionMode !== "fast" && this.config.relationsDeepExtractionEnabled;
+        const extractionMode = _config.relationsExtractionMode ?? "smart";
+        const useLlm = extractionMode !== "fast" && _config.relationsDeepExtractionEnabled;
 
         let writerResult;
         // Only use LLM if an extraction model is explicitly configured.
         // Empty model config = regex only (don't fall back to agent's expensive model).
-        const hasExtractionModel = !!this.config.relationsDeepExtractionModel;
+        const hasExtractionModel = !!_config.relationsDeepExtractionModel;
         if (useLlm && hasExtractionModel) {
           try {
             const { semanticExtract } = await import("./ontology/semantic-extractor.js");
-            const extractionModel = this.config.relationsDeepExtractionModel;
-            const extractionProvider = this.config.relationsDeepExtractionProvider || "anthropic";
+            const extractionModel = _config.relationsDeepExtractionModel;
+            const extractionProvider = _config.relationsDeepExtractionProvider || "anthropic";
 
             // Use direct API key if configured, otherwise use OpenClaw's OAuth
-            let completeFn = this.deps.complete;
-            const directApiKey = this.config.relationsDeepExtractionApiKey;
+            let completeFn = _deps.complete;
+            const directApiKey = _config.relationsDeepExtractionApiKey;
             if (directApiKey || extractionProvider === "ollama") {
               const { createDirectComplete } = await import("./ontology/direct-llm.js");
               const directFn = createDirectComplete({
                 provider: extractionProvider,
                 model: extractionModel,
                 apiKey: directApiKey || undefined,
-                baseUrl: this.config.relationsDeepExtractionBaseUrl || undefined,
+                baseUrl: _config.relationsDeepExtractionBaseUrl || undefined,
               });
               if (directFn) completeFn = directFn;
             }
 
-            writerResult = await semanticExtract(stored.content, String(msgRecord.messageId), role, {
+            writerResult = await semanticExtract(_content, _messageId, role, {
               complete: completeFn,
               model: extractionModel,
               provider: extractionProvider,
@@ -1619,11 +1624,11 @@ export class LcmContextEngine implements ContextEngine {
           } catch {
             // LLM unavailable — fall back to regex
             const { understandMessage } = await import("./ontology/writer.js");
-            writerResult = await understandMessage(stored.content, String(msgRecord.messageId), role);
+            writerResult = await understandMessage(_content, _messageId, role);
           }
         } else {
           const { understandMessage } = await import("./ontology/writer.js");
-          writerResult = await understandMessage(stored.content, String(msgRecord.messageId), role);
+          writerResult = await understandMessage(_content, _messageId, role);
         }
 
         if (writerResult.objects.length > 0) {
@@ -1741,6 +1746,7 @@ export class LcmContextEngine implements ContextEngine {
       } catch (err) {
         console.warn("[rsma] extraction pipeline failed:", err instanceof Error ? err.message : String(err));
       }
+      })(); // fire-and-forget — don't await
     }
 
     return { ingested: true };
