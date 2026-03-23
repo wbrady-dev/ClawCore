@@ -6,14 +6,13 @@ import { type QueryRecord, recordQuery, getRecords, clearRecords } from "../anal
 export { recordQuery, type QueryRecord };
 
 export function registerAnalyticsRoutes(server: FastifyInstance) {
-  // Local alias for the shared records store
-  const records = getRecords() as QueryRecord[];
   /**
    * GET /analytics — query performance summary.
    * Returns aggregate stats and recent low-confidence queries.
    */
   server.get("/analytics", async (req, reply) => {
     if (!isLocalRequest(req)) return reply.status(403).send({ error: "Forbidden" });
+    const records = getRecords() as QueryRecord[];
     if (records.length === 0) {
       return { message: "No queries recorded yet", total: 0 };
     }
@@ -91,6 +90,7 @@ export function registerAnalyticsRoutes(server: FastifyInstance) {
    */
   server.get("/analytics/recent", async (req, reply) => {
     if (!isLocalRequest(req)) return reply.status(403).send({ error: "Forbidden" });
+    const records = getRecords() as QueryRecord[];
     const { limit } = req.query as { limit?: string };
     const parsed = parseInt(limit ?? "20", 10);
     const n = Math.min(isNaN(parsed) ? 20 : Math.max(1, parsed), 100);
@@ -161,8 +161,8 @@ export function registerAwarenessStatsGetter(getter: AwarenessStatsGetter): void
  * Available to you (Wesley) via curl or browser.
  */
 export function registerDiagnosticsRoute(server: FastifyInstance) {
-  const records = getRecords();
   server.get("/analytics/diagnostics", async (req, reply) => {
+    const records = getRecords();
     if (!isLocalRequest(req)) {
       return reply.status(403).send({ error: "Forbidden" });
     }

@@ -145,14 +145,7 @@ async function ingestFileInner(
       };
     }
 
-    // Content changed or forced — remove old version before re-ingest.
-    // Note: removal happens before parsing/embedding. If re-ingest fails below,
-    // the old document is lost. This is acceptable because:
-    // 1. The source file still exists on disk and will be re-ingested on next attempt
-    // 2. Moving removal into the store transaction would cause semantic dedup to
-    //    flag new chunks as duplicates of the old version (same vectors still in index)
     logger.info({ filePath: absPath, forced: !!options.force }, "Re-indexing document");
-    removeDocument(db, existing.id);
   } else if (!existing) {
     // Also check by content hash (same file, different path)
     const hashDup = db
@@ -220,7 +213,7 @@ async function ingestFileInner(
   }
 
   // If updating an existing doc and all chunks deduped, keep the first chunk
-  // to preserve the document record (old version was already deleted above)
+  // to preserve the document record (old version is removed atomically in the transaction)
   if (dedupedIndices.length === 0) {
     dedupedIndices = [0];
     allDupes.delete(0);
@@ -258,7 +251,7 @@ async function ingestFileInner(
     for (let ci = 0; ci < dedupedIndices.length; ci++) {
       const i = dedupedIndices[ci];
       const chunk = chunks[i];
-      const parentId = ci > 0 ? chunkIds[ci - 1] : null;
+      const parentId = (ci > 0 && dedupedIndices[ci] === dedupedIndices[ci - 1] + 1) ? chunkIds[ci - 1] : null;
       chunkStmt.run(
         chunkIds[ci],
         documentId,
@@ -291,6 +284,15 @@ async function ingestFileInner(
     if (Object.keys(metaEntries).length > 0) {
       insertMetadata(db, documentId, metaEntries);
     }
+
+    // Remove old version inside the same transaction — atomic swap
+    if (existing) {
+      const oldChunkIds = db.prepare("SELECT id FROM chunks WHERE document_id = ?").all(existing.id) as { id: string }[];
+      if (oldChunkIds.length > 0) {
+        deleteVectors(db, oldChunkIds.map((c) => c.id));
+      }
+      db.prepare("DELETE FROM documents WHERE id = ?").run(existing.id);
+    }
   });
 
   store();
@@ -314,7 +316,7 @@ async function ingestFileInner(
   }
 
   // Track token usage
-  const totalIngestTokens = chunks.reduce((sum, c) => sum + (c.tokenCount ?? 0), 0);
+  const totalIngestTokens = dedupedIndices.reduce((sum, i) => sum + (chunks[i].tokenCount ?? 0), 0);
   trackTokens("ingest", totalIngestTokens);
   trackTokens("embed", totalIngestTokens); // embed processes same tokens
 

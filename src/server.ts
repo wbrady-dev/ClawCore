@@ -87,7 +87,7 @@ export async function startServer() {
   if (apiKey) {
     server.addHook("onRequest", async (request, reply) => {
       const path = request.url.split("?")[0];
-      if (path === "/health" || path === "/shutdown") return;
+      if (path === "/health") return;
       const auth = request.headers.authorization;
       if (!auth || auth !== `Bearer ${apiKey}`) {
         reply.code(401).send({ error: "Unauthorized — set Authorization: Bearer <key>" });
@@ -104,8 +104,11 @@ export async function startServer() {
     logger.error({ error: String(err) }, "Failed to start source adapters");
   });
 
-  // Graceful shutdown
+  // Graceful shutdown (guarded against double-call from SIGINT + /shutdown race)
+  let shuttingDown = false;
   const shutdown = async () => {
+    if (shuttingDown) return;
+    shuttingDown = true;
     logger.info("Shutting down...");
     flushTokens();
     await stopSources();

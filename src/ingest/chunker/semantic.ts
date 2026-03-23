@@ -124,6 +124,7 @@ function mergeSmallChunks(chunks: Chunk[], minTokens: number): Chunk[] {
       // Merge with previous chunk
       const prev = merged[merged.length - 1];
       prev.text = prev.text + "\n\n" + chunk.text;
+      prev.contextPrefix = prev.contextPrefix || chunk.contextPrefix;
       prev.tokenCount = estimateTokens(prev.text);
     } else {
       merged.push({ ...chunk });

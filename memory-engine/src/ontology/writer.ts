@@ -48,7 +48,7 @@ export interface WriterResult {
 // ── Factory Helpers ─────────────────────────────────────────────────────────
 
 function makeId(kind: MemoryKind): string {
-  return `${kind}:${randomUUID().substring(0, 8)}`;
+  return `${kind}:${randomUUID()}`;
 }
 
 function now(): string {

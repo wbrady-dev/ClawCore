@@ -150,12 +150,13 @@ describe("RSMA Truth: Rule 1 — higher confidence", () => {
 // ============================================================================
 
 describe("RSMA Truth: Rule 2 — same confidence", () => {
-  it("supersedes with same confidence", () => {
+  it("adds evidence with same confidence and same value", () => {
     seedClaimInDb(db, { confidence: 0.8 });
     const result = reconcile(db, [makeClaim({ confidence: 0.8 })]);
-    const s = result.actions.find((a) => a.type === "supersede");
-    expect(s).toBeDefined();
-    expect((s as any).reason).toContain("same confidence");
+    // Same confidence + same value ("staging") → evidence, not supersede
+    const e = result.actions.find((a) => a.type === "evidence");
+    expect(e).toBeDefined();
+    expect((e as any).reason).toContain("same value");
   });
 });
 
@@ -292,9 +293,10 @@ describe("RSMA Truth: loop supersession", () => {
     expect(candidate.canonical_key).toBeDefined();
 
     const result = reconcile(db, [candidate]);
-    // Should find existing loop and supersede (same confidence, newer wins)
-    const s = result.actions.find((a) => a.type === "supersede");
-    expect(s).toBeDefined();
+    // Same confidence + same value → evidence (no pointless supersession churn)
+    const e = result.actions.find((a) => a.type === "evidence");
+    expect(e).toBeDefined();
+    expect((e as any).reason).toContain("same value");
   });
 
   it("inserts when no matching loop exists", () => {

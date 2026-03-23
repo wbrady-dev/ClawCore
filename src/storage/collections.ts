@@ -161,23 +161,25 @@ export function resetKnowledgeBase(db: Database.Database): { collectionsDeleted:
   const chunkCount = (db.prepare("SELECT COUNT(*) as n FROM chunks").get() as { n: number }).n;
   const collCount = (db.prepare("SELECT COUNT(*) as n FROM collections").get() as { n: number }).n;
 
-  // Drop and recreate virtual tables to fully reclaim shadow table space
+  // Drop/recreate vectors + delete all data in a single transaction for crash safety
   const dim = config.embedding.dimensions;
-  try { db.exec("DROP TABLE IF EXISTS chunk_vectors"); } catch {}
-  try {
-    db.exec(`CREATE VIRTUAL TABLE IF NOT EXISTS chunk_vectors USING vec0(
-      chunk_id TEXT PRIMARY KEY,
-      embedding float[${dim}]
-    )`);
-  } catch {}
+  db.transaction(() => {
+    try { db.exec("DROP TABLE IF EXISTS chunk_vectors"); } catch {}
+    try {
+      db.exec(`CREATE VIRTUAL TABLE IF NOT EXISTS chunk_vectors USING vec0(
+        chunk_id TEXT PRIMARY KEY,
+        embedding float[${dim}]
+      )`);
+    } catch {}
 
-  // Delete all collections (cascades: documents, chunks, metadata_index, watch_paths; triggers: chunk_fts)
-  db.prepare("DELETE FROM collections").run();
+    // Delete all collections (cascades: documents, chunks, metadata_index, watch_paths; triggers: chunk_fts)
+    db.prepare("DELETE FROM collections").run();
 
-  // Rebuild FTS index to clear shadow table bloat
-  try { db.exec("INSERT INTO chunk_fts(chunk_fts) VALUES('rebuild')"); } catch {}
+    // Rebuild FTS index to clear shadow table bloat
+    try { db.exec("INSERT INTO chunk_fts(chunk_fts) VALUES('rebuild')"); } catch {}
+  })();
 
-  // Compact database file
+  // Compact database file (must be outside transaction — SQLite requirement)
   try { db.pragma("wal_checkpoint(TRUNCATE)"); } catch {}
   try { db.exec("VACUUM"); } catch {}
 

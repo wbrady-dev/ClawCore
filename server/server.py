@@ -64,6 +64,7 @@ else:
 PORT = int(os.environ.get("MODEL_SERVER_PORT", "8012"))
 MAX_PARSE_SIZE_MB = int(os.environ.get("MAX_PARSE_SIZE_MB", "100"))
 MAX_PARSE_OUTPUT_MB = int(os.environ.get("MAX_PARSE_OUTPUT_MB", "10"))
+_PARSE_ALLOWED_DIRS = [d.strip() for d in os.environ.get("PARSE_ALLOWED_DIRS", "").split(",") if d.strip()]
 
 # Path blocklist for /parse — mirrors Node.js ingest validation
 _BLOCKED_PATH_FRAGMENTS = [".env", "credentials", "secrets", ".git/config", "id_rsa", ".ssh/"]
@@ -73,6 +74,7 @@ def _is_path_blocked(file_path: str) -> bool:
     return any(b in lower for b in _BLOCKED_PATH_FRAGMENTS)
 
 app = Flask(__name__)
+app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024  # 50 MB
 embed_model = None
 rerank_model = None
 ner_model = None
@@ -80,7 +82,7 @@ ner_model_id = None
 
 
 def load_models():
-    global embed_model, rerank_model, ner_model
+    global embed_model, rerank_model, ner_model, ner_model_id
 
     # Claim VRAM upfront so Windows desktop apps can't steal it after model load.
     # Default 0.90 = claim 90% of total VRAM. Override with VRAM_FRACTION env var.
@@ -142,7 +144,16 @@ def load_models():
                 embed_model.float()
                 embed_model.encode(["warmup"], normalize_embeddings=True, show_progress_bar=False)
         if rerank_model:
-            rerank_model.predict([("warmup query", "warmup document")])
+            warmup_scores = rerank_model.predict([("warmup query", "warmup document")])
+            if isinstance(warmup_scores, (list, tuple)):
+                if any(math.isnan(s) for s in warmup_scores):
+                    logger.warning("float16 rerank produced NaN — reverting to float32")
+                    rerank_model.model.float()
+                    rerank_model.predict([("warmup query", "warmup document")])
+            elif math.isnan(warmup_scores):
+                logger.warning("float16 rerank produced NaN — reverting to float32")
+                rerank_model.model.float()
+                rerank_model.predict([("warmup query", "warmup document")])
         logger.info("Model warmup complete.")
     except Exception as e:
         logger.warning(f"Warmup failed (non-fatal): {e}")
@@ -231,7 +242,7 @@ def embeddings():
             break
         except RuntimeError as e:
             err_str = str(e).lower()
-            if "out of memory" in err_str or "cuda" in err_str:
+            if "out of memory" in err_str:
                 torch.cuda.empty_cache()
                 if i < len(batch_sizes) - 1:
                     logger.warning(f"CUDA OOM — clearing cache, retrying with batch_size={batch_sizes[i+1]}")
@@ -304,7 +315,7 @@ def rerank():
             break
         except RuntimeError as e:
             err_str = str(e).lower()
-            if "out of memory" in err_str or "cuda" in err_str:
+            if "out of memory" in err_str:
                 torch.cuda.empty_cache()
                 if bs > 1:
                     logger.warning(f"CUDA OOM on rerank at batch_size={bs} — clearing cache, retrying smaller")
@@ -397,6 +408,19 @@ def parse_document():
 
     if _is_path_blocked(real_path):
         return jsonify({"error": "Blocked path: contains sensitive file pattern"}), 403
+
+    if _PARSE_ALLOWED_DIRS:
+        allowed = False
+        for allowed_dir in _PARSE_ALLOWED_DIRS:
+            try:
+                real_allowed = os.path.realpath(allowed_dir)
+                if os.path.commonpath([real_allowed, real_path]) == real_allowed:
+                    allowed = True
+                    break
+            except ValueError:
+                continue
+        if not allowed:
+            return jsonify({"error": f"Path not in allowed directories"}), 403
 
     if not os.path.isfile(real_path):
         return jsonify({"error": "File not found"}), 404

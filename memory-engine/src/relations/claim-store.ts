@@ -15,16 +15,21 @@ import type {
   ClaimExtractionResult,
 } from "./types.js";
 import { logEvidence } from "./evidence-log.js";
+import { buildCanonicalKey as ontologyCanonicalKey, normalize } from "../ontology/canonical.js";
 
 // ---------------------------------------------------------------------------
-// Canonical key
+// Canonical key — delegates to the RSMA ontology canonical.ts for ONE key system
 // ---------------------------------------------------------------------------
 
-/** Normalize subject + predicate into a canonical dedup key. */
+/**
+ * Build a canonical dedup key for a claim.
+ * Delegates to the RSMA ontology so all key formats are consistent.
+ * Output: "claim::subject::predicate"
+ */
 export function buildCanonicalKey(subject: string, predicate: string): string {
-  const s = subject.toLowerCase().trim().replace(/\s+/g, " ");
-  const p = predicate.toLowerCase().trim().replace(/\s+/g, " ");
-  return `${s}::${p}`;
+  const key = ontologyCanonicalKey("claim", "", { subject, predicate });
+  // Fallback: if ontology returns undefined (both empty), use normalized direct format
+  return key ?? `claim::${normalize(subject)}::${normalize(predicate)}`;
 }
 
 // ---------------------------------------------------------------------------
@@ -48,8 +53,8 @@ export function upsertClaim(db: GraphDb, input: UpsertClaimInput): UpsertClaimRe
        value_type, confidence, trust_score, source_authority, canonical_key, extraction_version)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(scope_id, branch_id, canonical_key) DO UPDATE SET
-      confidence = MAX(claims.confidence, excluded.confidence),
-      trust_score = MAX(claims.trust_score, excluded.trust_score),
+      confidence = excluded.confidence * 0.7 + claims.confidence * 0.3,
+      trust_score = excluded.trust_score * 0.7 + claims.trust_score * 0.3,
       source_authority = MAX(claims.source_authority, excluded.source_authority),
       object_text = COALESCE(excluded.object_text, claims.object_text),
       object_json = COALESCE(excluded.object_json, claims.object_json),

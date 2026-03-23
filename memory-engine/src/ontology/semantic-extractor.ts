@@ -193,6 +193,9 @@ function parseExtractionResponse(text: string): SemanticExtractionResponse | nul
     const jsonMatch = text.match(/\{[\s\S]*"events"[\s\S]*\}/);
     if (!jsonMatch) return null;
 
+    // Size guard: reject excessively large JSON to prevent DoS via malformed LLM output
+    if (jsonMatch[0].length > 50_000) return null;
+
     const parsed = JSON.parse(jsonMatch[0]) as SemanticExtractionResponse;
     if (!parsed.events || !Array.isArray(parsed.events)) return null;
 
@@ -219,6 +222,7 @@ function eventTypeToMemoryKind(type: string): MemoryKind {
     case "decision": return "decision";
     case "task":
     case "reminder": return "loop";
+    case "relationship": // Relationships map to claims with subject/predicate/value structure
     case "preference":
     case "fact":
     case "observation":
@@ -292,7 +296,7 @@ function convertToWriterResult(
     }
 
     const obj: MemoryObject = {
-      id: `${kind}:${randomUUID().substring(0, 8)}`,
+      id: `${kind}:${randomUUID()}`,
       kind,
       content: kind === "claim"
         ? `${structured.subject} ${structured.predicate}: ${structured.objectText}`
@@ -329,7 +333,7 @@ function convertToWriterResult(
       for (const entityName of event.entities) {
         if (entityName.length >= 2) {
           const entityObj: MemoryObject = {
-            id: `entity:${randomUUID().substring(0, 8)}`,
+            id: `entity:${randomUUID()}`,
             kind: "entity",
             content: entityName,
             structured: { name: entityName.toLowerCase().trim(), entityType: "semantic" },

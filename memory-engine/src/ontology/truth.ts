@@ -218,8 +218,20 @@ function valuesContradict(
   const b = existingValue.toLowerCase().trim();
   // Same value = no contradiction
   if (a === b) return false;
-  // Different non-empty values = contradiction
-  return a.length > 0 && b.length > 0;
+  // Empty values = no contradiction
+  if (a.length === 0 || b.length === 0) return false;
+  // Containment check: if one value contains the other, it's a refinement, not a contradiction
+  // e.g. "port 8080" vs "port 8080 (verified)" — not a contradiction
+  if (a.includes(b) || b.includes(a)) return false;
+  // Jaccard word similarity: high overlap = refinement, not contradiction
+  const wordsA = new Set(a.split(/\s+/).filter((w) => w.length > 1));
+  const wordsB = new Set(b.split(/\s+/).filter((w) => w.length > 1));
+  if (wordsA.size > 0 && wordsB.size > 0) {
+    const intersection = [...wordsA].filter((w) => wordsB.has(w)).length;
+    const union = new Set([...wordsA, ...wordsB]).size;
+    if (union > 0 && intersection / union > 0.7) return false;
+  }
+  return true;
 }
 
 // ── Core Reconciliation ─────────────────────────────────────────────────────
@@ -316,14 +328,29 @@ export function reconcile(
         });
         didSupersede = true;
       } else if (Math.abs(confidenceDiff) <= 0.001) {
-        // Rule 2: Same confidence (within epsilon) + newer → supersede
-        actions.push({
-          type: "supersede",
-          newObject: candidate,
-          oldObjectId: match.id,
-          reason: `same confidence (${candidate.confidence.toFixed(2)}), newer object wins`,
-        });
-        didSupersede = true;
+        // Rule 2: Same confidence — only supersede if values actually differ.
+        // If values are identical, just add as evidence (avoids pointless churn).
+        const candidateVal = extractValueForComparison(candidate);
+        const existingVal = match.content;
+        const sameValue = candidateVal && existingVal
+          && candidateVal.toLowerCase().trim() === existingVal.toLowerCase().trim();
+        if (sameValue) {
+          actions.push({
+            type: "evidence",
+            newObject: candidate,
+            existingObjectId: match.id,
+            predicate: "supports",
+            reason: `same confidence and same value — no supersession needed`,
+          });
+        } else {
+          actions.push({
+            type: "supersede",
+            newObject: candidate,
+            oldObjectId: match.id,
+            reason: `same confidence (${candidate.confidence.toFixed(2)}), newer object wins`,
+          });
+          didSupersede = true;
+        }
       } else {
         // Rule 3: Lower confidence → add as evidence only
         actions.push({
@@ -428,7 +455,7 @@ function createConflictObject(
   const contentB = existing.content.substring(0, 80);
 
   return {
-    id: `conflict:${randomUUID().substring(0, 8)}`,
+    id: `conflict:${randomUUID()}`,
     kind: "conflict",
     content: `${objA.kind} conflict: "${contentA}" vs "${contentB}"`,
     structured: {

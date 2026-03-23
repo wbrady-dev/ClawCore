@@ -108,10 +108,17 @@ function extractKeyTerms(text: string, cache: EntityCacheEntry[]): EntityCacheEn
   return cache.filter((e) => {
     // Quick substring pre-check before regex (fast path for non-matches)
     if (!lowerText.includes(e.name)) return false;
-    // Word-boundary check to avoid substring false positives
-    const escaped = e.name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    return new RegExp(`\\b${escaped}\\b`).test(lowerText);
+    // Word-boundary check using pre-compiled regex (avoids new RegExp per entity per call)
+    if (!(e as EntityCacheEntryWithRegex)._regex) {
+      const escaped = e.name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      (e as EntityCacheEntryWithRegex)._regex = new RegExp(`\\b${escaped}\\b`);
+    }
+    return (e as EntityCacheEntryWithRegex)._regex!.test(lowerText);
   });
+}
+
+interface EntityCacheEntryWithRegex extends EntityCacheEntry {
+  _regex?: RegExp;
 }
 
 // ---------------------------------------------------------------------------

@@ -567,6 +567,20 @@ export function runGraphMigrations(db: GraphDb, dbPath?: string): void {
     markMigrationApplied(db, 11);
   }
 
+  // Migration v12: Unify canonical keys — prefix existing claim keys with "claim::"
+  // This aligns claim-store.ts keys with the RSMA ontology canonical.ts format.
+  // Before: "subject::predicate"  After: "claim::subject::predicate"
+  if (!isMigrationApplied(db, 12)) {
+    db.exec(`
+      UPDATE claims
+      SET canonical_key = 'claim::' || canonical_key
+      WHERE canonical_key IS NOT NULL
+        AND canonical_key != ''
+        AND canonical_key NOT LIKE 'claim::%';
+    `);
+    markMigrationApplied(db, 12);
+  }
+
   // File permissions: chmod 600 on Unix/macOS, skip on Windows
   if (dbPath && process.platform !== "win32") {
     try {

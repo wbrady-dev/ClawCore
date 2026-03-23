@@ -94,7 +94,9 @@ describe("H2 Claim Store", () => {
     });
     expect(result.isNew).toBe(false);
     const claims = getActiveClaims(db, 1);
-    expect(claims[0].confidence).toBe(0.9);
+    // Weighted blend: excluded.confidence * 0.7 + claims.confidence * 0.3
+    // = 0.9 * 0.7 + 0.5 * 0.3 = 0.63 + 0.15 = 0.78
+    expect(claims[0].confidence).toBeCloseTo(0.78, 2);
     expect(claims[0].object_text).toBe("a database");
   });
 
@@ -133,8 +135,8 @@ describe("H2 Claim Store", () => {
   });
 
   it("buildCanonicalKey normalizes correctly", () => {
-    expect(buildCanonicalKey("  Redis  ", "  IS  ")).toBe("redis::is");
-    expect(buildCanonicalKey("Auth System", "Owner")).toBe("auth system::owner");
+    expect(buildCanonicalKey("  Redis  ", "  IS  ")).toBe("claim::redis::is");
+    expect(buildCanonicalKey("Auth System", "Owner")).toBe("claim::auth system::owner");
   });
 });
 

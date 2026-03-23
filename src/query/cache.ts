@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+
 /**
  * LRU query cache — avoids redundant searches within a session.
  * Same query + collection = instant return, zero embedding/reranking cost.
@@ -20,7 +22,7 @@ const cache = new Map<string, CacheEntry>();
  */
 export function cacheKey(query: string, collection: string, options: Record<string, unknown> = {}): string {
   const sorted = Object.keys(options).sort().reduce<Record<string, unknown>>((acc, k) => { acc[k] = options[k]; return acc; }, {});
-  return `${query}\x00${collection}\x00${JSON.stringify(sorted)}`;
+  return createHash("sha256").update(`${query}|${collection}|${JSON.stringify(sorted)}`).digest("hex");
 }
 
 /**
@@ -68,12 +70,9 @@ export function clearCache(): void {
  * Call when a collection is deleted or modified.
  */
 export function invalidateCollection(collectionName: string): void {
-  const toDelete = [...cache.keys()].filter(
-    (key) => key.includes(`\x00${collectionName}\x00`) || key.includes(`\x00all\x00`),
-  );
-  for (const key of toDelete) {
-    cache.delete(key);
-  }
+  // With hashed keys, we cannot inspect individual entries.
+  // Clear entire cache when any collection changes — safe since TTL is only 5 min.
+  cache.clear();
 }
 
 /**

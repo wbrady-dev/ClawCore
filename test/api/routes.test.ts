@@ -442,7 +442,7 @@ describe("Query", () => {
     });
     expect(res.statusCode).toBe(400);
     const body = res.json();
-    expect(body.error).toBe("query required");
+    expect(body.error).toBe("Invalid query (max 10000 characters)");
   });
 
   it("POST /query with valid query returns results", async () => {
@@ -483,7 +483,7 @@ describe("Query", () => {
     });
     expect(res.statusCode).toBe(400);
     const body = res.json();
-    expect(body.error).toBe("query required");
+    expect(body.error).toBe("Invalid query (max 10000 characters)");
   });
 
   it("POST /search with valid query returns results", async () => {

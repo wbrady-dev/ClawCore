@@ -244,6 +244,9 @@ export interface CompilerResult {
   capsuleTypes: Record<string, number>;
 }
 
+// Time guard: run decay at most once per 5 minutes to avoid per-turn UPDATE storms
+let _lastDecayRun = 0;
+
 /**
  * Compile evidence context capsules within a token budget.
  *
@@ -260,8 +263,11 @@ export function compileContextCapsules(
   const budget = typeof config.tier === "number" ? config.tier : (BUDGET_TIERS[config.tier] ?? BUDGET_TIERS.standard);
   const scopeId = config.scopeId;
 
-  // Apply lazy decay + auto-archive before gathering candidates
-  applyDecay(db, scopeId);
+  // Apply lazy decay + auto-archive before gathering candidates (at most once per 5 minutes)
+  if (Date.now() - _lastDecayRun > 300_000) {
+    applyDecay(db, scopeId);
+    _lastDecayRun = Date.now();
+  }
   maybeAutoArchive(db);
 
   // Gather candidates from all evidence types

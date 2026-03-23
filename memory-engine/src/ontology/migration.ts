@@ -149,6 +149,6 @@ export function isMigrationNeeded(db: GraphDb): boolean {
     const count = (db.prepare("SELECT COUNT(*) as cnt FROM provenance_links").get() as { cnt: number }).cnt;
     return count === 0;
   } catch {
-    return false; // Table doesn't exist
+    return true; // Table doesn't exist — migration IS needed
   }
 }

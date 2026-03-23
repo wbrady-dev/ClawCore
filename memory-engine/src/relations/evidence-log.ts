@@ -37,15 +37,22 @@ export function isIdempotencyConflict(err: unknown): boolean {
   );
 }
 
+/** Result from writeWithIdempotency — includes whether the write was a no-op. */
+export interface IdempotentWriteResult<T> {
+  result: T | null;
+  wasIdempotent: boolean;
+}
+
 /**
  * Execute a write with idempotency protection.
  * If the idempotency key already exists, the transaction rolls back
- * and null is returned (safe no-op). Check wasIdempotencyHit() after
- * a null return to distinguish "already processed" from "fn returned null".
+ * and returns { result: null, wasIdempotent: true }.
+ *
+ * @deprecated Use the return value's `wasIdempotent` field instead of the old global `wasIdempotencyHit()`.
  */
 let _lastIdempotencyHit = false;
 
-/** Check if the last writeWithIdempotency call hit an idempotency conflict. */
+/** @deprecated Check the IdempotentWriteResult.wasIdempotent field instead. */
 export function wasIdempotencyHit(): boolean { return _lastIdempotencyHit; }
 
 export function writeWithIdempotency<T>(

@@ -30,6 +30,7 @@ export function decayAntiRunbooks(db: GraphDb, scopeId: number, decayDays = 90):
   `).run(scopeId, `-${decayDays} days`);
 
   // Also decay anti-runbooks whose tool has recent successes
+  // Exclude rows already decayed above to prevent double decay (0.8 * 0.7 = 0.56)
   const successDecayed = db.prepare(`
     UPDATE anti_runbooks
     SET confidence = confidence * 0.7,
@@ -37,12 +38,13 @@ export function decayAntiRunbooks(db: GraphDb, scopeId: number, decayDays = 90):
     WHERE scope_id = ?
       AND status = 'active'
       AND confidence > 0.3
+      AND updated_at >= datetime('now', ?)
       AND tool_name IN (
         SELECT DISTINCT tool_name FROM attempts
         WHERE scope_id = ? AND status = 'success'
         AND created_at > datetime('now', ?)
       )
-  `).run(scopeId, scopeId, `-${decayDays} days`);
+  `).run(scopeId, `-${decayDays} days`, scopeId, `-${decayDays} days`);
 
   // Mark very low confidence for review
   const reviewed = db.prepare(`

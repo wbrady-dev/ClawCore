@@ -11,18 +11,18 @@ export function getDb(dbPath: string): Database.Database {
   const normalized = resolve(dbPath);
   if (db) {
     if (storedPath && storedPath !== normalized) {
-      logger.warn(
-        { expected: storedPath, received: normalized },
-        "getDb called with different path — returning existing connection",
+      throw new Error(
+        `getDb called with path "${normalized}" but already connected to "${storedPath}". ` +
+        `ClawCore uses a singleton DB connection — cannot open two databases.`,
       );
     }
     return db;
   }
   storedPath = normalized;
 
-  mkdirSync(dirname(dbPath), { recursive: true });
+  mkdirSync(dirname(normalized), { recursive: true });
 
-  db = new Database(dbPath);
+  db = new Database(normalized);
   db.pragma("journal_mode = WAL");
   db.pragma("foreign_keys = ON");
   db.pragma("busy_timeout = 5000");

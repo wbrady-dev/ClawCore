@@ -49,6 +49,10 @@ export async function rerank(
     }
 
     const data = (await response.json()) as { results: RerankResult[] };
+    if (!data?.results || !Array.isArray(data.results)) {
+      logger.warn("Reranker returned malformed response, falling back to original order");
+      return fallbackOrder(documents);
+    }
     logger.debug(
       { candidates: documents.length, returned: data.results.length },
       "Reranking complete",

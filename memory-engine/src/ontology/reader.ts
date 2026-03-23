@@ -57,7 +57,9 @@ function freshnessDecay(isoDate: string | null): number {
   try {
     const daysOld = (Date.now() - new Date(isoDate).getTime()) / 86_400_000;
     if (daysOld < 0) return 1.0; // Future date — treat as maximally fresh
-    return Math.max(0.1, 1 - (daysOld / HALF_LIFE_DAYS));
+    // Exponential decay: half-life curve so older data still has a ranking gradient
+    // 0 days = 1.0, 30 days = 0.5, 60 days = 0.25, 90 days = 0.125
+    return Math.max(0.1, Math.pow(0.5, daysOld / HALF_LIFE_DAYS));
   } catch {
     return 0.5;
   }

@@ -43,8 +43,8 @@ export function registerQueryRoutes(server: FastifyInstance) {
       titles_only?: boolean;
     };
 
-    if (!queryText) {
-      return reply.status(400).send({ error: "query required" });
+    if (!queryText || typeof queryText !== "string" || queryText.length > 10000) {
+      return reply.code(400).send({ error: "Invalid query (max 10000 characters)" });
     }
 
     try {
@@ -74,8 +74,8 @@ export function registerQueryRoutes(server: FastifyInstance) {
       top_k?: number;
     };
 
-    if (!queryText) {
-      return reply.status(400).send({ error: "query required" });
+    if (!queryText || typeof queryText !== "string" || queryText.length > 10000) {
+      return reply.code(400).send({ error: "Invalid query (max 10000 characters)" });
     }
 
     try {

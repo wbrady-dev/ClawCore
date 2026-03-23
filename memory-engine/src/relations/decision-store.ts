@@ -16,7 +16,7 @@ import { logEvidence } from "./evidence-log.js";
 
 export function upsertDecision(db: GraphDb, input: UpsertDecisionInput): UpsertDecisionResult {
   const branchId = input.branchId ?? 0;
-  const topic = input.topic.toLowerCase().trim();
+  const topic = input.topic.toLowerCase().trim().replace(/\s+/g, " ");
 
   // Check for existing active decision on same topic
   const existing = db.prepare(`
