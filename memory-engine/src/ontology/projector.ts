@@ -91,9 +91,9 @@ export function getProvenanceLinksForObject(
  * store functions. It also writes provenance_links for cross-object
  * relationships.
  *
- * NOTE: This does NOT call the store functions directly yet — that happens
- * in Phase 3 when the Writer replaces engine.ts extraction. For now, this
- * only writes provenance_links as a dual-write layer on top of existing writes.
+ * The legacy bridge in engine.ts handles physical table writes (claims,
+ * decisions, loops). This function writes provenance_links for cross-object
+ * relationships and supersession tracking.
  */
 export function projectProvenance(
   db: GraphDb,

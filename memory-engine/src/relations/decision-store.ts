@@ -17,21 +17,22 @@ import { logEvidence } from "./evidence-log.js";
 export function upsertDecision(db: GraphDb, input: UpsertDecisionInput): UpsertDecisionResult {
   const branchId = input.branchId ?? 0;
   const topic = input.topic.toLowerCase().trim().replace(/\s+/g, " ");
+  const canonicalKey = `decision::${topic}`;
 
-  // Check for existing active decision on same topic
+  // Check for existing active decision on same topic (uses canonical_key index)
   const existing = db.prepare(`
     SELECT id FROM decisions
-    WHERE scope_id = ? AND branch_id = ? AND topic = ? AND status = 'active'
+    WHERE scope_id = ? AND branch_id = ? AND canonical_key = ? AND status = 'active'
     ORDER BY decided_at DESC LIMIT 1
-  `).get(input.scopeId, branchId, topic) as { id: number } | undefined;
+  `).get(input.scopeId, branchId, canonicalKey) as { id: number } | undefined;
 
-  // Insert new decision
+  // Insert new decision with canonical_key for O(1) TruthEngine lookups
   const result = db.prepare(`
     INSERT INTO decisions
-      (scope_id, branch_id, topic, decision_text, status, source_type, source_id, source_detail)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      (scope_id, branch_id, topic, decision_text, canonical_key, status, source_type, source_id, source_detail)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
-    input.scopeId, branchId, topic, input.decisionText,
+    input.scopeId, branchId, topic, input.decisionText, canonicalKey,
     input.status ?? "active",
     input.sourceType ?? null, input.sourceId ?? null, input.sourceDetail ?? null,
   );

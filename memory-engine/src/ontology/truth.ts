@@ -145,27 +145,13 @@ function findExistingByCanonicalKey(
     }
 
     if (kind === "decision") {
-      // BUG 12: O(n) scan of all active decisions.
-      // This scans all rows and computes canonical keys in JS because normalize()
-      // collapses internal whitespace which SQL TRIM() doesn't do.
-      //
-      // TODO(perf): Add a `canonical_key` column to the decisions table via schema
-      // migration, then replace this scan with a direct WHERE canonical_key = ? query.
-      // Migration: ALTER TABLE decisions ADD COLUMN canonical_key TEXT;
-      //            CREATE INDEX idx_decisions_canonical ON decisions(canonical_key, scope_id)
-      //                WHERE status = 'active';
-      //            UPDATE decisions SET canonical_key = ... (backfill from topic);
+      // Direct index lookup via canonical_key column (migration v15)
       const rows = db.prepare(`
         SELECT id, status, 0.9 as confidence, decision_text as content, scope_id, topic
         FROM decisions
-        WHERE scope_id = ? AND status = 'active'
-      `).all(scopeId) as Array<Record<string, unknown>>;
-      for (const row of rows) {
-        const existingKey = buildCanonicalKey("decision", "", { topic: String(row.topic ?? "") });
-        if (existingKey === canonicalKey) {
-          results.push(toMatch("decision", canonicalKey, row));
-        }
-      }
+        WHERE canonical_key = ? AND scope_id = ? AND status IN ('active', 'needs_confirmation')
+      `).all(canonicalKey, scopeId) as Array<Record<string, unknown>>;
+      for (const row of rows) results.push(toMatch("decision", canonicalKey, row));
     }
 
     if (kind === "loop") {

@@ -70,10 +70,12 @@ function seedClaimInDb(db: GraphDb, overrides: Record<string, unknown> = {}): nu
 function seedDecisionInDb(db: GraphDb, overrides: Record<string, unknown> = {}): number {
   const d = { scope_id: 1, branch_id: 0, topic: "staging database", decision_text: "Use MySQL", status: "active", decided_at: NOW, created_at: NOW };
   const v = { ...d, ...overrides };
+  const topic = String(v.topic).toLowerCase().trim().replace(/\s+/g, " ");
+  const canonicalKey = `decision::${topic}`;
   return Number(db.prepare(`
-    INSERT INTO decisions (scope_id, branch_id, topic, decision_text, status, decided_at, created_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?)
-  `).run(v.scope_id, v.branch_id, v.topic, v.decision_text, v.status, v.decided_at, v.created_at).lastInsertRowid);
+    INSERT INTO decisions (scope_id, branch_id, topic, decision_text, canonical_key, status, decided_at, created_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(v.scope_id, v.branch_id, v.topic, v.decision_text, canonicalKey, v.status, v.decided_at, v.created_at).lastInsertRowid);
 }
 
 function seedLoopInDb(db: GraphDb, overrides: Record<string, unknown> = {}): number {

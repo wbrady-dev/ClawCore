@@ -601,6 +601,23 @@ export function runGraphMigrations(db: GraphDb, dbPath?: string): void {
     markMigrationApplied(db, 14);
   }
 
+  // Migration v15: Add canonical_key to decisions for O(1) lookup in TruthEngine
+  if (!isMigrationApplied(db, 15)) {
+    // Add column if missing
+    const cols = db.prepare("PRAGMA table_info(decisions)").all() as Array<{ name: string }>;
+    if (!cols.some((c) => c.name === "canonical_key")) {
+      db.exec("ALTER TABLE decisions ADD COLUMN canonical_key TEXT");
+    }
+    // Backfill existing decisions: canonical_key = 'decision::' + normalized topic
+    db.exec(`
+      UPDATE decisions SET canonical_key = 'decision::' || REPLACE(REPLACE(REPLACE(LOWER(TRIM(topic)), '  ', ' '), '  ', ' '), '  ', ' ')
+      WHERE canonical_key IS NULL
+    `);
+    // Partial index for fast TruthEngine lookups
+    db.exec(`CREATE INDEX IF NOT EXISTS idx_decisions_canonical ON decisions(canonical_key, scope_id) WHERE status = 'active'`);
+    markMigrationApplied(db, 15);
+  }
+
   // File permissions: chmod 600 on Unix/macOS, skip on Windows
   if (dbPath && process.platform !== "win32") {
     try {
