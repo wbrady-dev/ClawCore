@@ -1271,6 +1271,9 @@ function createLcmDependencies(api: OpenClawPluginApi): LcmDependencies {
   };
 }
 
+// Singleton cache: one engine instance per database path (shared across sessions)
+const _engineCache = new Map<string, { deps: LcmDependencies; lcm: LcmContextEngine }>();
+
 const lcmPlugin = {
   id: "clawcore-memory",
   name: "ClawCore Memory Engine",
@@ -1288,8 +1291,21 @@ const lcmPlugin = {
   },
 
   register(api: OpenClawPluginApi) {
-    const deps = createLcmDependencies(api);
-    const lcm = new LcmContextEngine(deps);
+    const freshDeps = createLcmDependencies(api);
+    const cacheKey = freshDeps.config.databasePath;
+
+    // Reuse existing engine for the same database (avoids duplicate connections/migrations)
+    let deps: LcmDependencies;
+    let lcm: LcmContextEngine;
+    const cached = _engineCache.get(cacheKey);
+    if (cached) {
+      deps = cached.deps;
+      lcm = cached.lcm;
+    } else {
+      deps = freshDeps;
+      lcm = new LcmContextEngine(deps);
+      _engineCache.set(cacheKey, { deps, lcm });
+    }
 
     api.registerContextEngine("clawcore-memory", () => lcm);
 
@@ -1384,10 +1400,21 @@ const lcmPlugin = {
       );
     }
 
-    api.logger.info(
-      `[cc-mem] Plugin loaded (enabled=${deps.config.enabled}, db=${deps.config.databasePath}, threshold=${deps.config.contextThreshold})`,
-    );
+    if (cached) {
+      api.logger.debug(
+        `[cc-mem] Plugin reused (db=${deps.config.databasePath})`,
+      );
+    } else {
+      api.logger.info(
+        `[cc-mem] Plugin loaded (enabled=${deps.config.enabled}, db=${deps.config.databasePath}, threshold=${deps.config.contextThreshold})`,
+      );
+    }
   },
 };
+
+/** Clear the engine cache (for tests only). */
+export function _resetEngineCache(): void {
+  _engineCache.clear();
+}
 
 export default lcmPlugin;

@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { OpenClawPluginApi } from "openclaw/plugin-sdk";
-import lcmPlugin from "../index.js";
+import lcmPlugin, { _resetEngineCache } from "../index.js";
 import { closeLcmConnection } from "../src/db/connection.js";
 
 type RegisteredEngineFactory = (() => unknown) | undefined;
@@ -100,6 +100,7 @@ describe("lcm plugin registration", () => {
   const tempDirs = new Set<string>();
 
   afterEach(() => {
+    _resetEngineCache();
     for (const dbPath of dbPaths) {
       closeLcmConnection(dbPath);
     }
