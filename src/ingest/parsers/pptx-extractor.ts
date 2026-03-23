@@ -1,6 +1,4 @@
 import { readFile } from "fs/promises";
-import { createReadStream } from "fs";
-import { Readable } from "stream";
 
 /**
  * Lightweight PPTX text extractor.
@@ -99,7 +97,6 @@ async function extractZipEntries(buffer: Buffer): Promise<ZipEntry[]> {
 
     const compressionMethod = buffer.readUInt16LE(offset + 8);
     const compressedSize = buffer.readUInt32LE(offset + 18);
-    const uncompressedSize = buffer.readUInt32LE(offset + 22);
     const filenameLength = buffer.readUInt16LE(offset + 26);
     const extraLength = buffer.readUInt16LE(offset + 28);
 

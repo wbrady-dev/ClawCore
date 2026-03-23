@@ -13,7 +13,6 @@ import {
   getPythonCmd,
   getRootDir,
   installWindowsServices,
-  isAdmin,
   setRootDirOverride,
   writeConfig,
   type ClawCoreConfig,

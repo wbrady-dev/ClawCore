@@ -29,9 +29,6 @@ export async function parseHtml(filePath: string): Promise<ParsedDocument> {
     doc.querySelector('meta[property="article:published_time"]');
   if (metaDate) metadata.date = metaDate.getAttribute("content") ?? undefined;
 
-  const metaDesc = doc.querySelector('meta[name="description"]') ??
-    doc.querySelector('meta[property="og:description"]');
-
   // Try Readability extraction
   const reader = new Readability(doc);
   const article = reader.parse();

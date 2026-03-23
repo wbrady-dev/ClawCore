@@ -256,9 +256,9 @@ describe("RSMA Reader: readMemoryObjects", () => {
 // ============================================================================
 
 describe("RSMA Reader: relevance ranking", () => {
-  it("ranks higher-confidence claims above lower", () => {
-    seedClaim(db, { confidence: 0.9, canonical_key: "claim::high::conf" });
-    seedClaim(db, { confidence: 0.3, canonical_key: "claim::low::conf" });
+  it("ranks higher-trust claims above lower", () => {
+    seedClaim(db, { confidence: 0.9, trust_score: 0.9, canonical_key: "claim::high::conf" });
+    seedClaim(db, { confidence: 0.3, trust_score: 0.3, canonical_key: "claim::low::conf" });
     const results = readMemoryObjects(db, { kinds: ["claim"] });
     expect(results[0].confidence).toBeGreaterThan(results[1].confidence);
   });

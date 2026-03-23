@@ -32,25 +32,6 @@ export interface IntegrationStatus {
 
 // ── Managed block definition ──
 
-/**
- * The exact set of fields ClawCore manages in openclaw.json.
- * Nothing outside this set should be touched.
- */
-interface ManagedBlock {
-  plugins: {
-    slots: { contextEngine: string; memory: string };
-    entries: {
-      "memory-core": { enabled: boolean };
-      "clawcore-memory": { enabled: boolean };
-    };
-  };
-  agents: {
-    defaults: {
-      memorySearch?: undefined; // must NOT exist
-    };
-  };
-}
-
 function getExpectedBlock(memoryEnginePath: string): Record<string, unknown> {
   return {
     "plugins.slots.contextEngine": "clawcore-memory",

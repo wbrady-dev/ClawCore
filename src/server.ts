@@ -1,6 +1,6 @@
 import Fastify from "fastify";
 import { resolve } from "path";
-import { existsSync, readFileSync, writeFileSync, chmodSync, mkdirSync } from "fs";
+import { existsSync, chmodSync, mkdirSync } from "fs";
 import { homedir } from "os";
 import { config } from "./config.js";
 import { logger } from "./utils/logger.js";
@@ -18,9 +18,6 @@ import { flushTokens } from "./utils/token-tracker.js";
 async function checkIntegrationOnStartup(): Promise<void> {
   try {
     const { checkOpenClawIntegration } = await import("./integration.js");
-    const { readManifest } = await import("./version.js");
-    const manifest = readManifest();
-
     const status = checkOpenClawIntegration();
     if (!status.openclawFound) return;
 

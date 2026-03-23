@@ -131,14 +131,6 @@ export async function embed(
 
 }
 
-/**
- * Embed a single text for document storage.
- */
-export async function embedPassage(text: string): Promise<number[]> {
-  const [embedding] = await embed([text], "passage");
-  return embedding;
-}
-
 // LRU cache for query embeddings — eliminates redundant model server calls
 const EMBED_CACHE_MAX = 200;
 const queryEmbedCache = new Map<string, number[]>();

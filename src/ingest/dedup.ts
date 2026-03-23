@@ -4,19 +4,6 @@ import { logger } from "../utils/logger.js";
 /**
  * Check if a document with this content hash already exists in the collection.
  */
-export function isDuplicate(
-  db: Database.Database,
-  contentHash: string,
-  collectionId: string,
-): boolean {
-  const row = db
-    .prepare(
-      "SELECT id FROM documents WHERE content_hash = ? AND collection_id = ?",
-    )
-    .get(contentHash, collectionId);
-  return !!row;
-}
-
 // ── Semantic Deduplication ──
 
 const SIMILARITY_THRESHOLD = 0.95; // cosine similarity above this = duplicate

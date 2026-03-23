@@ -17,7 +17,7 @@ import { getRecentDeltas, type DeltaRow } from "./delta-store.js";
 import { getActiveInvariants, type InvariantRow } from "./invariant-store.js";
 import { getAntiRunbooks, type AntiRunbookRow } from "./anti-runbook-store.js";
 import { applyDecay } from "./decay.js";
-import { runArchive, getArchiveDb, closeArchiveDb } from "./archive.js";
+import { runArchive } from "./archive.js";
 import { resolve } from "path";
 import { homedir } from "os";
 

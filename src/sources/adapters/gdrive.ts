@@ -13,7 +13,7 @@
  * Read-only: ClawCore NEVER writes, modifies, or deletes Drive files.
  */
 import { google, type drive_v3 } from "googleapis";
-import { existsSync, readFileSync, writeFileSync, mkdirSync, unlinkSync, readdirSync, createWriteStream } from "fs";
+import { existsSync, readFileSync, writeFileSync, mkdirSync, unlinkSync, createWriteStream } from "fs";
 import { resolve, join, extname } from "path";
 import { homedir } from "os";
 import { createServer } from "http";
@@ -29,7 +29,6 @@ const STAGING_DIR = resolve(homedir(), ".clawcore", "staging", "gdrive");
 
 // ClawCore's OAuth client — read-only Drive scope
 const DEFAULT_CLIENT_ID = ""; // Set during setup or via env
-const DEFAULT_CLIENT_SECRET = "";
 const SCOPES = ["https://www.googleapis.com/auth/drive.readonly"];
 const REDIRECT_PORT = 18801;
 const REDIRECT_URI = `http://localhost:${REDIRECT_PORT}/oauth2callback`;
@@ -80,7 +79,6 @@ export class GDriveAdapter implements SourceAdapter {
   private manifest = new Map<string, ManifestEntry>();
   private cfg: SourceConfig | null = null;
   private drive: drive_v3.Drive | null = null;
-  private authed = false;
   private unavailableReason = "";
 
   async isAvailable(): Promise<boolean> {
@@ -89,7 +87,6 @@ export class GDriveAdapter implements SourceAdapter {
       try {
         const tokens = JSON.parse(readFileSync(CREDENTIALS_FILE, "utf-8")) as SavedTokens;
         if (tokens.refresh_token && tokens.client_id) {
-          this.authed = true;
           return true;
         }
       } catch {}
@@ -559,18 +556,4 @@ export async function listDriveFolders(): Promise<{ id: string; name: string }[]
 }
 
 /** List files inside a specific folder (for TUI preview) */
-export async function listDriveFolderContents(folderName: string): Promise<{ name: string; type: string; size: string }[]> {
-  if (!existsSync(CREDENTIALS_FILE)) return [];
 
-  try {
-    const drive = await initDriveClient();
-    const files = await listFolderFiles(drive, folderName);
-    return files.map((f) => ({
-      name: f.name ?? "?",
-      type: f.mimeType?.split(".").pop() ?? "file",
-      size: f.size ? `${(parseInt(f.size) / 1024).toFixed(0)} KB` : "—",
-    }));
-  } catch {
-    return [];
-  }
-}

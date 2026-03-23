@@ -15,7 +15,6 @@
  */
 
 import type { GraphDb } from "./types.js";
-import { effectiveConfidence } from "./confidence.js";
 import { recordAwarenessEvent } from "./eval.js";
 
 // ---------------------------------------------------------------------------

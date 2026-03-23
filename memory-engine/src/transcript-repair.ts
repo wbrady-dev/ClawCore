@@ -174,7 +174,6 @@ export function sanitizeToolUseResultPairing<T extends AgentMessageLike>(message
   const seenToolResultIds = new Set<string>();
   let droppedDuplicateCount = 0;
   let droppedOrphanCount = 0;
-  let moved = false;
   let changed = false;
 
   const pushToolResult = (msg: T) => {
@@ -272,7 +271,6 @@ export function sanitizeToolUseResultPairing<T extends AgentMessageLike>(message
     out.push(normalizedAssistant as T);
 
     if (spanResultsById.size > 0 && remainder.length > 0) {
-      moved = true;
       changed = true;
     }
 
@@ -302,6 +300,5 @@ export function sanitizeToolUseResultPairing<T extends AgentMessageLike>(message
     );
   }
 
-  const changedOrMoved = changed || moved;
-  return changedOrMoved ? out : messages;
+  return changed ? out : messages;
 }

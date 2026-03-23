@@ -276,7 +276,7 @@ function exploreXml(content: string): string {
   ].join("\n");
 }
 
-export function exploreStructuredData(
+function exploreStructuredData(
   content: string,
   mimeType?: string,
   fileName?: string,
@@ -294,11 +294,7 @@ export function exploreStructuredData(
   const normalizedMime = mimeType?.trim().toLowerCase() ?? "";
 
   if (extension === "json" || normalizedMime.startsWith("application/json")) {
-    try {
-      return exploreJson(content);
-    } catch {
-      return "Structured summary (JSON): failed to parse as valid JSON.";
-    }
+    return exploreJson(content);
   }
 
   if (extension === "csv" || normalizedMime.startsWith("text/csv")) {
@@ -328,7 +324,7 @@ export function exploreStructuredData(
   ].join("\n");
 }
 
-export function exploreCode(content: string, fileName?: string): string {
+function exploreCode(content: string, fileName?: string): string {
   const lines = content.split(/\r?\n/);
   const imports = uniqueOrdered(
     lines

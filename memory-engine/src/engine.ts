@@ -43,7 +43,7 @@ import { createLcmSummarizeFromLegacyParams } from "./summarize.js";
 import type { LcmDependencies } from "./types.js";
 import { estimateTokens } from "./utils/tokens.js";
 import type { GraphDb } from "./relations/types.js";
-import { getGraphConnection, closeGraphConnection } from "./relations/graph-connection.js";
+import { getGraphConnection } from "./relations/graph-connection.js";
 import { runGraphMigrations } from "./relations/schema.js";
 import { buildAwarenessNote } from "./relations/awareness.js";
 import { compileContextCapsules } from "./relations/context-compiler.js";

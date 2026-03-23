@@ -146,7 +146,7 @@ async function ingestFileInner(
     }
 
     logger.info({ filePath: absPath, forced: !!options.force }, "Re-indexing document");
-  } else if (!existing) {
+  } else {
     // Also check by content hash (same file, different path)
     const hashDup = db
       .prepare(
@@ -334,24 +334,6 @@ async function ingestFileInner(
     duplicatesSkipped: dedupSkipped,
     elapsedMs: elapsed,
   };
-}
-
-/**
- * Remove a document and all its chunks/vectors/metadata.
- */
-function removeDocument(db: Database.Database, documentId: string): void {
-  const chunkIds = db
-    .prepare("SELECT id FROM chunks WHERE document_id = ?")
-    .all(documentId) as { id: string }[];
-
-  // Atomic: delete vectors + document in a single transaction
-  db.transaction(() => {
-    if (chunkIds.length > 0) {
-      deleteVectors(db, chunkIds.map((c) => c.id));
-    }
-    // Cascading deletes handle chunks + metadata_index
-    db.prepare("DELETE FROM documents WHERE id = ?").run(documentId);
-  })();
 }
 
 /**

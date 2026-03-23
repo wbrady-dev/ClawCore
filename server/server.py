@@ -18,7 +18,6 @@ import json
 import time
 import torch
 import logging
-import traceback
 from pathlib import Path
 from flask import Flask, request, jsonify
 from sentence_transformers import CrossEncoder, SentenceTransformer

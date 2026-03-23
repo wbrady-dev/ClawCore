@@ -37,31 +37,11 @@ export function isIdempotencyConflict(err: unknown): boolean {
   );
 }
 
-/** Result from writeWithIdempotency — includes whether the write was a no-op. */
-export interface IdempotentWriteResult<T> {
-  result: T | null;
-  wasIdempotent: boolean;
-}
-
-/**
- * Execute a write with idempotency protection.
- * If the idempotency key already exists, the transaction rolls back
- * and returns { result: null, wasIdempotent: true }.
- *
- * @deprecated Use the return value's `wasIdempotent` field instead of the old global `wasIdempotencyHit()`.
- */
-let _lastIdempotencyHit = false;
-
-/** @deprecated Check the IdempotentWriteResult.wasIdempotent field instead. */
-export function wasIdempotencyHit(): boolean { return _lastIdempotencyHit; }
-
 export function writeWithIdempotency<T>(
   db: GraphDb,
   idempotencyKey: string | undefined,
   fn: () => T,
 ): T | null {
-  _lastIdempotencyHit = false;
-
   if (!idempotencyKey) {
     return withWriteTransaction(db, fn);
   }
@@ -70,7 +50,6 @@ export function writeWithIdempotency<T>(
     return withWriteTransaction(db, fn);
   } catch (err) {
     if (isIdempotencyConflict(err)) {
-      _lastIdempotencyHit = true;
       return null; // already processed — mutation was rolled back
     }
     throw err;

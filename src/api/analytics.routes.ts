@@ -1,9 +1,6 @@
 import type { FastifyInstance } from "fastify";
 import { isLocalRequest } from "./guards.js";
-import { type QueryRecord, recordQuery, getRecords, clearRecords } from "../analytics/query-recorder.js";
-
-// Re-export recordQuery for any remaining consumers
-export { recordQuery, type QueryRecord };
+import { type QueryRecord, getRecords, clearRecords } from "../analytics/query-recorder.js";
 
 export function registerAnalyticsRoutes(server: FastifyInstance) {
   /**

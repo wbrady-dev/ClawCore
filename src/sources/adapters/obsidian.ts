@@ -98,10 +98,6 @@ export class ObsidianAdapter implements SourceAdapter {
     return "No Obsidian vault found. Create one or set OBSIDIAN_VAULT_PATH in .env";
   }
 
-  getDetectedVaults(): string[] {
-    return [...this.detectedVaults];
-  }
-
   defaultConfig(): SourceConfig {
     const vault = this.detectedVaults[0] ?? "";
     return {

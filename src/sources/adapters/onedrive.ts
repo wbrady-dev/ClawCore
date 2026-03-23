@@ -13,7 +13,7 @@
  * Read-only: ClawCore NEVER writes, modifies, or deletes OneDrive files.
  */
 
-import { existsSync, readFileSync, writeFileSync, mkdirSync, readdirSync, createWriteStream } from "fs";
+import { existsSync, readFileSync, writeFileSync, mkdirSync, readdirSync, unlinkSync, createWriteStream } from "fs";
 import { resolve, join, extname } from "path";
 import { homedir } from "os";
 import { createServer } from "http";
@@ -208,7 +208,7 @@ export function hasOneDriveCredentials(): boolean {
 }
 
 export function removeOneDriveCredentials(): void {
-  try { if (existsSync(CREDENTIALS_FILE)) require("fs").unlinkSync(CREDENTIALS_FILE); } catch {}
+  try { if (existsSync(CREDENTIALS_FILE)) unlinkSync(CREDENTIALS_FILE); } catch {}
 }
 
 // ── Graph API helpers ──
@@ -262,7 +262,6 @@ async function downloadFile(accessToken: string, itemId: string, destPath: strin
     });
     if (!res.ok || !res.body) return false;
 
-    const { Writable } = await import("stream");
     const fileStream = createWriteStream(destPath);
     // @ts-ignore — Node 22 supports ReadableStream.pipeTo
     const reader = res.body.getReader();

@@ -87,14 +87,6 @@ export function getTokenCounts(): TokenCounts {
   };
 }
 
-export function resetTokenCounts(): void {
-  pending.ingest = 0;
-  pending.embed = 0;
-  pending.rerank = 0;
-  pending.queryExpansion = 0;
-  writeCounts({ ingest: 0, embed: 0, rerank: 0, queryExpansion: 0 });
-}
-
 /** Force flush pending tokens to disk (call on shutdown). */
 export function flushTokens(): void {
   flush();

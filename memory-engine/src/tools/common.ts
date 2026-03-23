@@ -17,37 +17,3 @@ export function jsonResult(payload: unknown): {
     details: payload,
   };
 }
-
-/** Read a string param with optional trimming/required checks. */
-export function readStringParam(
-  params: Record<string, unknown>,
-  key: string,
-  options?: {
-    required?: boolean;
-    trim?: boolean;
-    allowEmpty?: boolean;
-    label?: string;
-  },
-): string | undefined {
-  const raw = params[key];
-  if (raw == null) {
-    if (options?.required) {
-      throw new Error(`${options.label ?? key} is required.`);
-    }
-    return undefined;
-  }
-
-  if (typeof raw !== "string") {
-    throw new Error(`${options?.label ?? key} must be a string.`);
-  }
-
-  const value = options?.trim === false ? raw : raw.trim();
-  if (!options?.allowEmpty && value.length === 0) {
-    if (options?.required) {
-      throw new Error(`${options.label ?? key} is required.`);
-    }
-    return undefined;
-  }
-
-  return value;
-}

@@ -1,8 +1,6 @@
 import type { ConversationStore } from "./store/conversation-store.js";
 import type {
   SummaryStore,
-  SummaryRecord,
-  ContextItemRecord,
 } from "./store/summary-store.js";
 
 // ── Types ─────────────────────────────────────────────────────────────────────

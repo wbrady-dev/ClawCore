@@ -24,8 +24,8 @@ export async function showStatus(): Promise<void> {
   let autoStart = false;
   if (getPlatform() === "windows") {
     try {
-      const out = execFileSync("sc", ["query", "ClawCoreModels"], { stdio: "pipe" }).toString();
-      autoStart = !out.includes("does not exist");
+      execFileSync("schtasks", ["/query", "/tn", "ClawCore_Models"], { stdio: "pipe", timeout: 5000 });
+      autoStart = true;
     } catch {}
   }
   console.log(status("Auto-Startup", autoStart));
@@ -40,7 +40,6 @@ export async function showStatus(): Promise<void> {
   let embedOk = false;
   let rerankOk = false;
   let doclingOk = false;
-  let doclingDevice = "off";
 
   try {
     const res = await fetch(`${getModelBaseUrl()}/health`, { signal: AbortSignal.timeout(3000) });
@@ -48,7 +47,6 @@ export async function showStatus(): Promise<void> {
     embedOk = data.models?.embed?.ready === true;
     rerankOk = data.models?.rerank?.ready === true;
     doclingOk = data.models?.docling?.ready === true;
-    doclingDevice = data.models?.docling?.device ?? "off";
   } catch {}
 
   const embedName = config?.embed_model ?? "not configured";
@@ -151,14 +149,8 @@ export async function showStatus(): Promise<void> {
 
   // ── Network ──
   console.log(section("Network"));
-  try {
-    const envPath = resolve(root, ".env");
-    if (existsSync(envPath)) {
-      const env = readFileSync(envPath, "utf-8");
-      console.log(kvLine("ClawCore API", getApiBaseUrl()));
-      console.log(kvLine("Model Server", getModelBaseUrl()));
-    }
-  } catch {}
+  console.log(kvLine("ClawCore API", getApiBaseUrl()));
+  console.log(kvLine("Model Server", getModelBaseUrl()));
 
   // ── Evidence OS ──
   const graphDbPath = resolve(homedir(), ".clawcore", "data", "graph.db");

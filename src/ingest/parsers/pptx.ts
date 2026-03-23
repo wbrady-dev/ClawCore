@@ -1,7 +1,5 @@
 import { readFile } from "fs/promises";
 import { basename } from "path";
-import { createReadStream } from "fs";
-import { Readable } from "stream";
 import type { ParsedDocument, StructureHint, DocMetadata } from "./index.js";
 
 // PPTX files are ZIP archives containing XML slides

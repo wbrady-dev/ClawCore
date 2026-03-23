@@ -103,17 +103,3 @@ export async function parseWithDocling(
   }
 }
 
-/**
- * Check if Docling is available on the model server.
- */
-export async function isDoclingAvailable(): Promise<boolean> {
-  try {
-    const res = await fetch(`${config.reranker.url}/health`, {
-      signal: AbortSignal.timeout(3000),
-    });
-    const data = (await res.json()) as { models?: { docling?: { ready?: boolean } } };
-    return data.models?.docling?.ready === true;
-  } catch {
-    return false;
-  }
-}

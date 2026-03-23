@@ -1,5 +1,5 @@
 import { Command } from "commander";
-import { spawn, execSync, execFileSync, type ChildProcess } from "child_process";
+import { spawn, execFileSync } from "child_process";
 import { resolve } from "path";
 import { existsSync } from "fs";
 import chalk from "chalk";

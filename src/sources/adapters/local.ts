@@ -20,7 +20,6 @@ export class LocalAdapter implements SourceAdapter {
     state: "idle",
     docCount: 0,
   };
-  private cfg: SourceConfig | null = null;
 
   async isAvailable(): Promise<boolean> {
     return true; // always available
@@ -45,8 +44,6 @@ export class LocalAdapter implements SourceAdapter {
   }
 
   async start(cfg: SourceConfig): Promise<void> {
-    this.cfg = cfg;
-
     if (!cfg.enabled || cfg.collections.length === 0) {
       this.status = { state: "disabled", docCount: 0 };
       return;

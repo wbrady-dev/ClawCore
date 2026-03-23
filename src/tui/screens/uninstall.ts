@@ -1,7 +1,6 @@
 import prompts from "prompts";
 import ora from "ora";
-import { execFileSync } from "child_process";
-import { existsSync, readFileSync, writeFileSync, rmSync, unlinkSync } from "fs";
+import { existsSync, readFileSync, writeFileSync, rmSync } from "fs";
 import { resolve } from "path";
 import { homedir } from "os";
 import { section, t, clearScreen } from "../theme.js";
@@ -14,7 +13,6 @@ import {
   removeWindowsServices,
   removeLinuxServices,
   removeMacServices,
-  isAdmin,
   getApiPort,
   getModelPort,
 } from "../platform.js";

@@ -75,9 +75,3 @@ export function invalidateCollection(collectionName: string): void {
   cache.clear();
 }
 
-/**
- * Get cache stats for diagnostics.
- */
-export function cacheStats(): { size: number; maxSize: number; ttlMs: number } {
-  return { size: cache.size, maxSize: MAX_ENTRIES, ttlMs: TTL_MS };
-}

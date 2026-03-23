@@ -243,6 +243,7 @@ export function recordExpansionDelegationTelemetry(params: {
       block: telemetryCounters.block,
       timeout: telemetryCounters.timeout,
       success: telemetryCounters.success,
+      lightweight: telemetryCounters.lightweight,
     },
   };
   const line = `[lcm][expansion_delegation] ${JSON.stringify(payload)}`;
@@ -285,4 +286,5 @@ export function resetExpansionDelegationGuardForTests(): void {
   telemetryCounters.block = 0;
   telemetryCounters.timeout = 0;
   telemetryCounters.success = 0;
+  telemetryCounters.lightweight = 0;
 }

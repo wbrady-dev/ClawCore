@@ -252,11 +252,7 @@ async function configureWatchPaths(root: string): Promise<void> {
   console.log(section("Watch Paths"));
   console.log(t.dim("  Space = toggle, Enter = save, Esc = cancel\n"));
 
-  // Add a special "custom" entry at the end
-  const CUSTOM_VALUE = "__custom__";
-  const checkboxEntries = [...entries];
-
-  const result = await checkboxMenuWithCustom(checkboxEntries);
+  const result = await checkboxMenuWithCustom([...entries]);
 
   if (!result) return; // cancelled
 
@@ -285,8 +281,7 @@ function checkboxMenuWithCustom(entries: WatchEntry[]): Promise<WatchEntry[] | n
   return new Promise((resolve) => {
     let selected = 0;
     const items = entries.map((e) => ({ ...e }));
-    const hasCustomRow = true;
-    const totalRows = items.length + (hasCustomRow ? 1 : 0);
+    const totalRows = items.length + 1;
 
     const render = () => {
       process.stdout.write(`\x1b[${totalRows}A`);
@@ -342,19 +337,17 @@ function checkboxMenuWithCustom(entries: WatchEntry[]): Promise<WatchEntry[] | n
           cleanup();
           const prompts = (await import("prompts")).default;
           console.log("");
-          let _cancelled = false;
-          const _onCancel = () => { _cancelled = true; };
           const { customPath } = await prompts({
             type: "text",
             name: "customPath",
             message: "Directory path",
-          }, { onCancel: _onCancel });
+          });
           const { customColl } = await prompts({
             type: "text",
             name: "customColl",
             message: "Collection name",
             initial: "custom",
-          }, { onCancel: _onCancel });
+          });
           if (customPath && customColl) {
             items.push({ path: customPath, collection: customColl, enabled: true });
           }

@@ -1,4 +1,4 @@
-import { execFileSync, spawn, type ChildProcess } from "child_process";
+import { execFileSync, spawn } from "child_process";
 import { existsSync, readFileSync, writeFileSync, mkdirSync, unlinkSync, openSync, closeSync } from "fs";
 import { resolve, dirname } from "path";
 import { platform, homedir } from "os";
@@ -206,16 +206,6 @@ function isTaskRunning(taskName: string): boolean {
     const out = schtasks("/query", "/tn", taskName, "/fo", "csv", "/nh");
     // CSV format: "TaskName","Next Run Time","Status"
     return out.includes('"Running"');
-  } catch {
-    return false;
-  }
-}
-
-/** Check if a Windows scheduled task exists. */
-function isTaskRegistered(taskName: string): boolean {
-  try {
-    schtasks("/query", "/tn", taskName);
-    return true;
   } catch {
     return false;
   }

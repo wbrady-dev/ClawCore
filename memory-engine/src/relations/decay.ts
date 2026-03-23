@@ -31,7 +31,7 @@ export function decayAntiRunbooks(db: GraphDb, scopeId: number, decayDays = 90):
 
   // Also decay anti-runbooks whose tool has recent successes
   // Exclude rows already decayed above to prevent double decay (0.8 * 0.7 = 0.56)
-  const successDecayed = db.prepare(`
+  db.prepare(`
     UPDATE anti_runbooks
     SET confidence = confidence * 0.7,
         updated_at = strftime('%Y-%m-%dT%H:%M:%f', 'now')

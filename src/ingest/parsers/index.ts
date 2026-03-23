@@ -3,7 +3,7 @@ import { parsePlaintext } from "./plaintext.js";
 import { parsePdf } from "./pdf.js";
 import { parseHtml } from "./html.js";
 import { parseCsv } from "./csv.js";
-import { parseCode, isCodeFile } from "./code.js";
+import { parseCode } from "./code.js";
 import { parseJson } from "./json.js";
 import { parseEml } from "./eml.js";
 import { parseDocx } from "./docx.js";
@@ -153,13 +153,4 @@ export function getSupportedExtensions(): string[] {
   return [...new Set([...Object.keys(PARSER_MAP), ...DOCLING_PREFERRED])];
 }
 
-export { parseMarkdown } from "./markdown.js";
-export { parsePlaintext } from "./plaintext.js";
-export { parsePdf } from "./pdf.js";
-export { parseHtml } from "./html.js";
-export { parseCsv } from "./csv.js";
-export { parseCode } from "./code.js";
-export { parseJson } from "./json.js";
-export { parseEml } from "./eml.js";
-export { parseDocx } from "./docx.js";
-export { parsePptx } from "./pptx.js";
+
