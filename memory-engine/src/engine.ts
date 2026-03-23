@@ -1592,14 +1592,27 @@ export class LcmContextEngine implements ContextEngine {
         if (useLlm && hasExtractionModel) {
           try {
             const { semanticExtract } = await import("./ontology/semantic-extractor.js");
-            const { provider, model } = this.deps.resolveModel(
-              this.config.relationsDeepExtractionModel,
-              this.config.relationsDeepExtractionProvider || undefined,
-            );
+            const extractionModel = this.config.relationsDeepExtractionModel;
+            const extractionProvider = this.config.relationsDeepExtractionProvider || "anthropic";
+
+            // Use direct API key if configured, otherwise use OpenClaw's OAuth
+            let completeFn = this.deps.complete;
+            const directApiKey = this.config.relationsDeepExtractionApiKey;
+            if (directApiKey || extractionProvider === "ollama") {
+              const { createDirectComplete } = await import("./ontology/direct-llm.js");
+              const directFn = createDirectComplete({
+                provider: extractionProvider,
+                model: extractionModel,
+                apiKey: directApiKey || undefined,
+                baseUrl: this.config.relationsDeepExtractionBaseUrl || undefined,
+              });
+              if (directFn) completeFn = directFn;
+            }
+
             writerResult = await semanticExtract(stored.content, String(msgRecord.messageId), role, {
-              complete: this.deps.complete,
-              model,
-              provider,
+              complete: completeFn,
+              model: extractionModel,
+              provider: extractionProvider,
               maxInputChars: 4000,
             });
           } catch {

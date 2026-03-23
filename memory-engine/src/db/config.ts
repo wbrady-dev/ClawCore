@@ -64,6 +64,15 @@ export type LcmConfig = {
   relationsDeepExtractionModel: string;
   /** Provider for deep extraction (falls back to summaryProvider if empty). */
   relationsDeepExtractionProvider: string;
+  /**
+   * Direct API key for the extraction model provider.
+   * When set, ClawCore calls the provider API directly instead of going
+   * through OpenClaw's OAuth. Keeps extraction isolated from agent tokens.
+   * Supports: Anthropic, OpenAI, Google (Gemini).
+   */
+  relationsDeepExtractionApiKey: string;
+  /** Base URL override for extraction model (e.g., Ollama at http://localhost:11434). */
+  relationsDeepExtractionBaseUrl: string;
   // ── RSMA Extraction Mode ─────────────────────────────────────────────
   /**
    * Extraction mode: "smart" | "fast"
@@ -284,6 +293,14 @@ export function resolveLcmConfig(
     relationsDeepExtractionProvider:
       e("RELATIONS_DEEP_EXTRACTION_PROVIDER")?.trim()
       ?? toStr(pc.relationsDeepExtractionProvider)
+      ?? "",
+    relationsDeepExtractionApiKey:
+      e("RELATIONS_DEEP_EXTRACTION_API_KEY")?.trim()
+      ?? toStr(pc.relationsDeepExtractionApiKey)
+      ?? "",
+    relationsDeepExtractionBaseUrl:
+      e("RELATIONS_DEEP_EXTRACTION_BASE_URL")?.trim()
+      ?? toStr(pc.relationsDeepExtractionBaseUrl)
       ?? "",
     // ── RSMA Extraction Mode ────────────────────────────────────────────
     relationsExtractionMode:

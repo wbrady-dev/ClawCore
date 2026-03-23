@@ -1514,6 +1514,36 @@ async function configureDeepExtractionModel(
   getVal: (key: string) => string,
   setVal: (key: string, val: string) => void,
 ): Promise<void> {
+  /** Prompt user for an optional API key for the extraction provider. */
+  async function promptForApiKey(
+    providerName: string,
+    _placeholder: string,
+    _getVal: (key: string) => string,
+    _setVal: (key: string, val: string) => void,
+  ): Promise<void> {
+    const currentKey = _getVal("CLAWCORE_MEMORY_RELATIONS_DEEP_EXTRACTION_API_KEY");
+    const hasKey = currentKey && currentKey.length > 5;
+    console.log("");
+    console.log(t.dim(`  ${providerName} API key${hasKey ? " (already set)" : ""}:`));
+    console.log(t.dim("  Enter your API key for direct access, or leave blank to use OpenClaw OAuth."));
+
+    const p = (await import("prompts")).default;
+    const { key } = await p({
+      type: "text",
+      name: "key",
+      message: `${providerName} API key (blank = use OAuth)`,
+      initial: hasKey ? "••••••••" : "",
+    });
+
+    if (key && key !== "••••••••" && key.trim().length > 5) {
+      _setVal("CLAWCORE_MEMORY_RELATIONS_DEEP_EXTRACTION_API_KEY", key.trim());
+      console.log(t.ok(`  API key saved — extraction will use your own ${providerName} key.`));
+    } else if (!key || key.trim() === "") {
+      _setVal("CLAWCORE_MEMORY_RELATIONS_DEEP_EXTRACTION_API_KEY", "");
+      console.log(t.dim("  No API key — will use OpenClaw OAuth credentials."));
+    }
+  }
+
   clearScreen();
   console.log(section("Extraction Model (RSMA Smart Mode)"));
   const currentModel = getVal("CLAWCORE_MEMORY_RELATIONS_DEEP_EXTRACTION_MODEL");
@@ -1545,13 +1575,14 @@ async function configureDeepExtractionModel(
   if (modelChoice === "anthropic_haiku") {
     setVal("CLAWCORE_MEMORY_RELATIONS_DEEP_EXTRACTION_MODEL", "claude-haiku-4-5-20251001");
     setVal("CLAWCORE_MEMORY_RELATIONS_DEEP_EXTRACTION_PROVIDER", "anthropic");
-    console.log(t.ok("\n  Set to Anthropic Haiku — cheapest cloud option (~$0.25/M tokens)."));
-    console.log(t.dim("  Uses your existing Claude OAuth credentials.\n"));
+    // Ask for API key (optional)
+    await promptForApiKey("Anthropic", "sk-ant-...", getVal, setVal);
+    console.log(t.ok("\n  Set to Anthropic Haiku (~$0.25/M tokens).\n"));
   } else if (modelChoice === "openai_mini") {
     setVal("CLAWCORE_MEMORY_RELATIONS_DEEP_EXTRACTION_MODEL", "gpt-4o-mini");
     setVal("CLAWCORE_MEMORY_RELATIONS_DEEP_EXTRACTION_PROVIDER", "openai");
-    console.log(t.ok("\n  Set to OpenAI GPT-4o-mini — cheapest cloud option (~$0.15/M tokens)."));
-    console.log(t.dim("  Uses your existing OpenAI OAuth credentials.\n"));
+    await promptForApiKey("OpenAI", "sk-...", getVal, setVal);
+    console.log(t.ok("\n  Set to OpenAI GPT-4o-mini (~$0.15/M tokens).\n"));
   } else if (modelChoice === "openclaw") {
     setVal("CLAWCORE_MEMORY_RELATIONS_DEEP_EXTRACTION_MODEL", "");
     setVal("CLAWCORE_MEMORY_RELATIONS_DEEP_EXTRACTION_PROVIDER", "");
@@ -1609,6 +1640,7 @@ async function configureDeepExtractionModel(
       if (model) {
         setVal("CLAWCORE_MEMORY_RELATIONS_DEEP_EXTRACTION_MODEL", model.trim());
         setVal("CLAWCORE_MEMORY_RELATIONS_DEEP_EXTRACTION_PROVIDER", cloudChoice);
+        await promptForApiKey(cloudChoice, "", getVal, setVal);
       }
     }
   } else if (modelChoice === "custom") {
@@ -1616,7 +1648,10 @@ async function configureDeepExtractionModel(
     const { model } = await p({ type: "text", name: "model", message: "Model name" });
     const { provider } = await p({ type: "text", name: "provider", message: "Provider" });
     if (model) setVal("CLAWCORE_MEMORY_RELATIONS_DEEP_EXTRACTION_MODEL", model.trim());
-    if (provider) setVal("CLAWCORE_MEMORY_RELATIONS_DEEP_EXTRACTION_PROVIDER", provider.trim());
+    if (provider) {
+      setVal("CLAWCORE_MEMORY_RELATIONS_DEEP_EXTRACTION_PROVIDER", provider.trim());
+      await promptForApiKey(provider.trim(), "", getVal, setVal);
+    }
   }
 }
 

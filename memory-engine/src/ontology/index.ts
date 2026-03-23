@@ -71,6 +71,9 @@ export {
 // Migration
 export { migrateToProvenanceLinks, isMigrationNeeded } from "./migration.js";
 
+// Direct LLM client (API keys, Ollama)
+export { createDirectComplete } from "./direct-llm.js";
+
 // Semantic extraction (LLM-powered)
 export type { CompleteFn, SemanticExtractorConfig } from "./semantic-extractor.js";
 export { semanticExtract } from "./semantic-extractor.js";
