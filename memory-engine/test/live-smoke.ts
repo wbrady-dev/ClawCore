@@ -1,6 +1,6 @@
 /**
- * CRAM Live Smoke Test — runs against the real clawcore-graph.db
- * Tests every CRAM layer: RAG hooks, DAG lineage, KG entities, AL awareness,
+ * RSMA Live Smoke Test — runs against the real clawcore-graph.db
+ * Tests every RSMA layer: RAG hooks, DAG lineage, KG entities, AL awareness,
  * SL state, DE deltas, AOM attempts, BSG branches, EEL evidence log, CCL compiler.
  */
 
@@ -55,7 +55,7 @@ function assert(cond: boolean, msg = "assertion failed") {
 }
 
 console.log("");
-console.log("\u2550\u2550\u2550 CRAM LIVE SMOKE TEST \u2550\u2550\u2550");
+console.log("\u2550\u2550\u2550 RSMA LIVE SMOKE TEST \u2550\u2550\u2550");
 console.log(`DB: ${DB_PATH}`);
 console.log("");
 
@@ -107,7 +107,7 @@ console.log("\u2500\u2500 SL: Claims \u2500\u2500");
 test("upsert claim + evidence", () => {
   const { claimId } = upsertClaim(db as any, {
     scopeId: 1, branchId: 0, subject: "smoke-test", predicate: "validates",
-    objectText: "CRAM pipeline", confidence: 0.9,
+    objectText: "RSMA pipeline", confidence: 0.9,
     canonicalKey: `smoke:claim:${RUN}`,
   });
   assert(claimId > 0);

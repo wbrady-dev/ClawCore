@@ -1,16 +1,16 @@
 # Core Concepts
 
-## CRAM Architecture
+## RSMA Architecture
 
-> CRAM is a multi-layer agent architecture that combines retrieval, summary lineage, knowledge graphs, awareness, evidence-backed state, delta tracking, attempt memory, branch governance, and low-token context compilation.
+> RSMA (Reconciled Semantic Memory Architecture) is a multi-layer agent architecture that combines retrieval, summary lineage, knowledge graphs, awareness, evidence-backed state, delta tracking, attempt memory, branch governance, and low-token context compilation.
 
-`CRAM = RAG + DAG + KG + AL + SL + DE + AOM + BSG + EEL + CCL`
+`RSMA = RAG + DAG + KG + AL + SL + DE + AOM + BSG + EEL + CCL`
 
 The layers work together: RAG provides the knowledge base, DAG tracks conversation lineage, KG builds entity graphs, AL surfaces context, SL manages claims/decisions/loops, DE tracks state changes, AOM records tool outcomes, BSG handles speculative branches, EEL provides the audit trail, and CCL compiles it all into a token-budgeted system prompt.
 
 ## ClawCore Evidence OS
 
-The implementation of CRAM's stateful layers. Tracks structured knowledge extracted from conversations, documents, and tool results. Organized into 5 horizons:
+The implementation of RSMA's stateful layers. Tracks structured knowledge extracted from conversations, documents, and tool results. Organized into 5 horizons:
 
 ### Entities & Awareness (Horizon 1)
 **Entities** are named concepts extracted from text (people, tools, projects). ClawCore tracks where each entity appears, how often, and in what context. **Awareness notes** surface relevant entity information in the system prompt — mismatches across sources, stale references, and connections between entities.

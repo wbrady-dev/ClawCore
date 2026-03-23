@@ -65,7 +65,7 @@ List learned success and failure patterns (runbooks and anti-runbooks).
 - `scope_id`: Scope filter
 
 ### cc_diagnostics
-Show internal CRAM health: summary counts, claim counts, awareness stats, context compiler output, recent evidence events, and compaction state.
+Show internal RSMA health: summary counts, claim counts, awareness stats, context compiler output, recent evidence events, and compaction state.
 - `scope_id`: Scope ID (default: 1 = global)
 - `verbose`: Include capsule text and recent events (default: false)
 

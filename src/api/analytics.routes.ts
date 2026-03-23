@@ -156,7 +156,7 @@ export function registerAwarenessStatsGetter(getter: AwarenessStatsGetter): void
 }
 
 /**
- * GET /analytics/diagnostics — full CRAM health for external monitoring.
+ * GET /analytics/diagnostics — full RSMA health for external monitoring.
  * Returns evidence graph stats, awareness metrics, and config state.
  * Available to you (Wesley) via curl or browser.
  */

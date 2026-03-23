@@ -1,8 +1,8 @@
-# ClawCore CRAM — Technical Reference
+# ClawCore RSMA — Technical Reference
 
-Complete technical documentation for ClawCore's **CRAM Architecture** — a multi-layer agent architecture that combines retrieval, summary lineage, knowledge graphs, awareness, evidence-backed state, delta tracking, attempt memory, branch governance, and low-token context compilation.
+Complete technical documentation for ClawCore's **RSMA (Reconciled Semantic Memory Architecture)** — a multi-layer agent architecture that combines retrieval, summary lineage, knowledge graphs, awareness, evidence-backed state, delta tracking, attempt memory, branch governance, and low-token context compilation.
 
-> `CRAM = RAG + DAG + KG + AL + SL + DE + AOM + BSG + EEL + CCL`
+> `RSMA = RAG + DAG + KG + AL + SL + DE + AOM + BSG + EEL + CCL`
 
 Covers architecture, query pipeline, ingestion, storage, evidence store, source adapters, OpenClaw integration, and configuration.
 

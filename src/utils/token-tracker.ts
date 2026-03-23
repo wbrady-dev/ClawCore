@@ -1,5 +1,5 @@
 /**
- * Token usage tracker for CRAM local models.
+ * Token usage tracker for RSMA local models.
  * Uses a JSON file as the backing store so all module instances
  * share the same counters (tsx can create isolated module graphs).
  *

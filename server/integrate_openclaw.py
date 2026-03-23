@@ -1,5 +1,5 @@
 """
-OpenClaw Integration Script — ClawCore CRAM
+OpenClaw Integration Script — ClawCore RSMA
 Sets up ClawCore as the unified knowledge + memory system for OpenClaw.
 
 1. Installs SKILL.md for document search routing
@@ -119,7 +119,7 @@ exec: clawcore ingest "path/to/file" --collection default
         f.write(skill_content)
     print("[OK] Knowledge skill installed")
 
-    # 2. Configure openclaw.json for CRAM
+    # 2. Configure openclaw.json for RSMA
     config_path = os.path.join(openclaw_dir, "openclaw.json")
     try:
         with open(config_path, "r", encoding="utf-8") as f:
@@ -179,7 +179,7 @@ exec: clawcore ingest "path/to/file" --collection default
         with open(config_path, "w", encoding="utf-8") as f:
             json.dump(config, f, indent=2)
             f.write("\n")
-        print("[OK] OpenClaw configured for CRAM (Memory Engine + contextEngine slot)")
+        print("[OK] OpenClaw configured for RSMA (Memory Engine + contextEngine slot)")
 
     except Exception as e:
         print(f"[WARNING] Could not update openclaw.json: {e}")
@@ -224,7 +224,7 @@ exec: clawcore ingest "path/to/file" --collection default
             else:
                 env_content += f"\nWATCH_PATHS={watch_value}\n"
 
-            # Set token budget to 2000 for CRAM
+            # Set token budget to 2000 for RSMA
             if "QUERY_TOKEN_BUDGET=" in env_content:
                 env_content = re.sub(r"QUERY_TOKEN_BUDGET=.*", "QUERY_TOKEN_BUDGET=2000", env_content)
 
@@ -277,8 +277,8 @@ You have two knowledge systems. Use the right one:
         print(f"[WARNING] Could not update SOUL.md: {e}")
 
     print()
-    print("[OK] ClawCore CRAM integration complete!")
-    print("     Architecture: Contextual Retrieval and Augmented Memory")
+    print("[OK] ClawCore RSMA integration complete!")
+    print("     Architecture: Reconciled Semantic Memory Architecture")
     print("     - Knowledge Engine: document search via 'clawcore query'")
     print("     - Memory Engine: conversation memory via cc_grep, cc_recall")
     print()

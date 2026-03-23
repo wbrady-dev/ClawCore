@@ -1316,7 +1316,7 @@ const lcmPlugin = {
       { name: "cc_recall" },
     );
 
-    // Register CRAM tools (8 consolidated tools, down from 18)
+    // Register RSMA tools (8 consolidated tools, down from 18)
     const graphDb = lcm.getGraphDb();
     if (deps.config.relationsEnabled && graphDb) {
       api.registerTool(

@@ -528,6 +528,30 @@ export function runGraphMigrations(db: GraphDb, dbPath?: string): void {
     markMigrationApplied(db, 9);
   }
 
+  // Migration v10: RSMA provenance_links table
+  if (!isMigrationApplied(db, 10)) {
+    db.exec(`
+      -- RSMA: Unified provenance links — replaces 7 separate join tables.
+      -- Typed predicates: derived_from, supports, contradicts, supersedes,
+      -- mentioned_in, relates_to, resolved_by.
+      CREATE TABLE IF NOT EXISTS provenance_links (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          subject_id TEXT NOT NULL,
+          predicate TEXT NOT NULL CHECK(predicate IN ('derived_from', 'supports', 'contradicts', 'supersedes', 'mentioned_in', 'relates_to', 'resolved_by')),
+          object_id TEXT NOT NULL,
+          confidence REAL NOT NULL DEFAULT 1.0 CHECK(confidence >= 0.0 AND confidence <= 1.0),
+          detail TEXT,
+          created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%f', 'now')),
+          UNIQUE(subject_id, predicate, object_id)
+      );
+      CREATE INDEX IF NOT EXISTS idx_prov_subject ON provenance_links(subject_id);
+      CREATE INDEX IF NOT EXISTS idx_prov_object ON provenance_links(object_id);
+      CREATE INDEX IF NOT EXISTS idx_prov_predicate ON provenance_links(predicate);
+      CREATE INDEX IF NOT EXISTS idx_prov_created_at ON provenance_links(created_at);
+    `);
+    markMigrationApplied(db, 10);
+  }
+
   // File permissions: chmod 600 on Unix/macOS, skip on Windows
   if (dbPath && process.platform !== "win32") {
     try {

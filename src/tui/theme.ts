@@ -40,7 +40,7 @@ export function banner(): string {
   return [
     "",
     `              ${r("🦞")} ${w("CLAWCORE")} ${r("🦞")}`,
-    `          ${chalk.dim("CRAM So Good It Pinches")}`,
+    `          ${chalk.dim("RSMA So Good It Pinches")}`,
     "",
   ].join("\n");
 }

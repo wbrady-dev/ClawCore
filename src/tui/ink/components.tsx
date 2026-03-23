@@ -34,7 +34,7 @@ export function Banner() {
   return (
     <Box flexDirection="column" marginBottom={1}>
       <Text>{"              "}{r("🦞")} {w("CLAWCORE")} {r("🦞")}</Text>
-      <Text>{"          "}{chalk.dim("CRAM So Good It Pinches")}</Text>
+      <Text>{"          "}{chalk.dim("RSMA So Good It Pinches")}</Text>
     </Box>
   );
 }

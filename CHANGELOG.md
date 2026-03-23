@@ -15,7 +15,7 @@ All notable changes to ClawCore are documented here.
 - **Legacy fallback** — non-TTY and limited terminals fall back to raw ANSI menu system
 - **SIGINT safety** — raw mode cleanup on Ctrl+C in both Ink and legacy menu paths
 
-### CRAM Fixes
+### RSMA Fixes
 - **Evidence Event Log** — fixed 6 missing `scope_id` in `logEvidence` calls (anti-runbook-store, runbook-store, lease-store, graph-store)
 - **Decay audit trail** — `decayAntiRunbooks()` and `decayRunbooks()` now log evidence events
 - **Source adapter sync state** — all 3 polling adapters (gdrive, notion, apple-notes) properly transition idle→syncing→idle
@@ -118,8 +118,8 @@ All notable changes to ClawCore are documented here.
 
 ## [0.1.0] — 2026-03-18
 
-### Initial Release — CRAM Architecture
-- **10 CRAM layers**: RAG + DAG + KG + AL + SL + DE + AOM + BSG + EEL + CCL
+### Initial Release — RSMA Architecture
+- **10 RSMA layers**: RAG + DAG + KG + AL + SL + DE + AOM + BSG + EEL + CCL
 - **22 agent tools**: cc_grep, cc_recall, cc_describe, cc_expand, cc_conflicts, cc_state, cc_claims, cc_decisions, cc_delta, cc_capabilities, cc_invariants, cc_loops, cc_attempts, cc_antirunbooks, cc_branch, cc_promote, cc_runbooks, cc_timeline, cc_relate, cc_ask, cc_diagnostics, cc_memory
 - **Query pipeline**: validate → cache → expand → retrieve → gate → rerank → dedup → highlight → brief/titles/full
 - **Ingestion pipeline**: 24 file formats, semantic chunking, embedding, dedup, atomic storage

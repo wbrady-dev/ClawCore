@@ -7,7 +7,7 @@ description: ClawCore Evidence OS — structured memory for agents. Use cc_memor
 
 ClawCore automatically extracts and tracks structured knowledge from conversations. Claims, decisions, relationships, and awareness notes are created and injected without tool calls.
 
-**Most of CRAM is automatic. You do not need to call tools for it to work.**
+**Most of RSMA is automatic. You do not need to call tools for it to work.**
 
 ## What happens automatically (no tool call needed)
 - **Awareness notes** injected into your system prompt every turn — surfaces mismatches, stale references, and entity connections
@@ -46,7 +46,7 @@ cc_memory { "query": "Project Aurora", "scope": "all" }
 cc_diagnostics {}
 cc_diagnostics { "verbose": true }
 ```
-- Shows internal CRAM health: memory stats, evidence counts, awareness metrics, compiler state, capabilities, recent events
+- Shows internal RSMA health: memory stats, evidence counts, awareness metrics, compiler state, capabilities, recent events
 - Use `verbose: true` for event timeline and capsule content
 - Not for answering user questions
 
@@ -117,7 +117,7 @@ You do not need to call any tool for awareness — it runs every turn automatica
 
 ## Tool Availability
 
-All CRAM tools require Evidence OS to be enabled (`CLAWCORE_MEMORY_RELATIONS_ENABLED=true`).
+All RSMA tools require Evidence OS to be enabled (`CLAWCORE_MEMORY_RELATIONS_ENABLED=true`).
 
 The 4 core tools (`cc_memory`, `cc_grep`, `cc_describe`, `cc_expand`) are always available regardless of Evidence OS settings.
 

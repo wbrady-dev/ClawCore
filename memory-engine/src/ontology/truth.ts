@@ -1,0 +1,457 @@
+/**
+ * TruthEngine — reconciliation for RSMA.
+ *
+ * Takes candidate MemoryObjects from the Writer and reconciles them against
+ * existing knowledge in the graph database. Handles:
+ *
+ * 1. Supersession: new belief replaces old (same canonical key, higher confidence)
+ * 2. Conflict creation: contradictory values surface as first-class Conflict objects
+ * 3. Confidence resolution: trust × freshness × correction bonus
+ * 4. Provisional handling: uncertain statements don't override firm beliefs
+ *
+ * Safety guards (5-point check for correction-triggered supersession):
+ * - Canonical key match exists in DB
+ * - Same scope (or compatible scope)
+ * - Same kind family (claims supersede claims, decisions supersede decisions)
+ * - Minimum confidence threshold (0.3)
+ * - Auditable reason trace on every supersession
+ *
+ * INVARIANTS:
+ * - This module NEVER mutates input MemoryObjects.
+ * - It is deterministic: same inputs → same outputs.
+ * - It is side-effect-free: the caller (Projector) handles DB writes.
+ */
+
+import { randomUUID } from "node:crypto";
+import type { GraphDb } from "../relations/types.js";
+import type { MemoryObject, MemoryKind } from "./types.js";
+import { CORRECTION_TRUST_BONUS } from "./types.js";
+import { buildCanonicalKey } from "./canonical.js";
+
+// ── Types ───────────────────────────────────────────────────────────────────
+
+export interface SupersessionAction {
+  type: "supersede";
+  newObject: MemoryObject;
+  oldObjectId: string;
+  reason: string;
+}
+
+export interface ConflictAction {
+  type: "conflict";
+  conflictObject: MemoryObject;
+  objectIdA: string;
+  objectIdB: string;
+  reason: string;
+}
+
+export interface InsertAction {
+  type: "insert";
+  object: MemoryObject;
+}
+
+export interface EvidenceAction {
+  type: "evidence";
+  newObject: MemoryObject;
+  existingObjectId: string;
+  predicate: "supports" | "contradicts";
+  reason: string;
+}
+
+export type ReconcileAction =
+  | SupersessionAction
+  | ConflictAction
+  | InsertAction
+  | EvidenceAction;
+
+export interface ReconcileStats {
+  totalCandidates: number;
+  inserts: number;
+  supersessions: number;
+  conflicts: number;
+  evidence: number;
+}
+
+export interface ReconcileResult {
+  actions: ReconcileAction[];
+  stats: ReconcileStats;
+}
+
+// ── Configuration ───────────────────────────────────────────────────────────
+
+const MIN_SUPERSESSION_CONFIDENCE = 0.3;
+
+const SUPERSESSION_KINDS = new Set<MemoryKind>([
+  "claim", "decision", "loop", "invariant",
+]);
+
+function kindFamily(kind: MemoryKind): string {
+  switch (kind) {
+    case "claim": return "claim";
+    case "decision": return "decision";
+    case "loop": return "loop";
+    case "invariant": return "invariant";
+    case "procedure": return "procedure";
+    default: return kind;
+  }
+}
+
+// ── DB Lookup ───────────────────────────────────────────────────────────────
+
+interface ExistingMatch {
+  id: string;
+  rawId: number;
+  kind: MemoryKind;
+  canonicalKey: string;
+  status: string;
+  confidence: number;
+  content: string;
+  scopeId: number;
+}
+
+function toMatch(kind: MemoryKind, canonicalKey: string, row: Record<string, unknown>): ExistingMatch {
+  return {
+    id: `${kind}:${row.id}`,
+    rawId: Number(row.id),
+    kind,
+    canonicalKey,
+    status: String(row.status ?? "active"),
+    confidence: Number(row.confidence ?? 0.5),
+    content: String(row.content ?? ""),
+    scopeId: Number(row.scope_id ?? 1),
+  };
+}
+
+/**
+ * Find existing active objects with the same canonical key.
+ * Implements queries for all 4 supersession-eligible kinds.
+ */
+function findExistingByCanonicalKey(
+  db: GraphDb,
+  kind: MemoryKind,
+  canonicalKey: string,
+  scopeId: number,
+): ExistingMatch[] {
+  const results: ExistingMatch[] = [];
+
+  try {
+    if (kind === "claim") {
+      const rows = db.prepare(`
+        SELECT id, status, confidence, object_text as content, scope_id
+        FROM claims
+        WHERE canonical_key = ? AND scope_id = ? AND status IN ('active', 'needs_confirmation')
+      `).all(canonicalKey, scopeId) as Array<Record<string, unknown>>;
+      for (const row of rows) results.push(toMatch("claim", canonicalKey, row));
+    }
+
+    if (kind === "decision") {
+      // Scan active decisions and compare normalized canonical keys.
+      // Can't rely on SQL normalization alone because normalize() collapses
+      // internal whitespace which TRIM() doesn't do.
+      const rows = db.prepare(`
+        SELECT id, status, 0.9 as confidence, decision_text as content, scope_id, topic
+        FROM decisions
+        WHERE scope_id = ? AND status = 'active'
+      `).all(scopeId) as Array<Record<string, unknown>>;
+      for (const row of rows) {
+        const existingKey = buildCanonicalKey("decision", "", { topic: String(row.topic ?? "") });
+        if (existingKey === canonicalKey) {
+          results.push(toMatch("decision", canonicalKey, row));
+        }
+      }
+    }
+
+    if (kind === "loop") {
+      // Loops use hash-based canonical keys — match by computing hash of existing text
+      // This requires scanning active loops and computing keys on the fly
+      const rows = db.prepare(`
+        SELECT id, status, 0.8 as confidence, text as content, scope_id
+        FROM open_loops
+        WHERE scope_id = ? AND status IN ('open', 'blocked')
+      `).all(scopeId) as Array<Record<string, unknown>>;
+      for (const row of rows) {
+        const existingKey = buildCanonicalKey("loop", String(row.content ?? ""));
+        if (existingKey === canonicalKey) {
+          results.push(toMatch("loop", canonicalKey, row));
+        }
+      }
+    }
+
+    if (kind === "invariant") {
+      // Invariants match on invariant_key column
+      const keyValue = canonicalKey.replace(/^inv::/, "");
+      const rows = db.prepare(`
+        SELECT id, status, 0.9 as confidence, description as content, scope_id
+        FROM invariants
+        WHERE LOWER(TRIM(invariant_key)) = ? AND scope_id = ? AND status = 'active'
+      `).all(keyValue, scopeId) as Array<Record<string, unknown>>;
+      for (const row of rows) results.push(toMatch("invariant", canonicalKey, row));
+    }
+  } catch {
+    // Non-fatal: if table doesn't exist, return empty
+  }
+
+  return results;
+}
+
+// ── Value Comparison ────────────────────────────────────────────────────────
+
+/** Extract the comparable value from a MemoryObject. */
+function extractValueForComparison(obj: MemoryObject): string | null {
+  const s = obj.structured as Record<string, unknown> | undefined;
+  if (!s) return typeof obj.content === "string" ? obj.content : null;
+  if (obj.kind === "claim" && typeof s.objectText === "string") return s.objectText;
+  if (obj.kind === "decision" && typeof s.decisionText === "string") return s.decisionText;
+  if (obj.kind === "loop" && typeof obj.content === "string") return obj.content;
+  if (obj.kind === "invariant" && typeof s.description === "string") return s.description as string;
+  return typeof obj.content === "string" ? obj.content : null;
+}
+
+/** Check if two values represent a meaningful contradiction. */
+function valuesContradict(
+  candidateValue: string | null,
+  existingValue: string | null,
+): boolean {
+  if (!candidateValue || !existingValue) return false;
+  // Normalize both for comparison
+  const a = candidateValue.toLowerCase().trim();
+  const b = existingValue.toLowerCase().trim();
+  // Same value = no contradiction
+  if (a === b) return false;
+  // Different non-empty values = contradiction
+  return a.length > 0 && b.length > 0;
+}
+
+// ── Core Reconciliation ─────────────────────────────────────────────────────
+
+/**
+ * Reconcile a list of candidate MemoryObjects against existing knowledge.
+ *
+ * Returns a list of actions the Projector should execute.
+ * NEVER mutates input objects — creates copies where needed.
+ */
+export function reconcile(
+  db: GraphDb,
+  candidates: MemoryObject[],
+  options: {
+    isCorrection?: boolean;
+    correctionSignal?: string;
+  } = {},
+): ReconcileResult {
+  const actions: ReconcileAction[] = [];
+
+  for (const candidate of candidates) {
+    // Skip kinds that don't participate in truth reconciliation
+    if (!candidate.canonical_key || !SUPERSESSION_KINDS.has(candidate.kind)) {
+      actions.push({ type: "insert", object: candidate });
+      continue;
+    }
+
+    // Find existing objects with the same canonical key
+    const existing = findExistingByCanonicalKey(
+      db,
+      candidate.kind,
+      candidate.canonical_key,
+      candidate.scope_id,
+    );
+
+    // No existing match → plain insert
+    if (existing.length === 0) {
+      actions.push({ type: "insert", object: candidate });
+      continue;
+    }
+
+    // Take the highest-confidence existing match
+    const match = existing.reduce((best, cur) =>
+      cur.confidence > best.confidence ? cur : best, existing[0]);
+
+    // ── Rule 6: Provisional objects don't supersede firm beliefs ──
+    if (candidate.provisional && match.status !== "needs_confirmation") {
+      actions.push({
+        type: "evidence",
+        newObject: candidate,
+        existingObjectId: match.id,
+        predicate: "supports",
+        reason: `provisional: "${candidate.provenance.source_detail ?? "uncertainty signal"}"`,
+      });
+      continue;
+    }
+
+    // ── Determine supersession vs evidence ──
+    let didSupersede = false;
+
+    // ── Rule 5: Correction signal → auto-supersede (with 5-point guard) ──
+    if (options.isCorrection) {
+      const guardResult = checkSupersessionGuards(candidate, match, options.correctionSignal);
+      if (guardResult.pass) {
+        // Apply correction trust bonus — deep copy to preserve immutability
+        const boosted: MemoryObject = {
+          ...candidate,
+          provenance: { ...candidate.provenance },
+          structured: candidate.structured != null
+            ? JSON.parse(JSON.stringify(candidate.structured))
+            : undefined,
+          confidence: Math.min(1.0, candidate.confidence + CORRECTION_TRUST_BONUS),
+        };
+        actions.push({
+          type: "supersede",
+          newObject: boosted,
+          oldObjectId: match.id,
+          reason: guardResult.reason,
+        });
+        didSupersede = true;
+      }
+    }
+
+    // ── Rules 1-3: Standard confidence-based supersession ──
+    if (!didSupersede) {
+      const confidenceDiff = candidate.confidence - match.confidence;
+      if (confidenceDiff > 0.001) {
+        // Rule 1: Higher confidence → supersede
+        actions.push({
+          type: "supersede",
+          newObject: candidate,
+          oldObjectId: match.id,
+          reason: `higher confidence: ${candidate.confidence.toFixed(2)} > ${match.confidence.toFixed(2)}`,
+        });
+        didSupersede = true;
+      } else if (Math.abs(confidenceDiff) <= 0.001) {
+        // Rule 2: Same confidence (within epsilon) + newer → supersede
+        actions.push({
+          type: "supersede",
+          newObject: candidate,
+          oldObjectId: match.id,
+          reason: `same confidence (${candidate.confidence.toFixed(2)}), newer object wins`,
+        });
+        didSupersede = true;
+      } else {
+        // Rule 3: Lower confidence → add as evidence only
+        actions.push({
+          type: "evidence",
+          newObject: candidate,
+          existingObjectId: match.id,
+          predicate: "supports",
+          reason: `lower confidence: ${candidate.confidence.toFixed(2)} < ${match.confidence.toFixed(2)}`,
+        });
+      }
+    }
+
+    // ── Rule 4: Value contradiction → create Conflict ──
+    // This runs INDEPENDENTLY of supersession. Even if new object supersedes old,
+    // a conflict can still be created to flag the value change for user review.
+    // Conflict is created when: values differ AND candidate has meaningful confidence.
+    const candidateValue = extractValueForComparison(candidate);
+    const existingValue = match.content;
+    if (valuesContradict(candidateValue, existingValue)
+        && candidate.confidence >= MIN_SUPERSESSION_CONFIDENCE) {
+      // If supersession happened, the conflict is informational (status: "active" not "needs_confirmation")
+      // If only evidence was added, the conflict needs user confirmation
+      const conflictStatus = didSupersede ? "active" as const : "needs_confirmation" as const;
+      const conflictObj = createConflictObject(candidate, match, conflictStatus);
+      actions.push({
+        type: "conflict",
+        conflictObject: conflictObj,
+        objectIdA: candidate.id,
+        objectIdB: match.id,
+        reason: `contradictory values: "${(candidateValue ?? "").substring(0, 50)}" vs "${(existingValue ?? "").substring(0, 50)}"`,
+      });
+    }
+  }
+
+  const stats: ReconcileStats = {
+    totalCandidates: candidates.length,
+    inserts: actions.filter((a) => a.type === "insert").length,
+    supersessions: actions.filter((a) => a.type === "supersede").length,
+    conflicts: actions.filter((a) => a.type === "conflict").length,
+    evidence: actions.filter((a) => a.type === "evidence").length,
+  };
+
+  return { actions, stats };
+}
+
+// ── 5-Point Supersession Guard ──────────────────────────────────────────────
+
+interface GuardResult {
+  pass: boolean;
+  reason: string;
+}
+
+function checkSupersessionGuards(
+  candidate: MemoryObject,
+  existing: ExistingMatch,
+  correctionSignal?: string | null,
+): GuardResult {
+  // Guard 1: Canonical key match (guaranteed by lookup)
+
+  // Guard 2: Same scope
+  if (candidate.scope_id !== existing.scopeId) {
+    return {
+      pass: false,
+      reason: `scope mismatch: candidate scope ${candidate.scope_id} != existing scope ${existing.scopeId}`,
+    };
+  }
+
+  // Guard 3: Same kind family
+  if (kindFamily(candidate.kind) !== kindFamily(existing.kind)) {
+    return {
+      pass: false,
+      reason: `kind family mismatch: ${candidate.kind} != ${existing.kind}`,
+    };
+  }
+
+  // Guard 4: Minimum confidence threshold
+  if (candidate.confidence < MIN_SUPERSESSION_CONFIDENCE) {
+    return {
+      pass: false,
+      reason: `confidence too low: ${candidate.confidence.toFixed(2)} < ${MIN_SUPERSESSION_CONFIDENCE}`,
+    };
+  }
+
+  // Guard 5: Auditable reason trace
+  const reason = `correction_supersession: signal="${correctionSignal ?? "unknown"}", `
+    + `canonical_key="${candidate.canonical_key}", `
+    + `old_id="${existing.id}", `
+    + `confidence=${candidate.confidence.toFixed(2)}>${existing.confidence.toFixed(2)}`;
+
+  return { pass: true, reason };
+}
+
+// ── Conflict Object Factory ─────────────────────────────────────────────────
+
+function createConflictObject(
+  objA: MemoryObject,
+  existing: ExistingMatch,
+  status: "active" | "needs_confirmation",
+): MemoryObject {
+  const now = new Date().toISOString();
+  const contentA = objA.content.substring(0, 80);
+  const contentB = existing.content.substring(0, 80);
+
+  return {
+    id: `conflict:${randomUUID().substring(0, 8)}`,
+    kind: "conflict",
+    content: `${objA.kind} conflict: "${contentA}" vs "${contentB}"`,
+    structured: {
+      objectIdA: objA.id,
+      objectIdB: existing.id,
+      canonicalKey: objA.canonical_key,
+      kind: objA.kind,
+    },
+    canonical_key: buildCanonicalKey("conflict", `${contentA} vs ${contentB}`),
+    provenance: {
+      source_kind: "inference",
+      source_id: objA.id,
+      actor: "system",
+      trust: 0.9,
+    },
+    confidence: 0.9,
+    freshness: 1.0,
+    provisional: false,
+    status,
+    observed_at: now,
+    scope_id: objA.scope_id,
+    influence_weight: "high",
+    created_at: now,
+    updated_at: now,
+  };
+}

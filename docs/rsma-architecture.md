@@ -1,8 +1,8 @@
-# CRAM Architecture — Canonical Reference
+# RSMA Architecture — Canonical Reference
 
-> **CRAM Architecture** is a multi-layer agent architecture that combines retrieval, summary lineage, knowledge graphs, awareness, evidence-backed state, delta tracking, attempt memory, branch governance, and low-token context compilation.
+> **RSMA (Reconciled Semantic Memory Architecture)** is a multi-layer agent architecture that combines retrieval, summary lineage, knowledge graphs, awareness, evidence-backed state, delta tracking, attempt memory, branch governance, and low-token context compilation.
 
-> `CRAM = RAG + DAG + KG + AL + SL + DE + AOM + BSG + EEL + CCL`
+> `RSMA = RAG + DAG + KG + AL + SL + DE + AOM + BSG + EEL + CCL`
 
 ## Layer Summary
 
@@ -19,11 +19,11 @@
 | **EEL** | Evidence Event Log | Append-only audit trail, scope-local sequence ordering, idempotency | 1526 entries logged, scope_seq monotonic, UNIQUE constraint dedup, transaction rollback on crash |
 | **CCL** | Context Compiler | ROI-scored capsule compilation within token budgets | Lite=110, Standard=190, Premium=280 tokens enforced, 0.2ms/compile |
 
-## What Changes With CRAM
+## What Changes With RSMA
 
-**Without CRAM:** The agent re-derives facts from text, forgets what changed, retries failed approaches, answers from stale context, wastes tokens on broad retrieval dumps.
+**Without RSMA:** The agent re-derives facts from text, forgets what changed, retries failed approaches, answers from stale context, wastes tokens on broad retrieval dumps.
 
-**With CRAM:** The agent gets a budgeted evidence capsule containing current claims, active decisions, open blockers, failure warnings, and entity context — all scored by relevance, confidence, and freshness.
+**With RSMA:** The agent gets a budgeted evidence capsule containing current claims, active decisions, open blockers, failure warnings, and entity context — all scored by relevance, confidence, and freshness.
 
 ## Trust-But-Verify
 
@@ -32,7 +32,7 @@
 | Test Suite | Count | What It Verifies |
 |-----------|-------|-----------------|
 | Unit tests | 459 | RAG pipeline, DAG compaction, memory tools, assembler, config, expansion, auth |
-| CRAM stress test | 37 | All 10 CRAM layers under load (1000 entities, 500 claims, 300 attempts) |
+| RSMA stress test | 37 | All 10 RSMA layers under load (1000 entities, 500 claims, 300 attempts) |
 | Failure injection | 44 | Graceful degradation: empty input, corrupt data, boundary values, FK violations, duplicate keys, mid-transaction crashes, concurrent stress |
 | Live smoke test | 24 | All layers against real SQLite database (50 consecutive runs, 0 failures) |
 | **Total** | **540** | |
@@ -57,7 +57,7 @@
 | cc_recall lightweight mode | Falls back to direct snippets when gateway expansion unavailable |
 | Evidence fallback | cc_recall searches claims/decisions when summaries return zero |
 | Cold structured archive | Three-tier: hot graph, cold archive.db, optional RAG. Copy-then-delete safety. |
-| cc_diagnostics | Full CRAM health check: memory stats, evidence counts, awareness metrics, compiler state, archive stats |
+| cc_diagnostics | Full RSMA health check: memory stats, evidence counts, awareness metrics, compiler state, archive stats |
 | /analytics/diagnostics | HTTP endpoint for external monitoring (JSON) |
 | Search tuning | Configurable rerank threshold, top-K, smart skip, similarity gate, prefix mode, batch size |
 | "Has more" indicator | Truncated results signal availability of more data, guide agent to cc_claims/cc_state |
@@ -130,7 +130,7 @@ memory-engine/src/relations/
 | Sprint 13 | 2026-03-18 | H3: Leases, coordination |
 | Sprint 14 | 2026-03-18 | H4: Timeline, snapshots, runbook evidence |
 | Sprint 15 | 2026-03-18 | H5: Deep extraction, relations, synthesis, cc_ask, cc_relate |
-| v0.1.0 | 2026-03-18 | CRAM Architecture complete — all 10 layers, 540 tests, 50-run durability |
+| v0.1.0 | 2026-03-18 | RSMA Architecture complete — all 10 layers, 540 tests, 50-run durability |
 | v0.2.0 | 2026-03-19 | Sidecar architecture: data consolidation (~/.clawcore/data/), manifest versioning, clawcore doctor/upgrade/integrate, managed OpenClaw integration (check-only startup), lock-protected transactional upgrades, backup validation, post-upgrade smoke test, PID-aware stale lock, backup retention, search tuning (rerank threshold/top-K/smart skip, similarity gate, prefix mode, batch size), ingest-time claim+decision extraction (no /compact required), cc_recall lightweight mode with evidence fallback (summaries→claims→decisions→messages), FTS5 OR fallback for long queries, LIKE partial match for claim/decision search, cold structured archive (hot/cold/RAG tiers with copy-then-delete safety, run tracking, restore, auto-trigger at 5000 events, VACUUM), cc_diagnostics observability tool + /analytics/diagnostics HTTP endpoint, "has more" truncation indicator with agent-guided follow-up |
 | v0.2.1 | 2026-03-19 | Security hardening: command injection prevention (shell:false everywhere), binary dedup, query DoS protection, regression tests, docs audit |
-| v0.3.0 | 2026-03-20 | TUI overhaul (Ink primary, capability detection, live status), spaCy NER integration (/ner endpoint, hybrid entity extraction), recommended install includes OCR + Whisper + NER, CRAM EEL fixes (scope_id propagation, decay evidence logging), awareness cache invalidation, token estimation improvements, port architecture (centralized constants), 1,197 tests passing (643 ClawCore + 554 memory-engine) |
+| v0.3.0 | 2026-03-20 | TUI overhaul (Ink primary, capability detection, live status), spaCy NER integration (/ner endpoint, hybrid entity extraction), recommended install includes OCR + Whisper + NER, RSMA EEL fixes (scope_id propagation, decay evidence logging), awareness cache invalidation, token estimation improvements, port architecture (centralized constants), 1,197 tests passing (643 ClawCore + 554 memory-engine) |

@@ -584,7 +584,7 @@ export async function performInstallPlan(plan: InstallPlan): Promise<void> {
   };
 
   const oldEnv: EnvMap = hadExistingEnv ? readEnvMap(root) : {};
-  const mergedLines = ["# ClawCore CRAM Configuration"];
+  const mergedLines = ["# ClawCore RSMA Configuration"];
   const templateKeys = new Set(Object.keys(templateEnv));
 
   // Write template keys — use user's value if they customized it, otherwise template default

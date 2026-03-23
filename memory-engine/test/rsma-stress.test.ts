@@ -1,5 +1,5 @@
 /**
- * CRAM Stress Test — Full end-to-end exercise of the Evidence OS pipeline.
+ * RSMA Stress Test — Full end-to-end exercise of the Evidence OS pipeline.
  */
 
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
@@ -43,7 +43,7 @@ const g = () => db as any;
 // PHASE 1: INFRASTRUCTURE
 // ═══════════════════════════════════════════════════════════════════
 
-describe("CRAM Stress: Infrastructure", () => {
+describe("RSMA Stress: Infrastructure", () => {
   it("schema has all required tables", () => {
     const tables = (db.prepare(
       "SELECT name FROM sqlite_master WHERE type='table' ORDER BY name",
@@ -53,18 +53,18 @@ describe("CRAM Stress: Infrastructure", () => {
       "attempts", "branch_scopes", "capabilities", "claim_evidence",
       "claims", "decisions", "entities", "entity_mentions",
       "entity_relations", "evidence_log", "invariants", "open_loops",
-      "promotion_policies", "runbook_evidence", "runbooks",
+      "promotion_policies", "provenance_links", "runbook_evidence", "runbooks",
       "scope_sequences", "state_deltas", "state_scopes", "work_leases",
     ]) {
       expect(tables, `missing table: ${t}`).toContain(t);
     }
   });
 
-  it("global scope seeded + all 9 migrations applied", () => {
+  it("global scope seeded + all 10 migrations applied", () => {
     const scope = db.prepare("SELECT * FROM state_scopes WHERE id = 1").get() as any;
     expect(scope.scope_key).toBe("global");
     const versions = (db.prepare("SELECT version FROM _evidence_migrations ORDER BY version").all() as Array<{ version: number }>).map((r) => r.version);
-    expect(versions).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9]);
+    expect(versions).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
   });
 
   it("promotion policies seeded (10+ types)", () => {
@@ -105,7 +105,7 @@ describe("CRAM Stress: Infrastructure", () => {
 // PHASE 2: ENTITY EXTRACTION + GRAPH (1000 entities)
 // ═══════════════════════════════════════════════════════════════════
 
-describe("CRAM Stress: Entity Extraction & Graph", () => {
+describe("RSMA Stress: Entity Extraction & Graph", () => {
   it("extracts entities from real text (3 strategies)", () => {
     const results = extractFast(`
       We deployed Redis as a caching layer in front of PostgreSQL.
@@ -173,7 +173,7 @@ describe("CRAM Stress: Entity Extraction & Graph", () => {
 // PHASE 3: CLAIMS, DECISIONS, LOOPS (500 claims)
 // ═══════════════════════════════════════════════════════════════════
 
-describe("CRAM Stress: Claims & Evidence", () => {
+describe("RSMA Stress: Claims & Evidence", () => {
   it("upserts 500 claims with evidence under 5s", () => {
     const start = Date.now();
     withWriteTransaction(g(), () => {
@@ -208,7 +208,7 @@ describe("CRAM Stress: Claims & Evidence", () => {
   });
 });
 
-describe("CRAM Stress: Decisions", () => {
+describe("RSMA Stress: Decisions", () => {
   it("auto-supersedes on same topic", () => {
     withWriteTransaction(g(), () => {
       upsertDecision(g(), { scopeId: 1, branchId: 0, topic: "db-choice", decisionText: "Use PostgreSQL", sourceType: "u", sourceId: "c1" });
@@ -223,7 +223,7 @@ describe("CRAM Stress: Decisions", () => {
   });
 });
 
-describe("CRAM Stress: Open Loops", () => {
+describe("RSMA Stress: Open Loops", () => {
   it("lifecycle: open → block → close", () => {
     const loopId = openLoop(g(), {
       scopeId: 1, branchId: 0, loopType: "task", text: "Migrate auth", priority: 5,
@@ -254,7 +254,7 @@ describe("CRAM Stress: Open Loops", () => {
 // PHASE 4: DELTAS, CAPABILITIES, INVARIANTS (200 deltas)
 // ═══════════════════════════════════════════════════════════════════
 
-describe("CRAM Stress: State Management", () => {
+describe("RSMA Stress: State Management", () => {
   it("records 200 deltas", () => {
     const start = Date.now();
     withWriteTransaction(g(), () => {
@@ -290,7 +290,7 @@ describe("CRAM Stress: State Management", () => {
 // PHASE 5: ATTEMPTS, RUNBOOKS, ANTI-RUNBOOKS (300 attempts)
 // ═══════════════════════════════════════════════════════════════════
 
-describe("CRAM Stress: Attempts & Patterns", () => {
+describe("RSMA Stress: Attempts & Patterns", () => {
   it("records 300 attempts + calculates success rates", () => {
     const start = Date.now();
     withWriteTransaction(g(), () => {
@@ -335,7 +335,7 @@ describe("CRAM Stress: Attempts & Patterns", () => {
 // PHASE 6: BRANCHES + PROMOTION
 // ═══════════════════════════════════════════════════════════════════
 
-describe("CRAM Stress: Branches & Promotion", () => {
+describe("RSMA Stress: Branches & Promotion", () => {
   it("create → policy check → promote", () => {
     const branch = createBranch(g(), 1, "hypothesis", "stress-b1", "test");
     const branchId = branch.id;
@@ -363,7 +363,7 @@ describe("CRAM Stress: Branches & Promotion", () => {
 // PHASE 7: TIMELINE + SNAPSHOTS
 // ═══════════════════════════════════════════════════════════════════
 
-describe("CRAM Stress: Timeline & Snapshots", () => {
+describe("RSMA Stress: Timeline & Snapshots", () => {
   it("timeline returns chronologically ordered events", () => {
     const events = getTimeline(g(), 1, { limit: 50 });
     expect(events.length).toBeGreaterThan(0);
@@ -389,7 +389,7 @@ describe("CRAM Stress: Timeline & Snapshots", () => {
 // PHASE 8: RELATIONS
 // ═══════════════════════════════════════════════════════════════════
 
-describe("CRAM Stress: Relations", () => {
+describe("RSMA Stress: Relations", () => {
   it("creates entity relationships", () => {
     withWriteTransaction(g(), () => {
       upsertEntity(g(), { name: "redis-r", displayName: "Redis", entityType: "tech" });
@@ -411,7 +411,7 @@ describe("CRAM Stress: Relations", () => {
 // PHASE 9: CONFIDENCE + DECAY
 // ═══════════════════════════════════════════════════════════════════
 
-describe("CRAM Stress: Confidence & Decay", () => {
+describe("RSMA Stress: Confidence & Decay", () => {
   it("decay formula correct across time windows", () => {
     expect(effectiveConfidence(0.8, 5, 3)).toBeCloseTo(0.8 * 1.0 * 1.0, 2);  // <7d
     expect(effectiveConfidence(0.8, 5, 15)).toBeCloseTo(0.8 * 1.0 * 0.8, 2); // <30d
@@ -432,7 +432,7 @@ describe("CRAM Stress: Confidence & Decay", () => {
 // PHASE 10: EVAL HARNESS
 // ═══════════════════════════════════════════════════════════════════
 
-describe("CRAM Stress: Eval Harness", () => {
+describe("RSMA Stress: Eval Harness", () => {
   it("records 100 events and computes stats", () => {
     resetAwarenessEventsForTests();
     for (let i = 0; i < 100; i++) {
@@ -456,7 +456,7 @@ describe("CRAM Stress: Eval Harness", () => {
 // PHASE 11: CONTEXT COMPILER + ROI GOVERNOR
 // ═══════════════════════════════════════════════════════════════════
 
-describe("CRAM Stress: Context Compiler", () => {
+describe("RSMA Stress: Context Compiler", () => {
   it("Lite budget (110 tokens)", () => {
     const result = compileContextCapsules(g(), { tier: "lite", scopeId: 1 });
     if (result) {
@@ -489,7 +489,7 @@ describe("CRAM Stress: Context Compiler", () => {
 // PHASE 12: PERFORMANCE BENCHMARKS
 // ═══════════════════════════════════════════════════════════════════
 
-describe("CRAM Stress: Performance Benchmarks", () => {
+describe("RSMA Stress: Performance Benchmarks", () => {
   it("entity extraction < 5ms/chunk (100 chunks)", () => {
     const chunks = Array.from({ length: 100 }, (_, i) =>
       `The ${["Redis", "PostgreSQL", "Docker", "Kubernetes", "React"][i % 5]} service uses ${["Auth", "Gateway", "Cache", "Queue", "LB"][i % 5]}.`

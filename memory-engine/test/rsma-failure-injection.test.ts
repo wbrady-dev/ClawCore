@@ -1,5 +1,5 @@
 /**
- * CRAM Failure Injection Tests
+ * RSMA Failure Injection Tests
  *
  * Proves each critical layer degrades gracefully under failure conditions.
  * These are NOT happy-path tests. They inject bad data, missing state,

@@ -713,6 +713,25 @@ export class LcmContextEngine implements ContextEngine {
         const graphDbConn = getGraphConnection(this.config.relationsGraphDbPath);
         runGraphMigrations(graphDbConn, this.config.relationsGraphDbPath);
         this.graphDb = graphDbConn;
+
+        // RSMA: backfill provenance_links from legacy join tables (idempotent)
+        try {
+          // Dynamic import (sync execution, module loaded lazily)
+          import("./ontology/migration.js").then(({ isMigrationNeeded, migrateToProvenanceLinks }) => {
+            try {
+              if (isMigrationNeeded(graphDbConn)) {
+                const stats = migrateToProvenanceLinks(graphDbConn);
+                if (stats.total > 0) {
+                  this.deps.log.info(`[rsma] Migrated ${stats.total} legacy relationships to provenance_links`);
+                }
+              }
+            } catch (err) {
+              this.deps.log.warn(`[rsma] Provenance migration failed (non-fatal): ${err instanceof Error ? err.message : String(err)}`);
+            }
+          }).catch(() => { /* Module load failure is non-fatal during init */ });
+        } catch {
+          // Non-fatal
+        }
       } catch (err) {
         this.deps.log.warn(
           `[cc-mem] Failed to initialize evidence graph DB: ${err instanceof Error ? err.message : String(err)}`,
@@ -1562,6 +1581,54 @@ export class LcmContextEngine implements ContextEngine {
       this.runDeepExtraction(this.graphDb, stored.content, String(msgRecord.messageId)).catch((err) => {
         console.warn("[cc-mem] deep extraction failed:", err instanceof Error ? err.message : String(err));
       });
+    }
+
+    // ── RSMA dual-write: Writer → TruthEngine → Projector ──────────────
+    // Phase 2: Runs the unified ontology pipeline alongside legacy extraction.
+    // Populates provenance_links table. Legacy tables remain the primary store.
+    // When RSMA becomes primary (Phase 5), this replaces the legacy extraction above.
+    if (this.graphDb && this.config.relationsEnabled && stored.content.length > 5) {
+      try {
+        const { understandMessage } = await import("./ontology/writer.js");
+        const { reconcile } = await import("./ontology/truth.js");
+        const {
+          projectProvenance, recordSupersession, recordConflict, recordEvidence,
+        } = await import("./ontology/projector.js");
+
+        const role = stored.role === "user" ? "user" as const : "assistant" as const;
+        const writerResult = await understandMessage(stored.content, String(msgRecord.messageId), role);
+
+        if (writerResult.objects.length > 0) {
+          const graphDb = this.graphDb;
+          const reconciled = reconcile(graphDb, writerResult.objects, {
+            isCorrection: writerResult.signals.isCorrection,
+            correctionSignal: writerResult.signals.correctionSignal ?? undefined,
+          });
+
+          for (const action of reconciled.actions) {
+            if (action.type === "insert") {
+              projectProvenance(graphDb, action.object);
+            }
+            if (action.type === "supersede") {
+              projectProvenance(graphDb, action.newObject);
+              recordSupersession(graphDb, action.newObject.id, action.oldObjectId, action.reason);
+            }
+            if (action.type === "conflict") {
+              projectProvenance(graphDb, action.conflictObject);
+              recordConflict(graphDb, action.conflictObject.id, action.objectIdA, action.objectIdB, action.reason);
+            }
+            if (action.type === "evidence") {
+              // Evidence object must also be projected (not just the link)
+              projectProvenance(graphDb, action.newObject);
+              // Direction: newObject (evidence) --[predicate]--> existingObject (claim)
+              recordEvidence(graphDb, action.newObject.id, action.existingObjectId, action.predicate, 1.0, action.reason);
+            }
+          }
+        }
+      } catch (err) {
+        // Non-fatal: RSMA pipeline failure must not break legacy message ingest
+        console.warn("[rsma] dual-write pipeline failed:", err instanceof Error ? err.message : String(err));
+      }
     }
 
     return { ingested: true };

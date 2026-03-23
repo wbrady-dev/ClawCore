@@ -1,13 +1,13 @@
 # Migration Guide
 
-## Upgrading from CRAM-Only Setup
+## Upgrading from RSMA-Only Setup
 
 If you were using ClawCore before the Evidence OS, upgrading is automatic:
 
 1. Update to the latest version
 2. Evidence graph DB is created on first startup (new file, doesn't affect existing data)
 3. All 6 schema migrations run idempotently
-4. Existing CRAM functionality (search, ingest, memory) is unaffected
+4. Existing RSMA functionality (search, ingest, memory) is unaffected
 
 ## Enabling Evidence Features
 
@@ -56,12 +56,12 @@ Migrations are tracked in `_evidence_migrations` table and run idempotently:
 |----------|----------|
 | lossless-claw | clawcore-memory |
 | LCM | ClawCore Memory Engine |
-| CRAM | ClawCore (broader scope) |
+| RSMA | ClawCore (broader scope) |
 
 ## Rollback
 
 ```bash
-# Disable all evidence features (keeps CRAM working)
+# Disable all evidence features (keeps RSMA working)
 CLAWCORE_MEMORY_RELATIONS_ENABLED=false
 
 # Remove evidence data entirely

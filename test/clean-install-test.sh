@@ -145,7 +145,7 @@ check "TECHNICAL.md" test -f TECHNICAL.md
 check "CHANGELOG.md" test -f CHANGELOG.md
 check "docs/ directory" test -d docs
 check "22 tools in README" grep -q "22" README.md
-check "CRAM formula in README" grep -q "RAG + DAG + KG + AL" README.md
+check "RSMA formula in README" grep -q "RAG + DAG + KG + AL" README.md
 check "lossless-claw credited" grep -qi "lossless-claw" README.md
 check "v0.3.0 in CHANGELOG" grep -q "0.3.0" CHANGELOG.md
 check "NER in README" grep -qi "Named Entity Recognition" README.md

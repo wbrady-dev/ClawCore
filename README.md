@@ -1,6 +1,6 @@
 # 🦞 ClawCore — Stateful Evidence Engine
 
-**ClawCore** brings a knowledge and memory backbone to [OpenClaw](https://openclaw.ai), built on the **CRAM Architecture** — a multi-layer agent architecture that combines retrieval, summary lineage, knowledge graphs, awareness, evidence-backed state, delta tracking, attempt memory, branch governance, and low-token context compilation. It gives your AI agent persistent, inspectable, evidence-backed memory.
+**ClawCore** brings a knowledge and memory backbone to [OpenClaw](https://openclaw.ai), built on the **RSMA (Reconciled Semantic Memory Architecture)** — a multi-layer agent architecture that combines retrieval, summary lineage, knowledge graphs, awareness, evidence-backed state, delta tracking, attempt memory, branch governance, and low-token context compilation. It gives your AI agent persistent, inspectable, evidence-backed memory.
 
 ### Evidence OS
 
@@ -18,9 +18,9 @@ ClawCore's Evidence OS extracts structured knowledge from conversations, documen
 - **Context Compiler** — ROI-scored capsule compilation with configurable token budgets (110-280 tokens)
 - **12 Agent Tools** — `cc_grep`, `cc_describe`, `cc_expand`, `cc_recall`, `cc_claims`, `cc_decisions`, `cc_loops`, `cc_attempts`, `cc_branch`, `cc_procedures`, `cc_diagnostics`, `cc_memory`
 
-### CRAM Architecture
+### RSMA Architecture
 
-> `CRAM = RAG + DAG + KG + AL + SL + DE + AOM + BSG + EEL + CCL`
+> `RSMA = RAG + DAG + KG + AL + SL + DE + AOM + BSG + EEL + CCL`
 
 **R**etrieval-Augmented Generation, **D**irected **A**cyclic **G**raph summary lineage, **K**nowledge **G**raphs, **A**wareness **L**ayer, **S**tate **L**ayer, **D**elta tracking / **D**eep **E**xtraction, **A**ttempt/**O**utcome **M**emory, **B**ranch/**S**cope **G**overnance, **E**vidence **E**vent **L**og, **C**ontext **C**ompilation **L**ayer.
 

@@ -1,7 +1,7 @@
 {
   "name": "clawcore",
   "version": "0.3.0",
-  "description": "CRAM Architecture — Retrieval, Knowledge Graphs, Awareness, Evidence State, and Context Compilation for OpenClaw",
+  "description": "RSMA (Reconciled Semantic Memory Architecture) — Retrieval, Knowledge Graphs, Awareness, Evidence State, and Context Compilation for OpenClaw",
   "type": "module",
   "scripts": {
     "build": "tsup",
@@ -11,7 +11,7 @@
     "test": "cd memory-engine && npx vitest run && cd .. && npx vitest run --config vitest.config.ts",
     "test:src": "npx vitest run --config vitest.config.ts",
     "test:tui": "npx tsc --outDir .tui-test-build --module nodenext --moduleResolution nodenext --target es2022 --skipLibCheck --allowImportingTsExtensions true --rewriteRelativeImportExtensions true test/tui/run.ts && node .tui-test-build/test/tui/run.js",
-    "test:stress": "cd memory-engine && npx vitest run test/cram-stress.test.ts",
+    "test:stress": "cd memory-engine && npx vitest run test/rsma-stress.test.ts",
     "smoke": "node bin/clawcore.mjs --version",
     "lint": "eslint src/",
     "format": "prettier --write src/",
@@ -26,7 +26,7 @@
   ],
   "license": "MIT",
   "keywords": [
-    "cram",
+    "rsma",
     "rag",
     "dag",
     "retrieval",

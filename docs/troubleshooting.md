@@ -94,7 +94,7 @@ CLAWCORE_MEMORY_RELATIONS_DEEP_EXTRACTION_PROVIDER=anthropic
 ## Rollback
 
 ```bash
-# Disable evidence OS features (keeps CRAM)
+# Disable evidence OS features (keeps RSMA)
 CLAWCORE_MEMORY_RELATIONS_ENABLED=false
 
 # Delete evidence data only

@@ -419,7 +419,7 @@ export function createCcProceduresTool(input: { deps: LcmDependencies; graphDb: 
 
 
 // ═══════════════════════════════════════════════════════════════════
-// cc_diagnostics — internal CRAM health + observability
+// cc_diagnostics — internal RSMA health + observability
 // ═══════════════════════════════════════════════════════════════════
 
 const CcDiagnosticsSchema = Type.Object({
@@ -436,7 +436,7 @@ export function createCcDiagnosticsTool(input: {
     name: "cc_diagnostics",
     label: "ClawCore Diagnostics",
     description:
-      "Show internal CRAM health: summary counts, claim counts, awareness stats, " +
+      "Show internal RSMA health: summary counts, claim counts, awareness stats, " +
       "context compiler output, recent evidence events, and compaction state. " +
       "Use this to verify what is actually working, not to answer user questions.",
     parameters: CcDiagnosticsSchema,
