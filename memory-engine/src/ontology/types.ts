@@ -58,6 +58,38 @@ export type MemoryStatus =
 /** How much this object should influence agent behavior. */
 export type InfluenceWeight = "critical" | "high" | "standard" | "low";
 
+// ── Structured Data Interfaces (per MemoryObject kind) ──────────────────────
+// These typed interfaces prevent field-name mismatches between producers
+// (semantic-extractor.ts) and consumers (engine.ts legacy bridge).
+// If you rename a field here, TypeScript will flag every call site.
+
+/** Structured data for kind="claim" — factual assertions. */
+export interface StructuredClaim {
+  subject: string;
+  predicate: string;
+  objectText: string;
+  objectJson?: string;
+  valueType?: string;
+}
+
+/** Structured data for kind="decision" — recorded choices. */
+export interface StructuredDecision {
+  topic: string;
+  decisionText: string;
+}
+
+/** Structured data for kind="loop" — open tasks/questions. */
+export interface StructuredLoop {
+  loopType: "task" | "question" | "follow_up" | "dependency";
+  text: string;
+}
+
+/** Structured data for kind="entity" — named things. */
+export interface StructuredEntity {
+  name: string;
+  entityType?: string;
+}
+
 // ── Provenance ──────────────────────────────────────────────────────────────
 
 /** How knowledge was extracted from raw input. */

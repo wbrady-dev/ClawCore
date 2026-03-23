@@ -21,6 +21,10 @@ import type {
   SourceKind,
   EventType,
   InfluenceWeight,
+  StructuredClaim,
+  StructuredDecision,
+  StructuredLoop,
+  StructuredEntity,
 } from "./types.js";
 import { SOURCE_TRUST, PROVISIONAL_CONFIDENCE_FACTOR } from "./types.js";
 import { buildCanonicalKey } from "./canonical.js";
@@ -313,33 +317,44 @@ function convertToWriterResult(
       kind === "decision" ? "high" :
       "standard";
 
-    let structured: Record<string, unknown>;
+    let structured: StructuredClaim | StructuredDecision | StructuredLoop;
     if (kind === "decision") {
-      structured = {
+      const dec: StructuredDecision = {
         topic: event.subject ?? event.content.substring(0, 60),
         decisionText: event.content,
       };
+      structured = dec;
     } else if (kind === "loop") {
-      structured = {
+      const loop: StructuredLoop = {
         loopType: event.type === "reminder" ? "follow_up" : "task",
         text: event.content,
       };
+      structured = loop;
     } else {
-      structured = {
+      const claim: StructuredClaim = {
         subject: event.subject ?? "general",
         predicate: event.predicate ?? "states",
         objectText: event.value ?? event.content,
       };
+      structured = claim;
+    }
+
+    // Build content string using the correctly-typed local variable
+    let content: string;
+    if (kind === "claim") {
+      const c = structured as StructuredClaim;
+      content = `${c.subject} ${c.predicate}: ${c.objectText}`;
+    } else if (kind === "decision") {
+      const d = structured as StructuredDecision;
+      content = `${d.topic}: ${d.decisionText}`;
+    } else {
+      content = event.content;
     }
 
     const obj: MemoryObject = {
       id: `${kind}:${randomUUID()}`,
       kind,
-      content: kind === "claim"
-        ? `${structured.subject} ${structured.predicate}: ${structured.objectText}`
-        : kind === "decision"
-        ? `${structured.topic}: ${structured.decisionText}`
-        : event.content,
+      content,
       structured,
       provenance: {
         source_kind: sourceKind,
@@ -373,7 +388,7 @@ function convertToWriterResult(
             id: `entity:${randomUUID()}`,
             kind: "entity",
             content: entityName,
-            structured: { name: entityName.toLowerCase().trim(), entityType: "semantic" },
+            structured: { name: entityName.toLowerCase().trim(), entityType: "semantic" } as StructuredEntity,
             provenance: {
               source_kind: "extraction",
               source_id: sourceId,

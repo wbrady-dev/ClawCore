@@ -25,6 +25,7 @@ import {
   removeDelegatedExpansionGrantForSession,
   revokeDelegatedExpansionGrantForSession,
 } from "./expansion-auth.js";
+import type { StructuredClaim, StructuredDecision, StructuredLoop, StructuredEntity } from "./ontology/types.js";
 import { isMigrationNeeded as isProvenanceMigrationNeeded, migrateToProvenanceLinks } from "./ontology/migration.js";
 import {
   extensionFromNameOrMime,
@@ -76,6 +77,47 @@ function asRecord(value: unknown): Record<string, unknown> | undefined {
 
 function safeBoolean(value: unknown): boolean | undefined {
   return typeof value === "boolean" ? value : undefined;
+}
+
+/**
+ * Safely extract typed StructuredClaim from a Record<string, unknown>.
+ * Single point of truth for field mapping — includes s.value fallback for
+ * legacy data that may still use "value" instead of "objectText".
+ */
+function asClaimStructured(s: Record<string, unknown>): StructuredClaim | null {
+  if (typeof s.subject !== "string" || typeof s.predicate !== "string") return null;
+  return {
+    subject: s.subject,
+    predicate: s.predicate,
+    objectText: String(s.objectText ?? s.value ?? ""),
+    objectJson: typeof s.objectJson === "string" ? s.objectJson : undefined,
+    valueType: typeof s.valueType === "string" ? s.valueType : undefined,
+  };
+}
+
+/** Safely extract typed StructuredDecision from a Record<string, unknown>. */
+function asDecisionStructured(s: Record<string, unknown>): StructuredDecision | null {
+  if (typeof s.topic !== "string") return null;
+  return {
+    topic: s.topic,
+    decisionText: String(s.decisionText ?? ""),
+  };
+}
+
+/** Safely extract typed StructuredLoop from a Record<string, unknown>. */
+function asLoopStructured(s: Record<string, unknown>): StructuredLoop | null {
+  return {
+    loopType: (typeof s.loopType === "string" ? s.loopType : "task") as StructuredLoop["loopType"],
+    text: String(s.text ?? ""),
+  };
+}
+
+/** Safely extract typed StructuredEntity from a Record<string, unknown>. */
+function asEntityStructured(s: Record<string, unknown>): StructuredEntity | null {
+  return {
+    name: String(s.name ?? ""),
+    entityType: typeof s.entityType === "string" ? s.entityType : undefined,
+  };
 }
 
 function appendTextValue(value: unknown, out: string[]): void {
@@ -1737,70 +1779,79 @@ export class LcmContextEngine implements ContextEngine {
                   continue;
                 }
 
-                if (obj.kind === "claim" && s.subject && s.predicate) {
-                  upsertClaim(graphDb, {
-                    scopeId: 1,
-                    subject: String(s.subject),
-                    predicate: String(s.predicate),
-                    objectText: String(s.objectText ?? s.value ?? ""),
-                    confidence: obj.confidence,
-                    trustScore: obj.provenance.trust,
-                    sourceAuthority: obj.provenance.trust,
-                    canonicalKey: obj.canonical_key ?? `claim::${String(s.subject).toLowerCase()}::${String(s.predicate).toLowerCase()}`,
-                  });
+                if (obj.kind === "claim") {
+                  const claim = asClaimStructured(s);
+                  if (claim) {
+                    upsertClaim(graphDb, {
+                      scopeId: 1,
+                      subject: claim.subject,
+                      predicate: claim.predicate,
+                      objectText: claim.objectText,
+                      confidence: obj.confidence,
+                      trustScore: obj.provenance.trust,
+                      sourceAuthority: obj.provenance.trust,
+                      canonicalKey: obj.canonical_key ?? `claim::${claim.subject.toLowerCase()}::${claim.predicate.toLowerCase()}`,
+                    });
+
+                    // Create entity relations from relationship events
+                    // "Cassidy is my wife" → relation: Cassidy --married_to--> user
+                    if (claim.objectText
+                        && !["is", "states", "has", "user_i", "user_my"].includes(claim.predicate)) {
+                      try {
+                        const subjEntity = upsertEntity(graphDb, { name: claim.subject });
+                        const objEntity = upsertEntity(graphDb, { name: claim.objectText });
+                        if (subjEntity.entityId && objEntity.entityId) {
+                          upsertRelation(graphDb, {
+                            scopeId: 1,
+                            subjectEntityId: subjEntity.entityId,
+                            predicate: claim.predicate,
+                            objectEntityId: objEntity.entityId,
+                            confidence: obj.confidence,
+                            sourceType: "message",
+                            sourceId: obj.provenance.source_id,
+                          });
+                          console.debug(`[rsma] relation: ${claim.subject} --${claim.predicate}--> ${claim.objectText}`);
+                        }
+                      } catch (relErr) {
+                        console.debug("[rsma] relation write failed:", relErr instanceof Error ? relErr.message : String(relErr));
+                      }
+                    }
+                  }
                 }
 
-                if (obj.kind === "decision" && s.topic) {
-                  upsertDecision(graphDb, {
-                    scopeId: 1,
-                    topic: String(s.topic),
-                    decisionText: String(s.decisionText ?? obj.content),
-                    sourceType: "message",
-                    sourceId: obj.provenance.source_id,
-                  });
+                if (obj.kind === "decision") {
+                  const decision = asDecisionStructured(s);
+                  if (decision) {
+                    upsertDecision(graphDb, {
+                      scopeId: 1,
+                      topic: decision.topic,
+                      decisionText: decision.decisionText || obj.content,
+                      sourceType: "message",
+                      sourceId: obj.provenance.source_id,
+                    });
+                  }
                 }
 
                 if (obj.kind === "loop") {
-                  openLoop(graphDb, {
-                    scopeId: 1,
-                    loopType: String(s.loopType ?? "task") as "task" | "question" | "follow_up" | "dependency",
-                    text: obj.content,
-                    sourceType: "message",
-                    sourceId: obj.provenance.source_id,
-                  });
-                }
-
-                // Create entity relations from relationship events
-                // "Cassidy is my wife" → relation: Cassidy --married_to--> user
-                const objValue = s.objectText ?? s.value;
-                if (obj.kind === "claim" && s.subject && objValue && s.predicate
-                    && !["is", "states", "has", "user_i", "user_my"].includes(String(s.predicate))) {
-                  try {
-                    const subjEntity = upsertEntity(graphDb, { name: String(s.subject) });
-                    const objEntity = upsertEntity(graphDb, { name: String(objValue) });
-                    if (subjEntity.entityId && objEntity.entityId) {
-                      upsertRelation(graphDb, {
-                        scopeId: 1,
-                        subjectEntityId: subjEntity.entityId,
-                        predicate: String(s.predicate),
-                        objectEntityId: objEntity.entityId,
-                        confidence: obj.confidence,
-                        sourceType: "message",
-                        sourceId: obj.provenance.source_id,
-                      });
-                      console.debug(`[rsma] relation: ${s.subject} --${s.predicate}--> ${objValue}`);
-                    }
-                  } catch (relErr) {
-                    console.debug("[rsma] relation write failed:", relErr instanceof Error ? relErr.message : String(relErr));
+                  const loop = asLoopStructured(s);
+                  if (loop) {
+                    openLoop(graphDb, {
+                      scopeId: 1,
+                      loopType: loop.loopType,
+                      text: obj.content,
+                      sourceType: "message",
+                      sourceId: obj.provenance.source_id,
+                    });
                   }
                 }
 
                 if (obj.kind === "entity") {
+                  const entity = asEntityStructured(s);
                   storeExtractionResult(graphDb, [{
-                    name: String(s.name ?? obj.content),
+                    name: entity?.name || obj.content,
                     confidence: obj.confidence,
                     strategy: "ner:llm" as any,
-                    entityType: String(s.entityType ?? "semantic"),
+                    entityType: entity?.entityType ?? "semantic",
                   }], {
                     sourceType: "message",
                     sourceId: obj.provenance.source_id,
