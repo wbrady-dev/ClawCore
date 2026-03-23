@@ -52,16 +52,16 @@ export async function parsePdf(filePath: string): Promise<ParsedDocument> {
 
     if (pageText) {
       if (pages.length > 0) {
-        // Add page break marker
+        // Add page break marker (accounts for \n\n join between pages)
         structure.push({
           type: "page_break",
           startOffset: offset,
-          endOffset: offset + 1,
+          endOffset: offset + 2,
         });
-        offset += 1; // for the newline
+        offset += 2; // for the \n\n join
       }
       pages.push(pageText);
-      offset += pageText.length + 1;
+      offset += pageText.length;
     }
   }
 

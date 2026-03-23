@@ -23,6 +23,7 @@ import { config } from "./config.js";
 import { getDb, closeDb, runMigrations, listCollections, getCollectionStats } from "./storage/index.js";
 import { query, type QueryOptions } from "./query/pipeline.js";
 import { ingestFile } from "./ingest/pipeline.js";
+import { validateIngestPath } from "./api/ingest.routes.js";
 
 // ── Bootstrap database ──────────────────────────────────────────────
 const dbPath = resolve(config.dataDir, "clawcore.db");
@@ -93,6 +94,14 @@ server.tool(
   },
   async ({ path: filePath, collection, tags }) => {
     try {
+      const pathErr = validateIngestPath(filePath);
+      if (pathErr) {
+        return {
+          content: [{ type: "text", text: `Blocked: ${pathErr}` }],
+          isError: true,
+        };
+      }
+
       const result = await ingestFile(filePath, {
         collection: collection ?? "default",
         tags: tags ?? [],

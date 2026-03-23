@@ -1,6 +1,7 @@
 import type { FastifyInstance } from "fastify";
 import { query } from "../query/pipeline.js";
 import { logger } from "../utils/logger.js";
+import { isLocalRequest } from "./guards.js";
 
 const MAX_TOP_K = 100;
 const MAX_TOKEN_BUDGET = 50000;
@@ -21,6 +22,7 @@ function clampBudget(v?: number): number | undefined {
 
 export function registerQueryRoutes(server: FastifyInstance) {
   server.post("/query", async (req, reply) => {
+    if (!isLocalRequest(req)) return reply.status(403).send({ error: "Forbidden" });
     const {
       query: queryText,
       collection,
@@ -43,8 +45,8 @@ export function registerQueryRoutes(server: FastifyInstance) {
       titles_only?: boolean;
     };
 
-    if (!queryText || typeof queryText !== "string" || queryText.length > 10000) {
-      return reply.code(400).send({ error: "Invalid query (max 10000 characters)" });
+    if (!queryText || typeof queryText !== "string" || queryText.length > 2000) {
+      return reply.code(400).send({ error: "Invalid query (max 2000 characters)" });
     }
 
     try {
@@ -64,6 +66,7 @@ export function registerQueryRoutes(server: FastifyInstance) {
   });
 
   server.post("/search", async (req, reply) => {
+    if (!isLocalRequest(req)) return reply.status(403).send({ error: "Forbidden" });
     const {
       query: queryText,
       collection,
@@ -74,8 +77,8 @@ export function registerQueryRoutes(server: FastifyInstance) {
       top_k?: number;
     };
 
-    if (!queryText || typeof queryText !== "string" || queryText.length > 10000) {
-      return reply.code(400).send({ error: "Invalid query (max 10000 characters)" });
+    if (!queryText || typeof queryText !== "string" || queryText.length > 2000) {
+      return reply.code(400).send({ error: "Invalid query (max 2000 characters)" });
     }
 
     try {

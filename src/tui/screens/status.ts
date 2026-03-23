@@ -20,13 +20,22 @@ export async function showStatus(): Promise<void> {
   console.log(status("Models", svc.models.running, `port ${getModelPort()}`));
   console.log(status("ClawCore RAG API", svc.clawcore.running, `port ${getApiPort()}`));
 
-  // Auto-startup
+  // Auto-startup (cross-platform)
   let autoStart = false;
-  if (getPlatform() === "windows") {
+  const plat = getPlatform();
+  if (plat === "windows") {
     try {
       execFileSync("schtasks", ["/query", "/tn", "ClawCore_Models"], { stdio: "pipe", timeout: 5000 });
       autoStart = true;
     } catch {}
+  } else if (plat === "linux") {
+    try {
+      const out = execFileSync("systemctl", ["--user", "is-enabled", "clawcore-models"], { stdio: "pipe", timeout: 5000 }).toString().trim();
+      autoStart = out === "enabled";
+    } catch {}
+  } else if (plat === "mac") {
+    const plistPath = resolve(homedir(), "Library", "LaunchAgents", "com.clawcore.models.plist");
+    autoStart = existsSync(plistPath);
   }
   console.log(status("Auto-Startup", autoStart));
 

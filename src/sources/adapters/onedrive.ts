@@ -144,6 +144,11 @@ export async function runOneDriveOAuth(clientId: string, clientSecret: string): 
         res.writeHead(404); res.end(); return;
       }
 
+      const returnedState = url.searchParams.get("state");
+      if (returnedState !== state) {
+        res.writeHead(403); res.end("State mismatch — possible CSRF"); server.close(); resolveOAuth(false); return;
+      }
+
       const code = url.searchParams.get("code");
       if (!code) {
         res.writeHead(400); res.end("Missing code"); server.close(); resolveOAuth(false); return;
@@ -185,7 +190,7 @@ export async function runOneDriveOAuth(clientId: string, clientSecret: string): 
       }
     });
 
-    server.listen(REDIRECT_PORT, () => {
+    server.listen(REDIRECT_PORT, "127.0.0.1", () => {
       logger.info(`OneDrive OAuth: open ${authUrl}`);
       // Try to open browser
       try {
@@ -271,6 +276,10 @@ async function downloadFile(accessToken: string, itemId: string, destPath: strin
       fileStream.write(value);
     }
     fileStream.end();
+    await new Promise<void>((resolve, reject) => {
+      fileStream.on("finish", resolve);
+      fileStream.on("error", reject);
+    });
     return true;
   } catch { return false; }
 }

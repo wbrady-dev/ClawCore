@@ -276,15 +276,15 @@ describe("Relations: Graph Store", () => {
     expect(first).toBe(true);
   });
 
-  it("insertMention allows multiple mentions from same source (by design)", () => {
+  it("insertMention deduplicates same entity+source (UNIQUE constraint)", () => {
     const { entityId } = upsertEntity(db, { name: "MultiMention" });
     insertMention(db, { entityId, sourceType: "document", sourceId: "doc-1" });
     insertMention(db, { entityId, sourceType: "document", sourceId: "doc-1" });
     const count = db.prepare(
       "SELECT COUNT(*) as cnt FROM entity_mentions WHERE entity_id = ?",
     ).get(entityId) as { cnt: number };
-    // Multiple mentions from the same source are allowed — each extraction pass creates one
-    expect(count.cnt).toBe(2);
+    // UNIQUE index on (entity_id, source_type, source_id) prevents duplicates
+    expect(count.cnt).toBe(1);
   });
 
   it("insertMention stores context_terms as JSON", () => {

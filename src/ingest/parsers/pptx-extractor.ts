@@ -95,10 +95,12 @@ async function extractZipEntries(buffer: Buffer): Promise<ZipEntry[]> {
       break; // No more local file headers
     }
 
+    const generalPurposeFlags = buffer.readUInt16LE(offset + 6);
     const compressionMethod = buffer.readUInt16LE(offset + 8);
-    const compressedSize = buffer.readUInt32LE(offset + 18);
+    let compressedSize = buffer.readUInt32LE(offset + 18);
     const filenameLength = buffer.readUInt16LE(offset + 26);
     const extraLength = buffer.readUInt16LE(offset + 28);
+    const hasDataDescriptor = (generalPurposeFlags & 0x08) !== 0;
 
     const filenameStart = offset + 30;
     const filename = buffer
@@ -106,6 +108,26 @@ async function extractZipEntries(buffer: Buffer): Promise<ZipEntry[]> {
       .toString("utf-8");
 
     const dataStart = filenameStart + filenameLength + extraLength;
+
+    // If bit 3 is set, sizes in the local header may be zero;
+    // the real sizes follow the compressed data in a data descriptor.
+    if (hasDataDescriptor && compressedSize === 0) {
+      // Scan for the data descriptor signature (PK\x07\x08) or next local header.
+      // Data descriptor: [optional sig 0x08074b50] crc32(4) compSize(4) uncompSize(4)
+      let scanPos = dataStart;
+      while (scanPos < buffer.length - 4) {
+        if (
+          buffer[scanPos] === 0x50 && buffer[scanPos + 1] === 0x4b &&
+          ((buffer[scanPos + 2] === 0x07 && buffer[scanPos + 3] === 0x08) ||
+           (buffer[scanPos + 2] === 0x03 && buffer[scanPos + 3] === 0x04))
+        ) {
+          break;
+        }
+        scanPos++;
+      }
+      compressedSize = scanPos - dataStart;
+    }
+
     const compressedData = buffer.subarray(dataStart, dataStart + compressedSize);
 
     let data: Buffer;
@@ -127,7 +149,18 @@ async function extractZipEntries(buffer: Buffer): Promise<ZipEntry[]> {
       entries.push({ filename, data });
     }
 
-    offset = dataStart + compressedSize;
+    let nextOffset = dataStart + compressedSize;
+    // Skip past data descriptor if present
+    if (hasDataDescriptor) {
+      if (nextOffset + 4 <= buffer.length &&
+          buffer[nextOffset] === 0x50 && buffer[nextOffset + 1] === 0x4b &&
+          buffer[nextOffset + 2] === 0x07 && buffer[nextOffset + 3] === 0x08) {
+        nextOffset += 16; // sig(4) + crc32(4) + compSize(4) + uncompSize(4)
+      } else {
+        nextOffset += 12; // crc32(4) + compSize(4) + uncompSize(4) (no sig)
+      }
+    }
+    offset = nextOffset;
   }
 
   return entries;

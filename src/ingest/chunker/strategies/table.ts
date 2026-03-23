@@ -36,16 +36,19 @@ export function chunkTable(
     if (tokens > maxTokens) {
       let subBuf = [header, separator];
       let subTokens = estimateTokens(header + "\n" + separator);
+      let subStartRow = i;
 
-      for (const row of rowGroup) {
+      for (let ri = 0; ri < rowGroup.length; ri++) {
+        const row = rowGroup[ri];
         const rt = estimateTokens(row);
         if (subTokens + rt > maxTokens && subBuf.length > 2) {
           chunks.push({
             text: subBuf.join("\n"),
-            contextPrefix: `rows ${i + 1}-${i + subBuf.length - 2}`,
+            contextPrefix: `rows ${subStartRow + 1}-${subStartRow + subBuf.length - 2}`,
             position: chunks.length,
             tokenCount: subTokens,
           });
+          subStartRow += subBuf.length - 2;
           subBuf = [header, separator];
           subTokens = estimateTokens(header + "\n" + separator);
         }
@@ -55,7 +58,7 @@ export function chunkTable(
       if (subBuf.length > 2) {
         chunks.push({
           text: subBuf.join("\n"),
-          contextPrefix: `rows ${i + 1}-${i + subBuf.length - 2}`,
+          contextPrefix: `rows ${subStartRow + 1}-${subStartRow + subBuf.length - 2}`,
           position: chunks.length,
           tokenCount: subTokens,
         });

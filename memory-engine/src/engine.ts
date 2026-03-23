@@ -25,6 +25,7 @@ import {
   removeDelegatedExpansionGrantForSession,
   revokeDelegatedExpansionGrantForSession,
 } from "./expansion-auth.js";
+import { isMigrationNeeded as isProvenanceMigrationNeeded, migrateToProvenanceLinks } from "./ontology/migration.js";
 import {
   extensionFromNameOrMime,
   formatFileReference,
@@ -50,6 +51,11 @@ import { compileContextCapsules } from "./relations/context-compiler.js";
 
 type AgentMessage = Parameters<ContextEngine["ingest"]>[0]["message"];
 type AssembleResultWithSystemPrompt = AssembleResult & { systemPromptAddition?: string };
+
+// ── RSMA Extraction Health Monitoring ────────────────────────────────────────
+let _rsmaSuccessCount = 0;
+let _rsmaFailCount = 0;
+const _RSMA_LOG_INTERVAL = 100;
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -708,30 +714,14 @@ export class LcmContextEngine implements ContextEngine {
       timezone: this.config.timezone,
     };
     // Initialize relations/evidence graph DB if enabled
+    if (!this.config.relationsEnabled) {
+      this.deps.log.info("[cc-mem] Relations/RSMA extraction disabled. Set CLAWCORE_MEMORY_RELATIONS_ENABLED=true to enable.");
+    }
     if (this.config.relationsEnabled) {
       try {
         const graphDbConn = getGraphConnection(this.config.relationsGraphDbPath);
         runGraphMigrations(graphDbConn, this.config.relationsGraphDbPath);
         this.graphDb = graphDbConn;
-
-        // RSMA: backfill provenance_links from legacy join tables (idempotent)
-        try {
-          // Dynamic import (sync execution, module loaded lazily)
-          import("./ontology/migration.js").then(({ isMigrationNeeded, migrateToProvenanceLinks }) => {
-            try {
-              if (isMigrationNeeded(graphDbConn)) {
-                const stats = migrateToProvenanceLinks(graphDbConn);
-                if (stats.total > 0) {
-                  this.deps.log.info(`[rsma] Migrated ${stats.total} legacy relationships to provenance_links`);
-                }
-              }
-            } catch (err) {
-              this.deps.log.warn(`[rsma] Provenance migration failed (non-fatal): ${err instanceof Error ? err.message : String(err)}`);
-            }
-          }).catch(() => { /* Module load failure is non-fatal during init */ });
-        } catch {
-          // Non-fatal
-        }
       } catch (err) {
         this.deps.log.warn(
           `[cc-mem] Failed to initialize evidence graph DB: ${err instanceof Error ? err.message : String(err)}`,
@@ -768,6 +758,21 @@ export class LcmContextEngine implements ContextEngine {
     }
     const db = getLcmConnection(this.config.databasePath);
     runLcmMigrations(db, { fts5Available: this.fts5Available });
+
+    // RSMA: backfill provenance_links from legacy join tables (idempotent, synchronous)
+    if (this.graphDb) {
+      try {
+        if (isProvenanceMigrationNeeded(this.graphDb)) {
+          const stats = migrateToProvenanceLinks(this.graphDb);
+          if (stats.total > 0) {
+            this.deps.log.info(`[rsma] Migrated ${stats.total} legacy relationships to provenance_links`);
+          }
+        }
+      } catch (err) {
+        this.deps.log.warn(`[rsma] Provenance migration failed (non-fatal): ${err instanceof Error ? err.message : String(err)}`);
+      }
+    }
+
     this.migrated = true;
   }
 
@@ -1420,7 +1425,7 @@ export class LcmContextEngine implements ContextEngine {
             });
           }
         }
-      } catch {} // Non-fatal — regex results already stored above
+      } catch (err) { console.debug("[cc-mem] NER request failed:", err instanceof Error ? err.message : String(err)); }
     }
 
     // Real-time attempt tracking from tool results
@@ -1515,10 +1520,17 @@ export class LcmContextEngine implements ContextEngine {
     // ── HYBRID EXTRACTION PIPELINE ──────────────────────────────────────────
     // Regex (free): decisions, loops, fast claims — synchronous, always runs
     // LLM (async): deep claims + relations — user messages only, non-blocking
+    //
+    // BUG 7 FIX: Gate legacy regex extraction to NOT run when RSMA will run.
+    // When RSMA extraction runs (graphDb + relationsEnabled + user + len>5),
+    // it already does its own extraction (LLM or regex fallback), so running
+    // legacy extraction too causes double-writes with confidence drift.
+    const rsmaWillRun = !!(this.graphDb && this.config.relationsEnabled && stored.role === "user" && stored.content.length > 5);
 
     const claimExtractionEnabled = this.config.relationsClaimExtractionEnabled || this.config.relationsUserClaimExtractionEnabled;
     // Only extract claims/decisions/loops from user messages (not assistant narrative)
-    if (this.graphDb && claimExtractionEnabled && stored.role === "user") {
+    // Skip legacy extraction when RSMA pipeline will handle it (avoids double-writes)
+    if (this.graphDb && claimExtractionEnabled && stored.role === "user" && !rsmaWillRun) {
       try {
         const { extractClaimsFast, extractClaimsFromUserExplicit, extractDecisionsFromText, extractLoopsFromText } = await import("./relations/claim-extract.js");
         const { storeClaimExtractionResults } = await import("./relations/claim-store.js");
@@ -1579,7 +1591,20 @@ export class LcmContextEngine implements ContextEngine {
     // Runs in background so it doesn't delay Copper's response.
     // The LLM call (GPT-4o-mini) is independent of the agent model (GPT-5.4).
     // Results populate memory for FUTURE turns, not the current response.
-    if (this.graphDb && this.config.relationsEnabled && stored.content.length > 5 && stored.role === "user") {
+    //
+    // BUG 8 NOTE: Only user messages are extracted (stored.role === "user").
+    // This is BY DESIGN for safety — assistant messages contain narrative,
+    // promises, and speculative reasoning that would pollute the knowledge
+    // graph with low-quality claims. The semantic extractor has an assistant
+    // mode with strict filtering, but it's not enabled here to avoid
+    // hallucinated facts from assistant self-description.
+    //
+    // BUG 13 NOTE: withWriteTransaction (used in the legacy bridge below)
+    // is synchronous and runs inside the fire-and-forget async IIFE.
+    // The RSMA reconciliation loop runs BEFORE the legacy bridge write.
+    // This ordering matters: if reconciliation produces supersession actions,
+    // the legacy bridge must see the new objects, not stale ones.
+    if (rsmaWillRun) {
       const _graphDb = this.graphDb;
       const _content = stored.content;
       const _messageId = String(msgRecord.messageId);
@@ -1604,6 +1629,11 @@ export class LcmContextEngine implements ContextEngine {
             // Use direct API key if configured, otherwise use OpenClaw's OAuth
             let completeFn = _deps.complete;
             const directApiKey = _config.relationsDeepExtractionApiKey;
+            if (!directApiKey && extractionProvider !== "ollama") {
+              // BUG 5: Log when falling back to gateway's complete function.
+              // The gateway's OAuth may have wrong auth for the extraction model.
+              console.debug("[rsma] No direct API key configured, using gateway completion function for extraction");
+            }
             if (directApiKey || extractionProvider === "ollama") {
               const { createDirectComplete } = await import("./ontology/direct-llm.js");
               const directFn = createDirectComplete({
@@ -1647,6 +1677,40 @@ export class LcmContextEngine implements ContextEngine {
             } else if (action.type === "supersede") {
               projectProvenance(graphDb, action.newObject);
               recordSupersession(graphDb, action.newObject.id, action.oldObjectId, action.reason);
+              // BUG 3 FIX: Actually supersede the old record in the physical table.
+              // Without this, old claims stay status='active' forever.
+              try {
+                const oldKindMatch = action.oldObjectId.match(/^(claim|decision|loop|invariant):(\d+)$/);
+                if (oldKindMatch) {
+                  const oldKind = oldKindMatch[1];
+                  const oldRawId = parseInt(oldKindMatch[2], 10);
+                  if (oldKind === "claim" && !isNaN(oldRawId)) {
+                    // Mark the old claim as superseded in the claims table.
+                    // The new object may have a UUID id (from semantic extraction)
+                    // rather than a numeric DB id, so we pass 0 as superseded_by
+                    // when the new id isn't numeric — the provenance_links table
+                    // has the full supersession record regardless.
+                    const { supersedeClaim } = await import("./relations/claim-store.js");
+                    const newRawMatch = action.newObject.id.match(/:(\d+)$/);
+                    const newRawId = newRawMatch ? parseInt(newRawMatch[1], 10) : 0;
+                    supersedeClaim(graphDb, oldRawId, newRawId);
+                  } else if (oldKind === "decision" && !isNaN(oldRawId)) {
+                    graphDb.prepare(
+                      "UPDATE decisions SET status = 'superseded', updated_at = strftime('%Y-%m-%dT%H:%M:%f', 'now') WHERE id = ?",
+                    ).run(oldRawId);
+                  } else if (oldKind === "loop" && !isNaN(oldRawId)) {
+                    graphDb.prepare(
+                      "UPDATE open_loops SET status = 'closed', updated_at = strftime('%Y-%m-%dT%H:%M:%f', 'now') WHERE id = ?",
+                    ).run(oldRawId);
+                  } else if (oldKind === "invariant" && !isNaN(oldRawId)) {
+                    graphDb.prepare(
+                      "UPDATE invariants SET status = 'retired', updated_at = strftime('%Y-%m-%dT%H:%M:%f', 'now') WHERE id = ?",
+                    ).run(oldRawId);
+                  }
+                }
+              } catch (supersErr) {
+                console.debug("[rsma] failed to supersede old record in physical table:", supersErr instanceof Error ? supersErr.message : String(supersErr));
+              }
             } else if (action.type === "conflict") {
               projectProvenance(graphDb, action.conflictObject);
               recordConflict(graphDb, action.conflictObject.id, action.objectIdA, action.objectIdB, action.reason);
@@ -1668,7 +1732,10 @@ export class LcmContextEngine implements ContextEngine {
             withWriteTransaction(graphDb, () => {
               for (const obj of writerResult.objects) {
                 const s = obj.structured as Record<string, unknown> | undefined;
-                if (!s) continue;
+                if (!s) {
+                  console.debug("[rsma] skipping object with no structured data:", obj.kind, obj.id);
+                  continue;
+                }
 
                 if (obj.kind === "claim" && s.subject && s.predicate) {
                   upsertClaim(graphDb, {
@@ -1743,8 +1810,17 @@ export class LcmContextEngine implements ContextEngine {
             console.debug("[rsma] legacy table write failed:", err instanceof Error ? err.message : String(err));
           }
         }
+        // Health monitoring: track success
+        _rsmaSuccessCount++;
+        if (_rsmaSuccessCount % _RSMA_LOG_INTERVAL === 0) {
+          console.info(`[rsma] health: ${_rsmaSuccessCount} successful extractions, ${_rsmaFailCount} failures`);
+        }
       } catch (err) {
+        _rsmaFailCount++;
         console.warn("[rsma] extraction pipeline failed:", err instanceof Error ? err.message : String(err));
+        if ((_rsmaSuccessCount + _rsmaFailCount) % _RSMA_LOG_INTERVAL === 0) {
+          console.info(`[rsma] health: ${_rsmaSuccessCount} successful extractions, ${_rsmaFailCount} failures`);
+        }
       }
       })(); // fire-and-forget — don't await
     }

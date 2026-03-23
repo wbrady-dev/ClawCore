@@ -232,6 +232,12 @@ export interface UpsertInvariantInput {
 
 // ---------------------------------------------------------------------------
 // Source trust hierarchy
+//
+// BUG 16 NOTE: There is a DUAL copy of SOURCE_TRUST in ontology/types.ts.
+// The ontology/types.ts version is CANONICAL and includes additional source
+// kinds (user_explicit, extraction, inference, message). This copy is kept
+// for backward compatibility with legacy relations code. New code should
+// import from ontology/types.ts.
 // ---------------------------------------------------------------------------
 
 export const SOURCE_TRUST: Record<string, number> = {

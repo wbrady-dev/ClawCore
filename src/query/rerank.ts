@@ -5,6 +5,8 @@ export interface RerankResult {
   index: number;
   score: number;
   text: string;
+  /** True when scores are synthetic (reranker was unavailable) */
+  fallback?: boolean;
 }
 
 /**
@@ -70,7 +72,8 @@ export async function rerank(
 function fallbackOrder(documents: string[]): RerankResult[] {
   return documents.map((text, index) => ({
     index,
-    score: 1 - index / documents.length,
+    score: 1.0,
     text,
+    fallback: true,
   }));
 }

@@ -861,7 +861,11 @@ function createLcmDependencies(api: OpenClawPluginApi): LcmDependencies {
       const eqIdx = trimmed.indexOf("=");
       if (eqIdx < 0) continue;
       const key = trimmed.substring(0, eqIdx).trim();
-      const value = trimmed.substring(eqIdx + 1).trim();
+      let value = trimmed.substring(eqIdx + 1).trim();
+      // BUG 10 FIX: Strip surrounding quotes so "true" and 'true' match === "true"
+      if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) {
+        value = value.slice(1, -1);
+      }
       // Don't override existing env vars (system env takes precedence)
       if (!process.env[key]) {
         process.env[key] = value;

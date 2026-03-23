@@ -107,7 +107,9 @@ const LOW_VALUE_SUBJECTS = new Set([
 function claimCapsules(claims: ClaimRow[]): CapsuleCandidate[] {
   return claims.map((c) => {
     const daysSince = daysSinceIso(c.last_seen_at);
-    const conf = effectiveConfidence(c.confidence, Math.max(1, Math.round(c.trust_score * 10)), daysSince);
+    // Use 1 as mentionCount — claims don't have entity mentions.
+    // trust_score is applied separately in the final score below.
+    const conf = effectiveConfidence(c.confidence, 1, daysSince);
     const text = `[claim] ${c.subject} ${c.predicate}: ${c.object_text ?? "(no value)"} (conf=${c.confidence.toFixed(2)})`;
     const tokens = estimateTokens(text);
 

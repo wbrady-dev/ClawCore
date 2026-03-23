@@ -26,6 +26,9 @@ export function effectiveConfidence(
   mentionCount: number,
   daysSinceLastSeen: number,
 ): number {
+  if (!Number.isFinite(base) || base < 0) return 0;
+  if (!Number.isFinite(mentionCount) || mentionCount < 0) mentionCount = 0;
+  if (!Number.isFinite(daysSinceLastSeen) || daysSinceLastSeen < 0) daysSinceLastSeen = 999;
   const mentionFactor = Math.min(1.0, mentionCount / 3);
   const recency = recencyWeight(daysSinceLastSeen);
   return base * mentionFactor * recency;

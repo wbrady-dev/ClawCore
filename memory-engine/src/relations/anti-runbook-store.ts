@@ -119,7 +119,7 @@ export function addAntiRunbookEvidence(
       INSERT OR IGNORE INTO provenance_links (subject_id, predicate, object_id, confidence, detail, scope_id, metadata)
       VALUES (?, ?, ?, ?, ?, ?, ?)
     `).run(
-      `procedure:${antiRunbookId}`,
+      `antirunbook:${antiRunbookId}`,
       "supports",
       input.attemptId ? `attempt:${input.attemptId}` : `${input.sourceType}:${input.sourceId}`,
       1.0,
@@ -152,7 +152,7 @@ export function getAntiRunbookEvidence(
       SELECT id, object_id, detail, metadata, created_at
       FROM provenance_links WHERE subject_id = ? AND predicate = 'supports'
       ORDER BY created_at DESC
-    `).all(`procedure:${antiRunbookId}`) as Array<Record<string, unknown>>;
+    `).all(`antirunbook:${antiRunbookId}`) as Array<Record<string, unknown>>;
 
     if (rows.length > 0) {
       return rows.map((r) => {

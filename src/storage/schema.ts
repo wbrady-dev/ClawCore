@@ -57,7 +57,7 @@ function getMigrationStatements(): Record<number, string[]> {
       END`,
 
       `CREATE TABLE IF NOT EXISTS metadata_index (
-        document_id TEXT REFERENCES documents(id) ON DELETE CASCADE,
+        document_id TEXT NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
         key TEXT NOT NULL,
         value TEXT NOT NULL
       )`,

@@ -1,7 +1,6 @@
 import { readFile, stat } from "fs/promises";
 import { resolve } from "path";
 import { v4 as uuidv4 } from "uuid";
-import type Database from "better-sqlite3";
 
 import { config } from "../config.js";
 import { logger } from "../utils/logger.js";
@@ -10,15 +9,12 @@ import { trackTokens } from "../utils/token-tracker.js";
 import {
   getDb,
   ensureCollection,
-  insertVector,
-  deleteVectors,
 } from "../storage/index.js";
 import { checkpoint } from "../storage/sqlite.js";
 import { getParser } from "./parsers/index.js";
 import { chunkDocument } from "./chunker/semantic.js";
 import { enrichMetadata } from "./metadata.js";
 import { embedBatch } from "../embeddings/batch.js";
-import { insertMetadata } from "../storage/metadata.js";
 import { findIntraBatchDuplicates, findExistingDuplicates } from "./dedup.js";
 import { invalidateCollection } from "../query/cache.js";
 import { getGraphDb } from "../storage/graph-sqlite.js";
@@ -166,6 +162,8 @@ async function ingestFileInner(
   }
 
   // Parse
+  // TODO(BUG 13): Binary parsers (pdf, pptx, docx) re-read the file from disk.
+  // Pass fileBuf to parsers that accept a buffer to avoid double I/O.
   const parser = getParser(absPath);
   const parsed = await parser(absPath);
 
@@ -230,6 +228,18 @@ async function ingestFileInner(
   const isUpdate = !!existing;
 
   const store = db.transaction(() => {
+    // Remove old version FIRST to avoid UNIQUE constraint on source_path
+    // and to free up space before inserting new data.
+    if (existing) {
+      const oldChunkIds = db.prepare("SELECT id FROM chunks WHERE document_id = ?").all(existing.id) as { id: string }[];
+      if (oldChunkIds.length > 0) {
+        // BUG 2+10: inline vector deletion to avoid nested transaction from deleteVectors
+        const delVecStmt = db.prepare("DELETE FROM chunk_vectors WHERE chunk_id = ?");
+        for (const c of oldChunkIds) delVecStmt.run(c.id);
+      }
+      db.prepare("DELETE FROM documents WHERE id = ?").run(existing.id);
+    }
+
     // Insert document with mtime for incremental indexing
     db.prepare(
       "INSERT INTO documents (id, collection_id, source_path, content_hash, metadata_json, size_bytes, file_mtime) VALUES (?, ?, ?, ?, ?, ?, ?)",
@@ -264,13 +274,16 @@ async function ingestFileInner(
       );
     }
 
-    // Insert vectors (only non-duplicate embeddings)
+    // Insert vectors inline (avoids nested transaction from insertVector)
+    const insertVecStmt = db.prepare(
+      "INSERT INTO chunk_vectors (chunk_id, embedding) VALUES (?, ?)",
+    );
     for (let ci = 0; ci < dedupedIndices.length; ci++) {
       const i = dedupedIndices[ci];
-      insertVector(db, chunkIds[ci], embeddings[i]);
+      insertVecStmt.run(chunkIds[ci], new Float32Array(embeddings[i]));
     }
 
-    // Insert metadata index
+    // Insert metadata index inline (avoids nested transaction from insertMetadata)
     const metaEntries: Record<string, string> = {};
     if (metadata.fileType) metaEntries.fileType = metadata.fileType;
     if (metadata.title) metaEntries.title = metadata.title;
@@ -282,16 +295,12 @@ async function ingestFileInner(
       }
     }
     if (Object.keys(metaEntries).length > 0) {
-      insertMetadata(db, documentId, metaEntries);
-    }
-
-    // Remove old version inside the same transaction — atomic swap
-    if (existing) {
-      const oldChunkIds = db.prepare("SELECT id FROM chunks WHERE document_id = ?").all(existing.id) as { id: string }[];
-      if (oldChunkIds.length > 0) {
-        deleteVectors(db, oldChunkIds.map((c) => c.id));
+      const metaStmt = db.prepare(
+        "INSERT INTO metadata_index (document_id, key, value) VALUES (?, ?, ?)",
+      );
+      for (const [key, value] of Object.entries(metaEntries)) {
+        metaStmt.run(documentId, key, value);
       }
-      db.prepare("DELETE FROM documents WHERE id = ?").run(existing.id);
     }
   });
 
@@ -301,13 +310,23 @@ async function ingestFileInner(
   invalidateCollection(collectionName);
 
   // Relations: extract entities from ingested chunks
+  // WARNING: This runs outside the main transaction. If it fails, the document
+  // is ingested but graph data is missing. This is intentional — graph extraction
+  // is best-effort and should not roll back a successful ingest.
   if (config.relations.enabled) {
-    const graphDb = getGraphDb(config.relations.graphDbPath);
-    const chunkTexts = dedupedIndices.map((i) => ({
-      text: chunks[i].text,
-      position: chunks[i].position,
-    }));
-    await extractEntitiesFromDocument(graphDb, documentId, chunkTexts);
+    try {
+      const graphDb = getGraphDb(config.relations.graphDbPath);
+      const chunkTexts = dedupedIndices.map((i) => ({
+        text: chunks[i].text,
+        position: chunks[i].position,
+      }));
+      await extractEntitiesFromDocument(graphDb, documentId, chunkTexts);
+    } catch (graphErr) {
+      logger.error(
+        { documentId, error: graphErr instanceof Error ? graphErr.message : String(graphErr) },
+        "Graph entity extraction failed — document ingested but graph data is missing",
+      );
+    }
   }
 
   // Checkpoint WAL after large ingests to prevent unbounded growth

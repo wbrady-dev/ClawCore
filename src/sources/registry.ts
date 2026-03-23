@@ -164,7 +164,12 @@ function loadSourceConfigs(): Map<string, SourceConfig> {
 }
 
 function envMatch(env: string, key: string): string {
-  return env.match(new RegExp(`^${key}=(.*)`, "m"))?.[1]?.trim() ?? "";
+  const raw = env.match(new RegExp(`^${key}=(.*)`, "m"))?.[1]?.trim() ?? "";
+  // Strip surrounding quotes (single or double)
+  if ((raw.startsWith('"') && raw.endsWith('"')) || (raw.startsWith("'") && raw.endsWith("'"))) {
+    return raw.slice(1, -1);
+  }
+  return raw;
 }
 
 /** All registered adapters */
@@ -207,6 +212,8 @@ export function getAdapter(id: string): SourceAdapter | undefined {
 export async function startSources(): Promise<void> {
   const configs = loadSourceConfigs();
 
+  // Check availability sequentially (some checks have side effects like setting reasons)
+  const eligible: { adapter: SourceAdapter; cfg: SourceConfig }[] = [];
   for (const adapter of adapters) {
     const cfg = configs.get(adapter.id);
     if (!cfg || !cfg.enabled) continue;
@@ -219,17 +226,26 @@ export async function startSources(): Promise<void> {
       );
       continue;
     }
+    eligible.push({ adapter, cfg });
+  }
 
-    try {
+  // Start all eligible adapters in parallel
+  const results = await Promise.allSettled(
+    eligible.map(async ({ adapter, cfg }) => {
       await adapter.start(cfg);
       logger.info(
         { source: adapter.id, collections: cfg.collections.length },
         `Source ${adapter.name} started`,
       );
-    } catch (err) {
+    }),
+  );
+
+  for (let i = 0; i < results.length; i++) {
+    const result = results[i];
+    if (result.status === "rejected") {
       logger.error(
-        { source: adapter.id, error: String(err) },
-        `Failed to start source ${adapter.name}`,
+        { source: eligible[i].adapter.id, error: String(result.reason) },
+        `Failed to start source ${eligible[i].adapter.name}`,
       );
     }
   }

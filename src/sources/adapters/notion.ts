@@ -93,7 +93,12 @@ export class NotionAdapter implements SourceAdapter {
     mkdirSync(STAGING_DIR, { recursive: true });
 
     // Initial sync
-    await this.sync();
+    try {
+      await this.sync();
+    } catch (err) {
+      logger.error({ source: "notion", error: String(err) }, "Initial Notion sync failed");
+      this.status = { state: "error", docCount: 0, error: `Initial sync failed: ${err}` };
+    }
 
     // Start polling
     const intervalMs = (cfg.syncInterval || 600) * 1000;
@@ -125,12 +130,13 @@ export class NotionAdapter implements SourceAdapter {
 
       try {
         const pages = await queryDatabase(this.client, dbId);
+        const currentIds = new Set<string>();
 
         for (const page of pages) {
           const pageId = page.id;
           const lastEdited = (page as any).last_edited_time ?? "";
-          const title = extractPageTitle(page);
 
+          currentIds.add(pageId);
           const existing = this.manifest.get(pageId);
           if (!existing) {
             changes.added.push({
@@ -148,6 +154,13 @@ export class NotionAdapter implements SourceAdapter {
               tags: ["notion"],
               remoteTimestamp: lastEdited,
             });
+          }
+        }
+
+        // Detect removals: manifest entries no longer present in the database
+        for (const [pageId] of this.manifest) {
+          if (!currentIds.has(pageId)) {
+            changes.removed.push(pageId);
           }
         }
       } catch (err) {
@@ -192,7 +205,7 @@ export class NotionAdapter implements SourceAdapter {
     this.status = { ...this.status, state: "syncing" };
 
     const changes = await this.detectChanges();
-    const totalChanges = changes.added.length + changes.modified.length;
+    const totalChanges = changes.added.length + changes.modified.length + changes.removed.length;
 
     if (totalChanges === 0) {
       logger.info({ source: "notion" }, "Notion sync: no changes");
@@ -206,9 +219,17 @@ export class NotionAdapter implements SourceAdapter {
     }
 
     logger.info(
-      { source: "notion", added: changes.added.length, modified: changes.modified.length },
+      { source: "notion", added: changes.added.length, modified: changes.modified.length, removed: changes.removed.length },
       "Notion sync: changes detected",
     );
+
+    // Process removals — delete staging files and remove from manifest
+    for (const pageId of changes.removed) {
+      const stagingPath = join(STAGING_DIR, `${pageId}.md`);
+      try { if (existsSync(stagingPath)) unlinkSync(stagingPath); } catch {}
+      this.manifest.delete(pageId);
+      logger.info({ source: "notion", pageId }, "Notion page removed");
+    }
 
     const staged = await this.downloadToStaging(changes);
 
@@ -248,33 +269,20 @@ export class NotionAdapter implements SourceAdapter {
 // Notion API helpers
 // ────────────────────────────────────────────
 
-/** Query all pages from a Notion database using REST API */
+/** Query all pages from a Notion database using the official client */
 async function queryDatabase(client: Client, databaseId: string): Promise<any[]> {
   const pages: any[] = [];
   let cursor: string | undefined;
-  const apiKey = process.env.NOTION_API_KEY;
 
   do {
-    const body: any = { page_size: 100 };
-    if (cursor) body.start_cursor = cursor;
-
-    const res = await fetch(`https://api.notion.com/v1/databases/${databaseId}/query`, {
-      method: "POST",
-      headers: {
-        "Authorization": `Bearer ${apiKey}`,
-        "Notion-Version": "2022-06-28",
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(body),
+    const res = await client.databases.query({
+      database_id: databaseId,
+      page_size: 100,
+      start_cursor: cursor,
     });
 
-    if (!res.ok) {
-      throw new Error(`Notion API error ${res.status}: ${await res.text()}`);
-    }
-
-    const data = await res.json() as any;
-    pages.push(...(data.results ?? []));
-    cursor = data.has_more ? (data.next_cursor ?? undefined) : undefined;
+    pages.push(...(res.results ?? []));
+    cursor = res.has_more ? (res.next_cursor ?? undefined) : undefined;
 
     // Rate limit: ~3 req/s for Notion API
     await sleep(350);
@@ -304,12 +312,21 @@ async function exportPageAsMarkdown(client: Client, pageId: string): Promise<str
   // Get all blocks
   const blocks = await getAllBlocks(client, pageId);
 
-  // Convert blocks to Markdown
+  // Convert blocks to Markdown (with recursive child block expansion)
   const lines: string[] = [`# ${title}`, ""];
 
   for (const block of blocks) {
     const md = blockToMarkdown(block);
     if (md !== null) lines.push(md);
+
+    // Recursively fetch and render child blocks
+    if ((block as any).has_children) {
+      const children = await getAllBlocks(client, block.id);
+      for (const child of children) {
+        const childMd = blockToMarkdown(child);
+        if (childMd !== null) lines.push(`  ${childMd}`);
+      }
+    }
   }
 
   return lines.join("\n");

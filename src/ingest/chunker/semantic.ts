@@ -82,6 +82,10 @@ export function chunkDocument(doc: ParsedDocument): Chunk[] {
  * Add overlap between consecutive chunks for context preservation.
  * Prepends the last N tokens of the previous chunk to the current chunk,
  * preventing information loss at chunk boundaries.
+ *
+ * TODO(BUG 9): Overlap text is stored verbatim in each chunk row, inflating
+ * the DB. Consider storing overlap as a reference (offset + length) to the
+ * previous chunk and reconstructing at query time.
  */
 function addOverlap(chunks: Chunk[], overlapTokens: number): Chunk[] {
   if (chunks.length <= 1 || overlapTokens <= 0) return chunks;

@@ -71,7 +71,7 @@ export function migrateToProvenanceLinks(db: GraphDb): MigrationStats {
           ELSE 'supports'
         END,
         source_type || ':' || source_id,
-        COALESCE(confidence_delta, 1.0),
+        MAX(0.0, MIN(1.0, COALESCE(confidence_delta, 1.0))),
         source_detail
       FROM claim_evidence
       WHERE claim_id IS NOT NULL AND source_id IS NOT NULL

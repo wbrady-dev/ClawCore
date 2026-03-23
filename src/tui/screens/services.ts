@@ -9,7 +9,6 @@ import {
   startServices,
   stopServices,
   getPlatform,
-  isAdmin,
   getRootDir,
   findOpenClaw,
   installWindowsServices,
@@ -73,14 +72,9 @@ export async function manageServices(): Promise<void> {
           const r = installWindowsServices(root);
           r.success ? spinner.succeed("Auto-startup enabled.") : spinner.fail(`Failed: ${r.error}`);
         } else if (plat === "linux") {
-          if (!isAdmin()) {
-            console.log(t.warn("\n  Requires sudo. Run: sudo clawcore"));
-            await sleep(1500);
-          } else {
-            spinner.start("Enabling auto-startup (systemd)...");
-            const r = installLinuxServices(root);
-            r.success ? spinner.succeed("Auto-startup enabled (systemd).") : spinner.fail(`Failed: ${r.error}`);
-          }
+          spinner.start("Enabling auto-startup (systemd)...");
+          const r = installLinuxServices(root);
+          r.success ? spinner.succeed("Auto-startup enabled (systemd).") : spinner.fail(`Failed: ${r.error}`);
         } else if (plat === "mac") {
           spinner.start("Enabling auto-startup (launchd)...");
           const r = installMacServices(root);
@@ -96,15 +90,10 @@ export async function manageServices(): Promise<void> {
           removeWindowsServices();
           spinner.succeed("Auto-startup disabled.");
         } else if (plat === "linux") {
-          if (!isAdmin()) {
-            console.log(t.warn("\n  Requires sudo. Run: sudo clawcore"));
-            await sleep(1500);
-          } else {
-            spinner.start("Disabling auto-startup (systemd)...");
-            stopServices();
-            removeLinuxServices();
-            spinner.succeed("Auto-startup disabled.");
-          }
+          spinner.start("Disabling auto-startup (systemd)...");
+          stopServices();
+          removeLinuxServices();
+          spinner.succeed("Auto-startup disabled.");
         } else if (plat === "mac") {
           spinner.start("Disabling auto-startup (launchd)...");
           stopServices();
@@ -426,7 +415,7 @@ function checkAutoStartup(): boolean {
   }
   if (plat === "linux") {
     try {
-      const out = execFileSync("systemctl", ["is-enabled", "clawcore-models"], { stdio: "pipe" }).toString().trim();
+      const out = execFileSync("systemctl", ["--user", "is-enabled", "clawcore-models"], { stdio: "pipe" }).toString().trim();
       return out === "enabled";
     } catch {
       return false;

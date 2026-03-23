@@ -141,7 +141,12 @@ export class GDriveAdapter implements SourceAdapter {
     mkdirSync(STAGING_DIR, { recursive: true });
 
     // Initial sync
-    await this.sync();
+    try {
+      await this.sync();
+    } catch (err) {
+      logger.error({ source: "gdrive", error: String(err) }, "Initial Drive sync failed");
+      this.status = { state: "error", docCount: 0, error: `Initial sync failed: ${err}` };
+    }
 
     // Start polling
     const intervalMs = (cfg.syncInterval || 300) * 1000;
@@ -183,6 +188,8 @@ export class GDriveAdapter implements SourceAdapter {
         continue;
       }
 
+      const currentIds = new Set<string>();
+
       for (const file of files) {
         if (!file.id || !file.name) continue;
 
@@ -198,6 +205,7 @@ export class GDriveAdapter implements SourceAdapter {
         const fileSize = parseInt(file.size ?? "0", 10);
         if (fileSize > (this.cfg.maxFileSize ?? 52_428_800)) continue;
 
+        currentIds.add(file.id);
         const existing = this.manifest.get(file.id);
         const modifiedTime = file.modifiedTime ?? "";
 
@@ -217,6 +225,13 @@ export class GDriveAdapter implements SourceAdapter {
             tags: ["gdrive", folderName.toLowerCase().replace(/\s+/g, "-")],
             remoteTimestamp: modifiedTime,
           });
+        }
+      }
+
+      // Detect removals: manifest entries no longer present in the remote folder
+      for (const [fileId] of this.manifest) {
+        if (!currentIds.has(fileId)) {
+          changes.removed.push(fileId);
         }
       }
     }
@@ -256,7 +271,7 @@ export class GDriveAdapter implements SourceAdapter {
     this.status = { ...this.status, state: "syncing" };
 
     const changes = await this.detectChanges();
-    const totalChanges = changes.added.length + changes.modified.length;
+    const totalChanges = changes.added.length + changes.modified.length + changes.removed.length;
 
     if (totalChanges === 0) {
       logger.info({ source: "gdrive" }, "Drive sync: no changes");
@@ -270,9 +285,20 @@ export class GDriveAdapter implements SourceAdapter {
     }
 
     logger.info(
-      { source: "gdrive", added: changes.added.length, modified: changes.modified.length },
+      { source: "gdrive", added: changes.added.length, modified: changes.modified.length, removed: changes.removed.length },
       "Drive sync: changes detected",
     );
+
+    // Process removals — delete staging files and remove from manifest
+    for (const fileId of changes.removed) {
+      const entry = this.manifest.get(fileId);
+      if (entry) {
+        const stagingPath = join(STAGING_DIR, `${fileId}${extname(entry.name) || ".bin"}`);
+        try { if (existsSync(stagingPath)) unlinkSync(stagingPath); } catch {}
+        this.manifest.delete(fileId);
+      }
+      logger.info({ source: "gdrive", fileId }, "Drive file removed");
+    }
 
     const staged = await this.downloadToStaging(changes);
 
@@ -418,6 +444,7 @@ async function downloadFile(drive: drive_v3.Drive, fileId: string, destDir: stri
 function streamToFile(stream: NodeJS.ReadableStream, path: string): Promise<void> {
   return new Promise((resolve, reject) => {
     const ws = createWriteStream(path);
+    stream.on("error", reject);
     stream.pipe(ws);
     ws.on("finish", resolve);
     ws.on("error", reject);

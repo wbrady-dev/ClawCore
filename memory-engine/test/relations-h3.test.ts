@@ -112,7 +112,7 @@ describe("H3 Runbook Store", () => {
       pattern: "npm run build", successCount: 2,
     });
     const runbooks = getRunbooks(db, 1);
-    expect(runbooks[0].success_count).toBe(5); // 3 + 2
+    expect(runbooks[0].success_count).toBe(3); // MAX(3, 2) — idempotent, not additive
   });
 
   it("demoteRunbook reduces confidence", () => {

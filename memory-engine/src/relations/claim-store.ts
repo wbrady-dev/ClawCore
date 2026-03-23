@@ -112,7 +112,12 @@ export function addClaimEvidence(db: GraphDb, input: AddClaimEvidenceInput): num
     input.snippetHash ?? null, input.confidenceDelta ?? 0,
   );
 
-  const evidenceId = Number(result.lastInsertRowid);
+  // On upsert conflict, lastInsertRowid may not reflect the actual row.
+  // SELECT the real ID to handle both insert and update paths.
+  const evidenceRow = db.prepare(
+    "SELECT id FROM claim_evidence WHERE claim_id = ? AND source_type = ? AND source_id = ? AND evidence_role = ?",
+  ).get(input.claimId, input.sourceType, input.sourceId, input.evidenceRole) as { id: number };
+  const evidenceId = evidenceRow.id;
 
   logEvidence(db, {
     scopeId: claim?.scope_id,

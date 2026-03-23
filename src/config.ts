@@ -44,7 +44,10 @@ const hotConfig = {
   rerankSmartSkip: envBool("RERANK_SMART_SKIP", true),
   // Embedding tuning
   similarityThreshold: envFloat("EMBEDDING_SIMILARITY_THRESHOLD", 1.05),
-  prefixMode: env("EMBEDDING_PREFIX_MODE", "auto") as "auto" | "always" | "never",
+  prefixMode: (() => {
+    const mode = env("EMBEDDING_PREFIX_MODE", "auto");
+    return (["auto", "always", "never"] as const).includes(mode as any) ? mode as "auto" | "always" | "never" : "auto";
+  })(),
   batchSize: envInt("EMBEDDING_BATCH_SIZE", 32),
   // Feature flags
   audioTranscriptionEnabled: envBool("AUDIO_TRANSCRIPTION_ENABLED", false),
@@ -80,12 +83,22 @@ function reloadHotConfig(): void {
     hotConfig.rerankTopK = getInt("RERANK_TOP_K", 20);
     hotConfig.rerankSmartSkip = getBool("RERANK_SMART_SKIP", true);
     hotConfig.similarityThreshold = getFloat("EMBEDDING_SIMILARITY_THRESHOLD", 1.05);
-    hotConfig.prefixMode = get("EMBEDDING_PREFIX_MODE", "auto") as "auto" | "always" | "never";
+    const prefixRaw = get("EMBEDDING_PREFIX_MODE", "auto");
+    hotConfig.prefixMode = (["auto", "always", "never"] as const).includes(prefixRaw as any)
+      ? prefixRaw as "auto" | "always" | "never"
+      : "auto";
     hotConfig.batchSize = getInt("EMBEDDING_BATCH_SIZE", 32);
     hotConfig.audioTranscriptionEnabled = getBool("AUDIO_TRANSCRIPTION_ENABLED", false);
     hotConfig.whisperModel = get("WHISPER_MODEL", "base");
     hotConfig.relationsEnabled = getBool("CLAWCORE_RELATIONS_ENABLED", false);
     hotConfig.queryExpansionEnabled = getBool("QUERY_EXPANSION_ENABLED", false);
+
+    // Sync changed keys back to process.env so downstream code that reads process.env directly stays consistent
+    for (const [key, value] of Object.entries(parsed)) {
+      if (value !== undefined) {
+        process.env[key] = value;
+      }
+    }
   } catch {
     // Non-fatal — keep existing values
   }
@@ -104,6 +117,8 @@ if (existsSync(envPath)) {
 
 export const config = {
   port: envInt("CLAWCORE_PORT", 18800),
+  host: env("CLAWCORE_HOST", "127.0.0.1"),
+  apiKey: env("CLAWCORE_API_KEY", ""),
   dataDir: resolve(env("CLAWCORE_DATA_DIR", resolve(homedir(), ".clawcore", "data"))),
   rootDir,
 

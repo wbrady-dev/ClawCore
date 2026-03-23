@@ -49,10 +49,11 @@ export async function parseHtml(filePath: string): Promise<ParsedDocument> {
   // Find headings in the original HTML for structure hints
   const structure: StructureHint[] = [];
   const headings = doc.querySelectorAll("h1, h2, h3, h4, h5, h6");
+  let searchFrom = 0;
   for (const heading of headings) {
     const headingText = heading.textContent?.trim() ?? "";
     const level = parseInt(heading.tagName.charAt(1), 10);
-    const idx = text.indexOf(headingText);
+    const idx = text.indexOf(headingText, searchFrom);
     if (idx >= 0) {
       structure.push({
         type: "heading",
@@ -60,6 +61,7 @@ export async function parseHtml(filePath: string): Promise<ParsedDocument> {
         startOffset: idx,
         endOffset: idx + headingText.length,
       });
+      searchFrom = idx + headingText.length;
     }
   }
 

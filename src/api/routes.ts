@@ -10,8 +10,8 @@ import { registerDocumentRoutes } from "./document.routes.js";
 import { registerResetRoutes } from "./reset.routes.js";
 import { registerGraphRoutes } from "./graph.routes.js";
 
-export function registerRoutes(server: FastifyInstance) {
-  registerHealthRoutes(server);
+export function registerRoutes(server: FastifyInstance, onShutdown?: () => Promise<void>) {
+  registerHealthRoutes(server, onShutdown);
   registerIngestRoutes(server);
   registerQueryRoutes(server);
   registerCollectionRoutes(server);

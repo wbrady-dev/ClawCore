@@ -1,9 +1,15 @@
 import { getRootDir, startClawCoreApi, startModelServer, stopServices, forceKillByPort, getApiPort, getModelPort } from "./platform.js";
 import { clearServiceLogs, readLatestServiceLogLine, type ServiceLogName } from "./service-logs.js";
 
-const MODEL_WAIT_TIMEOUT = parseInt(process.env.CLAWCORE_MODEL_TIMEOUT ?? "180000", 10);
-const API_WAIT_TIMEOUT = parseInt(process.env.CLAWCORE_API_TIMEOUT ?? "30000", 10);
-const STOP_WAIT_TIMEOUT = parseInt(process.env.CLAWCORE_STOP_TIMEOUT ?? "20000", 10);
+function safeParseInt(value: string | undefined, fallback: number): number {
+  if (!value) return fallback;
+  const n = parseInt(value, 10);
+  return Number.isFinite(n) && n > 0 ? n : fallback;
+}
+
+const MODEL_WAIT_TIMEOUT = safeParseInt(process.env.CLAWCORE_MODEL_TIMEOUT, 180000);
+const API_WAIT_TIMEOUT = safeParseInt(process.env.CLAWCORE_API_TIMEOUT, 30000);
+const STOP_WAIT_TIMEOUT = safeParseInt(process.env.CLAWCORE_STOP_TIMEOUT, 20000);
 
 export type ServiceAction = "start" | "stop" | "restart";
 

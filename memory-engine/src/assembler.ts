@@ -703,8 +703,10 @@ export class ContextAssembler {
     selected.push(...freshTail);
 
     // Account for summary XML wrapper overhead (~50 tokens per summary)
+    // Use the post-truncation selected array, not the pre-truncation summaryCount
     const SUMMARY_WRAPPER_OVERHEAD = 50;
-    const estimatedTokens = evictableTokens + tailTokens + (summaryCount * SUMMARY_WRAPPER_OVERHEAD);
+    const selectedSummaryCount = selected.filter((item) => !item.isMessage).length;
+    const estimatedTokens = evictableTokens + tailTokens + (selectedSummaryCount * SUMMARY_WRAPPER_OVERHEAD);
 
     // Normalize assistant string content to array blocks (some providers return
     // content as a plain string; Anthropic expects content block arrays).

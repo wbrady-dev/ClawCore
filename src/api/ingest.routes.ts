@@ -11,7 +11,7 @@ import { logger } from "../utils/logger.js";
  * Validate that a file path is safe to ingest.
  * Rejects paths that try to escape expected locations.
  */
-function validateIngestPath(filePath: string): string | null {
+export function validateIngestPath(filePath: string): string | null {
   // Resolve symlinks to prevent bypassing blocklist via symlink to sensitive file
   let resolved: string;
   try {

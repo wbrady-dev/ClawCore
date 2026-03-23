@@ -49,13 +49,13 @@ export function getStateAtTime(
   // or superseded by a decision created AFTER T
   const decisions = db.prepare(`
     SELECT d.* FROM decisions d
-    WHERE d.scope_id = ? AND d.decided_at <= ?
+    WHERE d.scope_id = ? AND d.decided_at <= ? AND d.created_at <= ?
       AND (d.status = 'active'
            OR (d.superseded_by IS NOT NULL
                AND (SELECT created_at FROM decisions WHERE id = d.superseded_by) > ?))
     ORDER BY d.decided_at DESC
     LIMIT 50
-  `).all(scopeId, timestamp, timestamp) as DecisionRow[];
+  `).all(scopeId, timestamp, timestamp, timestamp) as DecisionRow[];
 
   // Loops that were open at timestamp (already historically correct)
   const openLoops = db.prepare(`

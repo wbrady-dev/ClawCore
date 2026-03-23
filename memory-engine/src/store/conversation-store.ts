@@ -347,19 +347,27 @@ export class ConversationStore {
     );
 
     const records: MessageRecord[] = [];
-    for (const input of inputs) {
-      const result = insertStmt.run(
-        input.conversationId,
-        input.seq,
-        input.role,
-        input.content,
-        input.tokenCount,
-      );
+    let ownTx = false;
+    try { this.db.exec("BEGIN IMMEDIATE"); ownTx = true; } catch { /* already in transaction */ }
+    try {
+      for (const input of inputs) {
+        const result = insertStmt.run(
+          input.conversationId,
+          input.seq,
+          input.role,
+          input.content,
+          input.tokenCount,
+        );
 
-      const messageId = Number(result.lastInsertRowid);
-      this.indexMessageForFullText(messageId, input.content);
-      const row = selectStmt.get(messageId) as unknown as MessageRow;
-      records.push(toMessageRecord(row));
+        const messageId = Number(result.lastInsertRowid);
+        this.indexMessageForFullText(messageId, input.content);
+        const row = selectStmt.get(messageId) as unknown as MessageRow;
+        records.push(toMessageRecord(row));
+      }
+      if (ownTx) this.db.exec("COMMIT");
+    } catch (err) {
+      if (ownTx) this.db.exec("ROLLBACK");
+      throw err;
     }
 
     return records;
@@ -492,20 +500,28 @@ export class ConversationStore {
        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     );
 
-    for (const part of parts) {
-      stmt.run(
-        randomUUID(),
-        messageId,
-        part.sessionId,
-        part.partType,
-        part.ordinal,
-        part.textContent ?? null,
-        part.toolCallId ?? null,
-        part.toolName ?? null,
-        part.toolInput ?? null,
-        part.toolOutput ?? null,
-        part.metadata ?? null,
-      );
+    let ownTx = false;
+    try { this.db.exec("BEGIN IMMEDIATE"); ownTx = true; } catch { /* already in transaction */ }
+    try {
+      for (const part of parts) {
+        stmt.run(
+          randomUUID(),
+          messageId,
+          part.sessionId,
+          part.partType,
+          part.ordinal,
+          part.textContent ?? null,
+          part.toolCallId ?? null,
+          part.toolName ?? null,
+          part.toolInput ?? null,
+          part.toolOutput ?? null,
+          part.metadata ?? null,
+        );
+      }
+      if (ownTx) this.db.exec("COMMIT");
+    } catch (err) {
+      if (ownTx) this.db.exec("ROLLBACK");
+      throw err;
     }
   }
 

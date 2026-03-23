@@ -167,8 +167,9 @@ export async function semanticExtract(
 
     // LLM returned empty/unparseable — fall back to regex
     return regexUnderstand(text, sourceId, role);
-  } catch {
-    // LLM call failed — fall back to regex
+  } catch (err) {
+    // BUG 14 FIX: Log LLM failures instead of silently swallowing them
+    console.warn("[rsma] LLM extraction failed, using regex fallback:", err instanceof Error ? err.message : String(err));
     return regexUnderstand(text, sourceId, role);
   }
 }
@@ -188,27 +189,63 @@ function extractTextContent(content: unknown): string {
 }
 
 function parseExtractionResponse(text: string): SemanticExtractionResponse | null {
-  try {
-    // Find JSON in the response (may be wrapped in markdown code blocks)
-    const jsonMatch = text.match(/\{[\s\S]*"events"[\s\S]*\}/);
-    if (!jsonMatch) return null;
+  // BUG 15 FIX: Try multiple parsing strategies instead of a single greedy regex.
+  // Strategy 1: Direct JSON.parse (fastest, handles clean LLM output)
+  // Strategy 2: Find {"events": prefix and parse from there (handles markdown wrapping)
+  // Strategy 3: Original greedy regex as last resort
 
-    // Size guard: reject excessively large JSON to prevent DoS via malformed LLM output
-    if (jsonMatch[0].length > 50_000) return null;
+  const tryParse = (candidate: string): SemanticExtractionResponse | null => {
+    try {
+      // Size guard: reject excessively large JSON to prevent DoS via malformed LLM output
+      if (candidate.length > 50_000) return null;
+      const parsed = JSON.parse(candidate) as SemanticExtractionResponse;
+      if (!parsed.events || !Array.isArray(parsed.events)) return null;
+      // Validate each event has required fields
+      parsed.events = parsed.events.filter((e) =>
+        e.type && typeof e.content === "string" && e.content.length > 0
+        && typeof e.confidence === "number" && e.confidence >= 0 && e.confidence <= 1,
+      );
+      return parsed;
+    } catch {
+      return null;
+    }
+  };
 
-    const parsed = JSON.parse(jsonMatch[0]) as SemanticExtractionResponse;
-    if (!parsed.events || !Array.isArray(parsed.events)) return null;
+  // Strategy 1: Direct parse of trimmed text
+  const trimmed = text.trim();
+  const direct = tryParse(trimmed);
+  if (direct) return direct;
 
-    // Validate each event has required fields
-    parsed.events = parsed.events.filter((e) =>
-      e.type && typeof e.content === "string" && e.content.length > 0
-      && typeof e.confidence === "number" && e.confidence >= 0 && e.confidence <= 1,
-    );
-
-    return parsed;
-  } catch {
-    return null;
+  // Strategy 2: Find {"events" prefix and balance braces
+  const eventsIdx = text.indexOf('{"events"');
+  if (eventsIdx >= 0) {
+    let depth = 0;
+    for (let i = eventsIdx; i < text.length; i++) {
+      if (text[i] === "{") depth++;
+      else if (text[i] === "}") depth--;
+      if (depth === 0) {
+        const candidate = text.substring(eventsIdx, i + 1);
+        const result = tryParse(candidate);
+        if (result) return result;
+        break;
+      }
+    }
   }
+
+  // Strategy 3: Greedy regex fallback (non-greedy quantifier to avoid over-capture)
+  const jsonMatch = text.match(/\{[\s\S]*?"events"[\s\S]*?\}(?=\s*$|\s*```)/);
+  if (jsonMatch) {
+    const result = tryParse(jsonMatch[0]);
+    if (result) return result;
+  }
+
+  // Strategy 4: Original greedy match as absolute last resort
+  const greedyMatch = text.match(/\{[\s\S]*"events"[\s\S]*\}/);
+  if (greedyMatch) {
+    return tryParse(greedyMatch[0]);
+  }
+
+  return null;
 }
 
 // ── Convert to WriterResult ─────────────────────────────────────────────────

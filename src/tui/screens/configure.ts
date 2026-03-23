@@ -26,6 +26,11 @@ import {
 } from "../models.js";
 import { selectMenu } from "../menu.js";
 
+/** Escape regex metacharacters in a string for safe use in new RegExp(). */
+function escapeRegex(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
 export type ConfigureAction =
   | "embed"
   | "rerank"
@@ -55,7 +60,7 @@ export async function runConfigure(): Promise<void> {
         const envPath = resolve(root, ".env");
         if (existsSync(envPath)) envData = readFileSync(envPath, "utf-8");
       } catch {}
-      const envVal = (key: string, fb: string) => envData.match(new RegExp(`${key}=(.*)`))?.[1]?.trim() ?? fb;
+      const envVal = (key: string, fb: string) => envData.match(new RegExp(`${escapeRegex(key)}=(.*)`))?.[1]?.trim() ?? fb;
 
       console.log(section("Configuration"));
 
@@ -216,8 +221,9 @@ async function changeEmbedModel(
 
   const sp = ora(`Downloading ${choice.name}...`).start();
   try {
+    const safeId = choice.id.replace(/'/g, "\\'");
     const trustArg = choice.trustRemoteCode ? ", trust_remote_code=True" : "";
-    execFileSync(python, ["-c", `from sentence_transformers import SentenceTransformer; SentenceTransformer('${choice.id}'${trustArg})`], { stdio: "pipe", timeout: 600000 });
+    execFileSync(python, ["-c", `from sentence_transformers import SentenceTransformer; SentenceTransformer('${safeId}'${trustArg})`], { stdio: "pipe", timeout: 600000 });
     sp.succeed(`${choice.name} ready. Restart services and re-ingest documents.`);
   } catch {
     sp.warn("Download failed. Will retry on server start.");
@@ -261,8 +267,9 @@ async function changeRerankModel(
 
   const sp = ora(`Downloading ${choice.name}...`).start();
   try {
+    const safeId = choice.id.replace(/'/g, "\\'");
     const trustArg = choice.trustRemoteCode ? ", trust_remote_code=True" : "";
-    execFileSync(python, ["-c", `from sentence_transformers import CrossEncoder; CrossEncoder('${choice.id}'${trustArg})`], { stdio: "pipe", timeout: 600000 });
+    execFileSync(python, ["-c", `from sentence_transformers import CrossEncoder; CrossEncoder('${safeId}'${trustArg})`], { stdio: "pipe", timeout: 600000 });
     sp.succeed(`${choice.name} ready. Restart services to apply.`);
   } catch {
     sp.warn("Download failed. Will retry on server start.");
@@ -309,7 +316,8 @@ async function changeParser(config: ReturnType<typeof readConfig>): Promise<void
       if (confirm) {
         const sp = ora("Installing Docling (this may take a few minutes)...").start();
         try {
-          execFileSync("pip", ["install", "docling"], { stdio: "pipe", timeout: 600000 });
+          const pipPython = getPythonCmd();
+          execFileSync(pipPython, ["-m", "pip", "install", "docling"], { stdio: "pipe", timeout: 600000 });
           sp.succeed("Docling installed");
         } catch {
           sp.warn("Docling install failed. Standard parser will be used.");
@@ -471,7 +479,7 @@ async function changeAudioTranscription(root: string): Promise<void> {
   }
 
   const getVal = (key: string, fallback: string) =>
-    envData.match(new RegExp(`${key}=([^\\n]*)`))?.[1]?.trim() ?? fallback;
+    envData.match(new RegExp(`${escapeRegex(key)}=([^\\n]*)`))?.[1]?.trim() ?? fallback;
 
   const enabled = getVal("AUDIO_TRANSCRIPTION_ENABLED", "false") === "true";
   const model = getVal("WHISPER_MODEL", "base");
@@ -528,7 +536,7 @@ async function changeSearchTuning(root: string): Promise<void> {
   }
 
   const getVal = (key: string, fallback: string) =>
-    envData.match(new RegExp(`${key}=([^\\n]*)`))?.[1]?.trim() ?? fallback;
+    envData.match(new RegExp(`${escapeRegex(key)}=([^\\n]*)`))?.[1]?.trim() ?? fallback;
 
   const values: Record<string, string> = {
     RERANK_SCORE_THRESHOLD: getVal("RERANK_SCORE_THRESHOLD", "0.0"),
@@ -713,7 +721,7 @@ async function changeGeneralSettings(root: string): Promise<void> {
   const env = existsSync(envPath) ? readFileSync(envPath, "utf-8") : "";
 
   const getEnv = (key: string, fallback: string): string => {
-    const match = env.match(new RegExp(`${key}=(.*)`));
+    const match = env.match(new RegExp(`${escapeRegex(key)}=(.*)`));
     return match?.[1]?.trim() ?? fallback;
   };
 
@@ -1070,7 +1078,7 @@ function updateEnvValues(root: string, values: Record<string, string>): void {
   if (!existsSync(envPath)) return;
   let env = readFileSync(envPath, "utf-8");
   for (const [key, value] of Object.entries(values)) {
-    const regex = new RegExp(`^${key}=.*$`, "m");
+    const regex = new RegExp(`^${escapeRegex(key)}=.*$`, "m");
     if (regex.test(env)) {
       env = env.replace(regex, `${key}=${value}`);
     } else {
@@ -1452,9 +1460,9 @@ async function changeEvidenceSettings(root: string): Promise<void> {
     }
   }
 
-  const getVal = (key: string) => envData.match(new RegExp(`${key}=([^\\n]*)`))?.[1]?.trim() ?? "false";
+  const getVal = (key: string) => envData.match(new RegExp(`${escapeRegex(key)}=([^\\n]*)`))?.[1]?.trim() ?? "false";
   const setVal = (key: string, val: string) => {
-    const re = new RegExp(`^${key}=.*$`, "m");
+    const re = new RegExp(`^${escapeRegex(key)}=.*$`, "m");
     if (re.test(envData)) {
       envData = envData.replace(re, `${key}=${val}`);
     } else {

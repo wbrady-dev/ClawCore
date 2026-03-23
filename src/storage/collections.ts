@@ -192,5 +192,13 @@ export function ensureCollection(
 ): Collection {
   const existing = getCollectionByName(db, name);
   if (existing) return existing;
-  return createCollection(db, name);
+
+  // Race-safe: INSERT OR IGNORE prevents UNIQUE constraint errors
+  // when multiple concurrent ingests create the same collection.
+  const id = uuidv4();
+  db.prepare(
+    "INSERT OR IGNORE INTO collections (id, name) VALUES (?, ?)",
+  ).run(id, name);
+
+  return getCollectionByName(db, name)!;
 }

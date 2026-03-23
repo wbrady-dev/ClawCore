@@ -183,7 +183,12 @@ export class ExpansionAuthManager {
       };
     }
 
-    // 5. If allowedSummaryIds is non-empty, all requested summaryIds must be allowed
+    // 5. Depth must not exceed grant's maxDepth
+    if (request.depth > grant.maxDepth) {
+      return { valid: false, reason: "depth exceeded" };
+    }
+
+    // 6. If allowedSummaryIds is non-empty, all requested summaryIds must be allowed
     if (grant.allowedSummaryIds.length > 0) {
       const allowedSet = new Set(grant.allowedSummaryIds);
       const unauthorized = request.summaryIds.filter((id) => !allowedSet.has(id));

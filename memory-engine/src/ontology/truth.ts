@@ -145,9 +145,16 @@ function findExistingByCanonicalKey(
     }
 
     if (kind === "decision") {
-      // Scan active decisions and compare normalized canonical keys.
-      // Can't rely on SQL normalization alone because normalize() collapses
-      // internal whitespace which TRIM() doesn't do.
+      // BUG 12: O(n) scan of all active decisions.
+      // This scans all rows and computes canonical keys in JS because normalize()
+      // collapses internal whitespace which SQL TRIM() doesn't do.
+      //
+      // TODO(perf): Add a `canonical_key` column to the decisions table via schema
+      // migration, then replace this scan with a direct WHERE canonical_key = ? query.
+      // Migration: ALTER TABLE decisions ADD COLUMN canonical_key TEXT;
+      //            CREATE INDEX idx_decisions_canonical ON decisions(canonical_key, scope_id)
+      //                WHERE status = 'active';
+      //            UPDATE decisions SET canonical_key = ... (backfill from topic);
       const rows = db.prepare(`
         SELECT id, status, 0.9 as confidence, decision_text as content, scope_id, topic
         FROM decisions

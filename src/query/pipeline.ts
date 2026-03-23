@@ -97,7 +97,14 @@ export async function query(
   // === Input validation ===
   const trimmed = queryText.trim();
   if (!trimmed) {
-    return emptyResult("", "rejected:empty", [], start);
+    const result = emptyResult("", "rejected:empty", [], start);
+    recordQuery({
+      timestamp: Date.now(), query: "", collection: options.collection ?? "",
+      strategy: "rejected:empty", elapsedMs: Date.now() - start,
+      candidates: 0, chunksReturned: 0, confidence: 0, cached: false,
+      vectorHits: 0, bm25Hits: 0, bestDistance: 0, reranked: false,
+    });
+    return result;
   }
   if (trimmed.length > MAX_QUERY_LENGTH) {
     queryText = trimmed.slice(0, MAX_QUERY_LENGTH);
@@ -110,7 +117,7 @@ export async function query(
   const tokenBudget = Math.min(options.tokenBudget ?? config.defaults.queryTokenBudget, 50000);
   const useReranker = (options.useReranker ?? true) && !config.reranker.disabled;
   const useBm25 = options.useBm25 ?? true;
-  const includeParent = options.includeParentContext !== false && !options.brief; // skip parent in brief mode
+  const includeParent = options.includeParentContext !== false; // brief/titles guard is applied later at usage site
   const doExpand = options.expand ?? isExpansionEnabled();
   const brief = options.brief ?? false;
   const titlesOnly = options.titlesOnly ?? false;
@@ -149,7 +156,14 @@ export async function query(
   } else {
     const existing = getCollectionByName(db, collectionName);
     if (!existing) {
-      return emptyResult(queryText, "collection-not-found", [collectionName], start);
+      const result = emptyResult(queryText, "collection-not-found", [collectionName], start);
+      recordQuery({
+        timestamp: Date.now(), query: queryText, collection: collectionName,
+        strategy: "collection-not-found", elapsedMs: Date.now() - start,
+        candidates: 0, chunksReturned: 0, confidence: 0, cached: false,
+        vectorHits: 0, bm25Hits: 0, bestDistance: 0, reranked: false,
+      });
+      return result;
     }
     searchCollections.push(existing.id);
   }
@@ -166,32 +180,37 @@ export async function query(
   let allQueryTexts: string[] = [queryText];
   let subQueries: string[] | undefined;
 
-  if (doExpand) {
-    const [decomposed, hydeText, variants] = await Promise.all([
-      decomposeQuery(queryText),
-      generateHyDE(queryText),
-      generateMultiQuery(queryText),
-    ]);
-    subQueries = decomposed.length > 1 ? decomposed : undefined;
-    allQueryTexts = [...new Set([queryText, ...decomposed, ...variants])];
-
-    // Parallelize query embeddings + HyDE embedding in a single Promise.all
-    if (hydeText) {
-      const [queryEmbeddings, hydeEmbeddings] = await Promise.all([
-        embed(allQueryTexts, "query"),
-        embed([hydeText], "passage"),
+  try {
+    if (doExpand) {
+      const [decomposed, hydeText, variants] = await Promise.all([
+        decomposeQuery(queryText),
+        generateHyDE(queryText),
+        generateMultiQuery(queryText),
       ]);
-      allQueryEmbeddings = [...queryEmbeddings, hydeEmbeddings[0]];
-      strategy = "expanded+hyde";
+      subQueries = decomposed.length > 1 ? decomposed : undefined;
+      allQueryTexts = [...new Set([queryText, ...decomposed, ...variants])];
+
+      // Parallelize query embeddings + HyDE embedding in a single Promise.all
+      if (hydeText) {
+        const [queryEmbeddings, hydeEmbeddings] = await Promise.all([
+          embed(allQueryTexts, "query"),
+          embed([hydeText], "passage"),
+        ]);
+        allQueryEmbeddings = [...queryEmbeddings, hydeEmbeddings[0]];
+        strategy = "expanded+hyde";
+      } else {
+        allQueryEmbeddings = await embed(allQueryTexts, "query");
+        strategy = "expanded";
+      }
+      // Track expansion tokens (all generated query variants)
+      const expansionTokens = allQueryTexts.reduce((s, q) => s + estimateTokens(q), 0);
+      trackTokens("queryExpansion", expansionTokens);
     } else {
-      allQueryEmbeddings = await embed(allQueryTexts, "query");
-      strategy = "expanded";
+      allQueryEmbeddings = [await embedQuery(queryText)];
     }
-    // Track expansion tokens (all generated query variants)
-    const expansionTokens = allQueryTexts.reduce((s, q) => s + estimateTokens(q), 0);
-    trackTokens("queryExpansion", expansionTokens);
-  } else {
-    allQueryEmbeddings = [await embedQuery(queryText)];
+  } catch (err) {
+    logger.warn({ err: err instanceof Error ? err.message : String(err) }, "Embedding failed, falling back to BM25-only retrieval");
+    allQueryEmbeddings = [];
   }
   // Track embed tokens for the query itself
   trackTokens("embed", estimateTokens(queryText));
@@ -255,9 +274,19 @@ export async function query(
     }
   }
 
+  // === Deduplicate vector results by chunkId (keep best distance) ===
+  const bestByChunk = new Map<string, (typeof allVectorResults)[number]>();
+  for (const r of allVectorResults) {
+    const prev = bestByChunk.get(r.chunkId);
+    if (!prev || r.distance < prev.distance) {
+      bestByChunk.set(r.chunkId, r);
+    }
+  }
+  const dedupedVectorResults = Array.from(bestByChunk.values());
+
   // === Similarity Threshold Gate ===
   // Filter out results with poor vector distance (likely irrelevant)
-  const goodVectorResults = allVectorResults.filter((r) => r.distance < getVectorDistanceThreshold());
+  const goodVectorResults = dedupedVectorResults.filter((r) => r.distance < getVectorDistanceThreshold());
 
   // === Hybrid Merge ===
   let candidateChunkIds: string[];
@@ -284,6 +313,13 @@ export async function query(
   if (candidateChunkIds.length === 0) {
     const result = emptyResult(queryText, strategy, collectionNames, start);
     setCached(ck, result);
+    recordQuery({
+      timestamp: Date.now(), query: queryText, collection: collectionName,
+      strategy, elapsedMs: Date.now() - start,
+      candidates: 0, chunksReturned: 0, confidence: 0, cached: false,
+      vectorHits: allVectorResults.length, bm25Hits: allBm25Results.length,
+      bestDistance: 0, reranked: false,
+    });
     return result;
   }
 
@@ -317,8 +353,9 @@ export async function query(
 
   // === Smart Reranking ===
   let rankedChunks: PackedChunk[];
+  let fallbackScores = false; // true when reranker scores are synthetic
   const noGoodVectors = goodVectorResults.length === 0;
-  const shouldSkipRerank = useReranker && config.reranker.smartSkip && chunkData.length >= 2 && shouldSkipReranking(allVectorResults);
+  const shouldSkipRerank = useReranker && config.reranker.smartSkip && chunkData.length >= 2 && shouldSkipReranking(goodVectorResults);
 
   if (useReranker && chunkData.length > 0 && !shouldSkipRerank && !noGoodVectors) {
     // Include contextPrefix (heading chain) so reranker sees same context as embedder
@@ -327,9 +364,12 @@ export async function query(
       c.contextPrefix ? `${c.contextPrefix}\n\n${c.text}` : c.text,
     );
     const rerankResults = await rerank(queryText, rerankTexts, topK * 2);
+    const isFallback = rerankResults.length > 0 && rerankResults[0].fallback === true;
+    fallbackScores = isFallback;
     const scoreThreshold = config.reranker.scoreThreshold;
     rankedChunks = rerankResults
-      .filter((r) => r.index >= 0 && r.index < chunkData.length && r.score >= scoreThreshold)
+      // Skip threshold filtering when using fallback scores (all scores are 1.0)
+      .filter((r) => r.index >= 0 && r.index < chunkData.length && (isFallback || r.score >= scoreThreshold))
       .map((r) => ({
         chunkId: chunkData[r.index].id,
         text: chunkData[r.index].text,
@@ -338,11 +378,12 @@ export async function query(
         collectionName: chunkData[r.index].collectionName ?? undefined,
         score: r.score,
       }));
-    strategy += "+rerank";
+    strategy += isFallback ? "+rerank-fallback" : "+rerank";
     // Track rerank tokens (query + all candidate texts)
     const rerankTokens = estimateTokens(queryText) + chunkData.reduce((s, c) => s + estimateTokens(c.text), 0);
     trackTokens("rerank", rerankTokens);
   } else {
+    fallbackScores = true;
     rankedChunks = chunkData.map((c, i) => ({
       chunkId: c.id,
       text: c.text,
@@ -361,10 +402,10 @@ export async function query(
   }
 
   // === Confidence ===
-  const bestDistance = allVectorResults.length > 0
-    ? Math.min(...allVectorResults.map((r) => r.distance))
+  const bestDistance = goodVectorResults.length > 0
+    ? Math.min(...goodVectorResults.map((r) => r.distance))
     : undefined;
-  const confidence = computeConfidence(topChunks, bestDistance);
+  const confidence = computeConfidence(topChunks, bestDistance, fallbackScores);
 
   // === Output Mode ===
   let context: string;
@@ -387,12 +428,27 @@ export async function query(
     highlighted = briefResult.highlighted;
     tokensUsed = briefResult.tokenCount;
     chunksReturned = topChunks.length;
-    sources = briefResult.sources.map((s) => ({
-      source: s,
-      chunkCount: 1,
-      avgScore: topChunks[0]?.score ?? 0,
-      collection: collectionName,
-    }));
+    // Group topChunks by source to compute per-source stats
+    const sourceChunkMap = new Map<string, { scores: number[]; collection?: string }>();
+    for (const c of topChunks) {
+      const src = c.sourcePath ?? "unknown";
+      const entry = sourceChunkMap.get(src);
+      if (entry) {
+        entry.scores.push(c.score);
+      } else {
+        sourceChunkMap.set(src, { scores: [c.score], collection: c.collectionName });
+      }
+    }
+    sources = briefResult.sources.map((s) => {
+      const entry = sourceChunkMap.get(s);
+      const scores = entry?.scores ?? [0];
+      return {
+        source: s,
+        chunkCount: scores.length,
+        avgScore: scores.reduce((a, b) => a + b, 0) / scores.length,
+        collection: entry?.collection ?? collectionName,
+      };
+    });
     strategy += "+brief";
   } else {
     // Full: rich citations with source attribution
@@ -431,11 +487,11 @@ export async function query(
       confidence,
       lowConfidence,
       retrieval: {
-        vectorHits: allVectorResults.length,
-        vectorGated: allVectorResults.length - goodVectorResults.length,
+        vectorHits: dedupedVectorResults.length,
+        vectorGated: dedupedVectorResults.length - goodVectorResults.length,
         bm25Hits: allBm25Results.length,
         bestDistance: Math.round((bestDistance ?? 0) * 1000) / 1000,
-        reranked: strategy.includes("rerank") && !strategy.includes("skip-rerank"),
+        reranked: strategy.includes("+rerank") && !strategy.includes("skip-rerank") && !strategy.includes("rerank-fallback"),
       },
     },
   };
@@ -453,10 +509,10 @@ export async function query(
     chunksReturned,
     confidence,
     cached: false,
-    vectorHits: allVectorResults.length,
+    vectorHits: dedupedVectorResults.length,
     bm25Hits: allBm25Results.length,
     bestDistance: Math.round((bestDistance ?? 0) * 1000) / 1000,
-    reranked: strategy.includes("rerank") && !strategy.includes("skip-rerank"),
+    reranked: strategy.includes("+rerank") && !strategy.includes("skip-rerank") && !strategy.includes("rerank-fallback"),
   });
 
   return result;
@@ -507,13 +563,18 @@ function dedupBySources(chunks: PackedChunk[]): PackedChunk[] {
   return Array.from(bySource.values());
 }
 
-function computeConfidence(chunks: PackedChunk[], bestDistance?: number): number {
+function computeConfidence(chunks: PackedChunk[], bestDistance?: number, fallbackScores = false): number {
   if (chunks.length === 0) return 0;
 
   // Absolute quality factor from best vector distance (L2: lower = better)
   const distFactor = bestDistance != null
     ? (bestDistance < 0.5 ? 0.8 : bestDistance < 0.8 ? 0.5 : bestDistance < 1.0 ? 0.3 : 0.1)
     : 0.5;
+
+  // When scores are synthetic (fallback/no-rerank), rely solely on distance
+  if (fallbackScores) {
+    return distFactor;
+  }
 
   if (chunks.length === 1) return distFactor;
 

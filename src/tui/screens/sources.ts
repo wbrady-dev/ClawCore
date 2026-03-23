@@ -320,12 +320,17 @@ function readEnv(envPath: string): string {
   return "";
 }
 
+/** Escape regex metacharacters in a string for safe use in new RegExp(). */
+function escapeRegex(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
 function envGet(env: string, key: string): string {
-  return env.match(new RegExp(`^${key}=(.*)`, "m"))?.[1]?.trim() ?? "";
+  return env.match(new RegExp(`^${escapeRegex(key)}=(.*)`, "m"))?.[1]?.trim() ?? "";
 }
 
 function updateEnvVarStr(env: string, key: string, value: string): string {
-  const pattern = new RegExp(`^${key}=.*`, "m");
+  const pattern = new RegExp(`^${escapeRegex(key)}=.*`, "m");
   if (pattern.test(env)) {
     return env.replace(pattern, `${key}=${value}`);
   }
@@ -547,9 +552,9 @@ export async function configureOneDrive(): Promise<void> {
   let env = "";
   try { env = readFileSync(envPath, "utf-8"); } catch {}
 
-  const envGet = (e: string, key: string) => e.match(new RegExp(`${key}=(.*)`))?.[1]?.trim() ?? "";
+  const envGet = (e: string, key: string) => e.match(new RegExp(`${escapeRegex(key)}=(.*)`))?.[1]?.trim() ?? "";
   const envSet = (e: string, key: string, val: string) => {
-    const re = new RegExp(`^${key}=.*$`, "m");
+    const re = new RegExp(`^${escapeRegex(key)}=.*$`, "m");
     if (re.test(e)) return e.replace(re, `${key}=${val}`);
     return e.trimEnd() + `\n${key}=${val}\n`;
   };

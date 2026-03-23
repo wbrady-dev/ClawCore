@@ -406,9 +406,13 @@ export class CompactionEngine {
     let level: CompactionLevel | undefined;
     let previousSummaryContent: string | undefined;
     let previousTokens = tokensBefore;
+    let totalRounds = 0;
 
     // Phase 1: leaf passes over oldest raw chunks outside the protected tail.
     while (true) {
+      if (++totalRounds > this.config.maxRounds) {
+        break;
+      }
       const leafChunk = await this.selectOldestLeafChunk(conversationId);
       if (leafChunk.items.length === 0) {
         break;
@@ -444,6 +448,9 @@ export class CompactionEngine {
 
     // Phase 2: depth-aware condensed passes, always processing shallowest depth first.
     while (true) {
+      if (++totalRounds > this.config.maxRounds) {
+        break;
+      }
       const candidate = await this.selectShallowestCondensationCandidate({
         conversationId,
         hardTrigger: hardTrigger === true,
@@ -812,7 +819,7 @@ export class CompactionEngine {
       typeof this.config.incrementalMaxDepth === "number" &&
       Number.isFinite(this.config.incrementalMaxDepth)
     ) {
-      if (this.config.incrementalMaxDepth < 0) return Infinity;
+      if (this.config.incrementalMaxDepth < 0) return 20;
       if (this.config.incrementalMaxDepth > 0) return Math.floor(this.config.incrementalMaxDepth);
     }
     return 0;

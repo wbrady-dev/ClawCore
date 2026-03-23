@@ -25,7 +25,7 @@ export function readLatestServiceLogLine(name: ServiceLogName, root = getRootDir
     .map((line) => sanitizeCommandLine(line))
     .filter(Boolean)
     // Filter out tqdm progress bars and garbled carriage-return output
-    .filter((line) => !line.includes("|") || !line.includes("%"))
+    .filter((line) => !/\d+%\|[█▏▎▍▌▋▊▉ ]+\|/.test(line))
     .filter((line) => !line.includes("checkpoint shard"));
 
   return lines[lines.length - 1] ?? "";

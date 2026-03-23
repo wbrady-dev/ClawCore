@@ -154,6 +154,7 @@ export function getArchiveDb(archivePath: string): DatabaseSync {
   mkdirSync(dirname(archivePath), { recursive: true });
   const db = new DatabaseSync(archivePath);
   db.exec("PRAGMA journal_mode = WAL");
+  db.exec("PRAGMA foreign_keys = ON");
   db.exec("PRAGMA busy_timeout = 5000");
   db.exec(ARCHIVE_SCHEMA);
   _archiveDb = db;
@@ -233,8 +234,19 @@ function archiveStaleClaims(
         e.confidence_delta, e.created_at, runId,
       );
     }
-    hotDb.prepare("DELETE FROM claim_evidence WHERE claim_id = ?").run(c.id);
-    hotDb.prepare("DELETE FROM claims WHERE id = ?").run(c.id);
+  }
+
+  // Wrap ALL hot-DB deletes in a single transaction (copy-before-delete is complete above)
+  hotDb.exec("BEGIN IMMEDIATE");
+  try {
+    for (const c of stale) {
+      hotDb.prepare("DELETE FROM claim_evidence WHERE claim_id = ?").run(c.id);
+      hotDb.prepare("DELETE FROM claims WHERE id = ?").run(c.id);
+    }
+    hotDb.exec("COMMIT");
+  } catch (err) {
+    hotDb.exec("ROLLBACK");
+    throw err;
   }
 
   return { archived: stale.length, candidates: stale.length };
@@ -268,8 +280,15 @@ function archiveSupersededDecisions(
     );
   }
 
-  for (const d of old) {
-    hotDb.prepare("DELETE FROM decisions WHERE id = ?").run(d.id);
+  hotDb.exec("BEGIN IMMEDIATE");
+  try {
+    for (const d of old) {
+      hotDb.prepare("DELETE FROM decisions WHERE id = ?").run(d.id);
+    }
+    hotDb.exec("COMMIT");
+  } catch (err) {
+    hotDb.exec("ROLLBACK");
+    throw err;
   }
 
   return { archived: old.length, candidates: old.length };
@@ -363,8 +382,15 @@ function archiveClosedLoops(
     );
   }
 
-  for (const l of old) {
-    hotDb.prepare("DELETE FROM open_loops WHERE id = ?").run(l.id);
+  hotDb.exec("BEGIN IMMEDIATE");
+  try {
+    for (const l of old) {
+      hotDb.prepare("DELETE FROM open_loops WHERE id = ?").run(l.id);
+    }
+    hotDb.exec("COMMIT");
+  } catch (err) {
+    hotDb.exec("ROLLBACK");
+    throw err;
   }
 
   return { archived: old.length, candidates: old.length };

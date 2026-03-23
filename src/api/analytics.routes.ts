@@ -159,10 +159,10 @@ export function registerAwarenessStatsGetter(getter: AwarenessStatsGetter): void
  */
 export function registerDiagnosticsRoute(server: FastifyInstance) {
   server.get("/analytics/diagnostics", async (req, reply) => {
-    const records = getRecords();
     if (!isLocalRequest(req)) {
       return reply.status(403).send({ error: "Forbidden" });
     }
+    const records = getRecords();
 
     const { config } = await import("../config.js");
     const { existsSync, statSync } = await import("fs");

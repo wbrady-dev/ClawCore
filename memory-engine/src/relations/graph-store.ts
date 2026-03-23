@@ -140,7 +140,7 @@ export function deleteGraphDataForSource(
 
   // Log the cleanup
   logEvidence(db, {
-    scopeId: 0,
+    scopeId: 1,
     objectType: "source",
     objectId: 0,
     eventType: "delete",

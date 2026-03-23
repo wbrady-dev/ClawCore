@@ -5,6 +5,8 @@ import { ingestFile } from "../ingest/pipeline.js";
 import { getDb, getCollectionByName } from "../storage/index.js";
 import { deleteDocument } from "../storage/collections.js";
 import { invalidateCollection } from "../query/cache.js";
+import { getGraphDb } from "../storage/graph-sqlite.js";
+import { deleteSourceData } from "../relations/ingest-hook.js";
 import { getSupportedExtensions } from "../ingest/parsers/index.js";
 import { isCircuitBreakerOpen } from "../embeddings/client.js";
 import { logger } from "../utils/logger.js";
@@ -39,16 +41,8 @@ function logError(msg: string): void {
  * File watcher service.
  * Monitors directories for new/changed files and auto-ingests them into ClawCore.
  */
-// Module-level singleton guard — survives hot reload, multiple instances, test isolation
-if (!process.listeners("unhandledRejection").some((l) => (l as any).__clawcoreWatcher)) {
-  const handler = (err: unknown) => { logger.error(`Watcher unhandled rejection: ${err}`); };
-  (handler as any).__clawcoreWatcher = true;
-  process.on("unhandledRejection", handler);
-}
-
 export class ClawCoreWatcher {
   private watchers: ReturnType<typeof watch>[] = [];
-  private debounceTimers = new Map<string, NodeJS.Timeout>();
   private configs: WatchConfig[];
   private processing = new Set<string>();
 
@@ -116,21 +110,13 @@ export class ClawCoreWatcher {
     // Skip if already processing this file
     if (this.processing.has(filePath)) return;
 
-    // Debounce: if the same file changes rapidly, only ingest once
-    const existing = this.debounceTimers.get(filePath);
-    if (existing) clearTimeout(existing);
-
-    const timer = setTimeout(() => {
-      this.debounceTimers.delete(filePath);
-      if (this.ingestQueue.length >= MAX_QUEUE_SIZE) {
-        logger.warn(`Watcher queue full (${MAX_QUEUE_SIZE}), dropping: ${filePath.split(/[\\/]/).pop()}`);
-        return;
-      }
-      this.ingestQueue.push({ filePath, wc });
-      this.drainQueue();
-    }, wc.debounceMs ?? DEFAULT_DEBOUNCE);
-
-    this.debounceTimers.set(filePath, timer);
+    // awaitWriteFinish already debounces — enqueue directly
+    if (this.ingestQueue.length >= MAX_QUEUE_SIZE) {
+      logger.warn(`Watcher queue full (${MAX_QUEUE_SIZE}), dropping: ${filePath.split(/[\\/]/).pop()}`);
+      return;
+    }
+    this.ingestQueue.push({ filePath, wc });
+    this.drainQueue();
   }
 
   /** Handle file deletion — remove document from index. */
@@ -151,6 +137,17 @@ export class ClawCoreWatcher {
 
       if (doc) {
         deleteDocument(db, doc.id);
+
+        // Clean up graph data for deleted document
+        if (config.relations.enabled) {
+          try {
+            const graphDb = getGraphDb(config.relations.graphDbPath);
+            deleteSourceData(graphDb, "document", doc.id);
+          } catch (graphErr) {
+            logger.warn({ filePath, error: String(graphErr) }, "Failed to clean up graph data for deleted file");
+          }
+        }
+
         invalidateCollection(collectionName);
         logger.info({ filePath }, "Document removed (file deleted)");
       }
@@ -213,10 +210,14 @@ export class ClawCoreWatcher {
   }
 
   async stop(): Promise<void> {
-    for (const timer of this.debounceTimers.values()) {
-      clearTimeout(timer);
+    // Drain the ingest queue (discard pending items)
+    this.ingestQueue.length = 0;
+
+    // Wait for active ingests to finish (up to 10s)
+    const deadline = Date.now() + 10_000;
+    while (this.activeIngests > 0 && Date.now() < deadline) {
+      await new Promise((r) => setTimeout(r, 100));
     }
-    this.debounceTimers.clear();
 
     for (const watcher of this.watchers) {
       await watcher.close();

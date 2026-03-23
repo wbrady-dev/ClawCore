@@ -48,7 +48,12 @@ export type LcmConfig = {
   // ── Horizon 2: Claims & Evidence ───────────────────────────────────────
   /** Enable claim extraction from tool results and compacted messages. */
   relationsClaimExtractionEnabled: boolean;
-  /** Enable claim extraction from user-explicit statements (Remember:, Note:, etc). */
+  /**
+   * Enable claim extraction from user-explicit statements (Remember:, Note:, etc).
+   * NOTE: RSMA semantic extraction (relationsExtractionMode="smart") bypasses
+   * this flag entirely. This only gates the LEGACY regex extraction pipeline.
+   * When RSMA is active, all user messages go through the semantic extractor.
+   */
   relationsUserClaimExtractionEnabled: boolean;
   /** Context compiler tier: lite (110 tokens), standard (190), premium (280). */
   relationsContextTier: string;
@@ -303,10 +308,18 @@ export function resolveLcmConfig(
       ?? toStr(pc.relationsDeepExtractionBaseUrl)
       ?? "",
     // ── RSMA Extraction Mode ────────────────────────────────────────────
+    // BUG 4 FIX: Derive default from whether deep extraction is enabled.
+    // "smart" requires an LLM model; if deep extraction is disabled, default to "fast"
+    // to avoid misleading behavior where "smart" silently falls back to regex anyway.
     relationsExtractionMode:
       (() => {
-        const mode = e("RELATIONS_EXTRACTION_MODE")?.trim() ?? toStr(pc.relationsExtractionMode) ?? "smart";
-        return mode === "fast" ? "fast" : "smart"; // Validate: only "smart" or "fast"
+        const explicit = e("RELATIONS_EXTRACTION_MODE")?.trim() ?? toStr(pc.relationsExtractionMode);
+        if (explicit) return explicit === "fast" ? "fast" : "smart";
+        // No explicit mode set — derive from deep extraction config
+        const deepEnabled = e("RELATIONS_DEEP_EXTRACTION_ENABLED") !== undefined
+          ? e("RELATIONS_DEEP_EXTRACTION_ENABLED") === "true"
+          : toBool(pc.relationsDeepExtractionEnabled) ?? false;
+        return deepEnabled ? "smart" : "fast";
       })(),
   };
 }

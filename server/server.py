@@ -65,12 +65,15 @@ MAX_PARSE_SIZE_MB = int(os.environ.get("MAX_PARSE_SIZE_MB", "100"))
 MAX_PARSE_OUTPUT_MB = int(os.environ.get("MAX_PARSE_OUTPUT_MB", "10"))
 _PARSE_ALLOWED_DIRS = [d.strip() for d in os.environ.get("PARSE_ALLOWED_DIRS", "").split(",") if d.strip()]
 
-# Path blocklist for /parse — mirrors Node.js ingest validation
-_BLOCKED_PATH_FRAGMENTS = [".env", "credentials", "secrets", ".git/config", "id_rsa", ".ssh/"]
-
+# Path blocklist for /parse — segment-aware matching (mirrors Node.js ingest validation)
 def _is_path_blocked(file_path: str) -> bool:
-    lower = file_path.lower().replace("\\", "/")
-    return any(b in lower for b in _BLOCKED_PATH_FRAGMENTS)
+    parts = file_path.lower().replace("\\", "/").split("/")
+    basename = parts[-1] if parts else ""
+    blocked_names = {".env", "credentials", "secrets", "id_rsa", "id_ed25519", "id_ecdsa", "id_dsa", "id_xmss"}
+    blocked_dirs = {".git", ".ssh", ".aws", ".docker", ".gnupg", ".kube", ".azure"}
+    if basename in blocked_names or basename.startswith(".env."):
+        return True
+    return any(seg in blocked_dirs for seg in parts)
 
 app = Flask(__name__)
 app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024  # 50 MB
@@ -222,9 +225,11 @@ def embeddings():
     # Input size limits
     if len(input_text) > 256:
         return jsonify({"error": f"Too many inputs ({len(input_text)}). Maximum: 256"}), 400
+    truncated = False
     for i, t in enumerate(input_text):
         if len(t) > 8192:
             input_text[i] = t[:8192]
+            truncated = True
 
     # Encode with OOM recovery: clear CUDA cache and retry with progressively
     # smaller batches. No CPU fallback — large models get mixed-device errors.
@@ -262,7 +267,7 @@ def embeddings():
             "index": i,
         })
 
-    return jsonify({
+    result = {
         "object": "list",
         "data": response_data,
         "model": EMBED_MODEL_ID,
@@ -271,7 +276,11 @@ def embeddings():
             "prompt_tokens": sum(max(len(t) // 4, 1) for t in input_text),
             "total_tokens": sum(max(len(t) // 4, 1) for t in input_text),
         },
-    })
+    }
+    if truncated:
+        result["truncated"] = True
+
+    return jsonify(result)
 
 
 @app.route("/rerank", methods=["POST"])

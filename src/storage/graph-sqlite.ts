@@ -26,9 +26,9 @@ export function getGraphDb(dbPath: string): Database.Database {
   }
   storedGraphPath = normalized;
 
-  mkdirSync(dirname(dbPath), { recursive: true });
+  mkdirSync(dirname(normalized), { recursive: true });
 
-  graphDb = new Database(dbPath);
+  graphDb = new Database(normalized);
   graphDb.pragma("journal_mode = WAL");
   graphDb.pragma("foreign_keys = ON");
   graphDb.pragma("busy_timeout = 5000");

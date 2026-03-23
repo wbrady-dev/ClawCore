@@ -136,7 +136,7 @@ const EMBED_CACHE_MAX = 200;
 const queryEmbedCache = new Map<string, number[]>();
 
 function embedCacheKey(text: string): string {
-  return `${config.embedding.prefixMode}:${text}`;
+  return `${config.embedding.model}:${config.embedding.prefixMode}:${text}`;
 }
 
 /**

@@ -7,7 +7,7 @@ import { getGraphDb } from "../storage/graph-sqlite.js";
 import { getTokenCounts } from "../utils/token-tracker.js";
 import { isLocalRequest } from "./guards.js";
 
-export function registerHealthRoutes(server: FastifyInstance) {
+export function registerHealthRoutes(server: FastifyInstance, onShutdown?: () => Promise<void>) {
   server.get("/health", async () => {
     const checks: Record<string, { status: string; detail?: string }> = {};
 
@@ -49,7 +49,11 @@ export function registerHealthRoutes(server: FastifyInstance) {
     }
     reply.send({ status: "shutting down" });
     // Graceful shutdown after response is sent
-    setTimeout(() => process.exit(0), 200);
+    if (onShutdown) {
+      setImmediate(() => onShutdown());
+    } else {
+      setTimeout(() => process.exit(0), 200);
+    }
   });
 
   server.get("/stats", async () => {

@@ -36,6 +36,13 @@ function forceCloseConnection(entry: ConnectionEntry): void {
 /**
  * Get a pooled connection to the graph database.
  * WAL mode, foreign keys ON, busy_timeout = 5000ms.
+ *
+ * WARNING: Ref counting is best-effort. If a caller calls closeGraphConnection()
+ * more times than getGraphConnection(), or if the process crashes between
+ * get/close, the connection may be closed while other callers still hold
+ * a reference. Callers MUST handle SQLITE_MISUSE errors (e.g., "database
+ * connection is not open") gracefully — typically by re-acquiring via
+ * getGraphConnection().
  */
 export function getGraphConnection(dbPath: string): DatabaseSync {
   const existing = _connections.get(dbPath);

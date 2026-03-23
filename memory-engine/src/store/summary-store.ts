@@ -385,8 +385,16 @@ export class SummaryStore {
        ON CONFLICT (summary_id, message_id) DO NOTHING`,
     );
 
-    for (let idx = 0; idx < messageIds.length; idx++) {
-      stmt.run(summaryId, messageIds[idx], idx);
+    let ownTx1 = false;
+    try { this.db.exec("BEGIN IMMEDIATE"); ownTx1 = true; } catch { /* already in transaction */ }
+    try {
+      for (let idx = 0; idx < messageIds.length; idx++) {
+        stmt.run(summaryId, messageIds[idx], idx);
+      }
+      if (ownTx1) this.db.exec("COMMIT");
+    } catch (err) {
+      if (ownTx1) this.db.exec("ROLLBACK");
+      throw err;
     }
   }
 
@@ -401,8 +409,16 @@ export class SummaryStore {
        ON CONFLICT (summary_id, parent_summary_id) DO NOTHING`,
     );
 
-    for (let idx = 0; idx < parentSummaryIds.length; idx++) {
-      stmt.run(summaryId, parentSummaryIds[idx], idx);
+    let ownTx2 = false;
+    try { this.db.exec("BEGIN IMMEDIATE"); ownTx2 = true; } catch { /* already in transaction */ }
+    try {
+      for (let idx = 0; idx < parentSummaryIds.length; idx++) {
+        stmt.run(summaryId, parentSummaryIds[idx], idx);
+      }
+      if (ownTx2) this.db.exec("COMMIT");
+    } catch (err) {
+      if (ownTx2) this.db.exec("ROLLBACK");
+      throw err;
     }
   }
 
@@ -596,8 +612,16 @@ export class SummaryStore {
       `INSERT INTO context_items (conversation_id, ordinal, item_type, message_id)
        VALUES (?, ?, 'message', ?)`,
     );
-    for (let idx = 0; idx < messageIds.length; idx++) {
-      stmt.run(conversationId, baseOrdinal + idx, messageIds[idx]);
+    let ownTx3 = false;
+    try { this.db.exec("BEGIN IMMEDIATE"); ownTx3 = true; } catch { /* already in transaction */ }
+    try {
+      for (let idx = 0; idx < messageIds.length; idx++) {
+        stmt.run(conversationId, baseOrdinal + idx, messageIds[idx]);
+      }
+      if (ownTx3) this.db.exec("COMMIT");
+    } catch (err) {
+      if (ownTx3) this.db.exec("ROLLBACK");
+      throw err;
     }
   }
 

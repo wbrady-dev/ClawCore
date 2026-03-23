@@ -534,11 +534,25 @@ export function runLcmMigrations(
     backfillConversationAgentIds(db);
   }
   db.exec(`CREATE INDEX IF NOT EXISTS conversations_agent_idx ON conversations (agent_id)`);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_conversations_session ON conversations(session_id, created_at)`);
 
   ensureSummaryDepthColumn(db);
   ensureSummaryMetadataColumns(db);
-  backfillSummaryDepths(db);
-  backfillSummaryMetadata(db);
+
+  // Only backfill if there are rows that still need it (no-op on already-migrated data)
+  const needsDepthBackfill = db.prepare(
+    `SELECT 1 FROM summaries WHERE kind = 'condensed' AND depth = 0 LIMIT 1`,
+  ).get();
+  if (needsDepthBackfill) {
+    backfillSummaryDepths(db);
+  }
+
+  const needsMetadataBackfill = db.prepare(
+    `SELECT 1 FROM summaries WHERE earliest_at IS NULL OR depth IS NULL LIMIT 1`,
+  ).get();
+  if (needsMetadataBackfill) {
+    backfillSummaryMetadata(db);
+  }
 
   const fts5Available = options?.fts5Available ?? getLcmDbFeatures(db).fts5Available;
   if (!fts5Available) {
@@ -602,4 +616,18 @@ export function runLcmMigrations(
       SELECT summary_id, content FROM summaries;
     `);
   }
+
+  // FTS5 cascade cleanup triggers — prevent ghost entries when parent rows are cascade-deleted
+  db.exec(`
+    CREATE TRIGGER IF NOT EXISTS messages_fts_delete AFTER DELETE ON messages
+    BEGIN
+      DELETE FROM messages_fts WHERE rowid = OLD.message_id;
+    END;
+  `);
+  db.exec(`
+    CREATE TRIGGER IF NOT EXISTS summaries_fts_delete AFTER DELETE ON summaries
+    BEGIN
+      DELETE FROM summaries_fts WHERE summary_id = OLD.summary_id;
+    END;
+  `);
 }

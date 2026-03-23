@@ -23,6 +23,7 @@ export function registerSourceRoutes(server: FastifyInstance) {
 
   /** Get current source status */
   server.get("/sources", async (_req, reply) => {
+    if (!isLocalRequest(_req)) return reply.status(403).send({ error: "Forbidden" });
     const entries = getSourceEntries();
     return reply.send({
       sources: entries.map((e) => ({

@@ -581,6 +581,26 @@ export function runGraphMigrations(db: GraphDb, dbPath?: string): void {
     markMigrationApplied(db, 12);
   }
 
+  // Migration v13: UNIQUE index on entity_mentions to enforce INSERT OR IGNORE dedup
+  if (!isMigrationApplied(db, 13)) {
+    db.exec(`
+      -- Deduplicate existing entity_mentions rows before adding UNIQUE constraint
+      DELETE FROM entity_mentions WHERE id NOT IN (
+        SELECT MIN(id) FROM entity_mentions
+        GROUP BY entity_id, source_type, source_id
+      );
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_entity_mention_dedup
+        ON entity_mentions(entity_id, source_type, source_id);
+    `);
+    markMigrationApplied(db, 13);
+  }
+
+  // Migration v14: Cleanup orphaned open_loops rows with invalid scope_id
+  if (!isMigrationApplied(db, 14)) {
+    db.exec(`DELETE FROM open_loops WHERE scope_id NOT IN (SELECT id FROM state_scopes)`);
+    markMigrationApplied(db, 14);
+  }
+
   // File permissions: chmod 600 on Unix/macOS, skip on Windows
   if (dbPath && process.platform !== "win32") {
     try {

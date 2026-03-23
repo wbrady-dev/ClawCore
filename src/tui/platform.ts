@@ -420,7 +420,7 @@ function findApiEntryArgs(root: string): string[] {
   return [tsxCli, resolve(root, "src", "index.ts")];
 }
 
-function findModelsScript(root: string): string {
+export function findModelsScript(root: string): string {
   const candidates = [
     resolve(root, "server", "server.py"),
     resolve(root, "..", "rerank-server.py"),       // legacy fallback

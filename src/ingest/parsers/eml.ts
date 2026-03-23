@@ -25,7 +25,8 @@ export async function parseEml(filePath: string): Promise<ParsedDocument> {
 
   parts.push(`Subject: ${parsed.subject ?? "(no subject)"}`);
   parts.push(`From: ${parsed.from?.text ?? "unknown"}`);
-  parts.push(`To: ${parsed.to?.text ?? "unknown"}`);
+  const toText = Array.isArray(parsed.to) ? parsed.to.map((t: { text: string }) => t.text).join(", ") : parsed.to?.text ?? "unknown";
+  parts.push(`To: ${toText}`);
   if (parsed.date) parts.push(`Date: ${parsed.date.toISOString()}`);
   parts.push("");
 

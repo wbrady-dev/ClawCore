@@ -37,6 +37,16 @@ export function isIdempotencyConflict(err: unknown): boolean {
   );
 }
 
+/**
+ * Execute `fn` inside a write transaction with optional idempotency.
+ *
+ * WARNING: This calls withWriteTransaction() internally, which issues
+ * BEGIN IMMEDIATE. Callers MUST NOT already be inside a transaction —
+ * SQLite does not support nested transactions and will throw
+ * "cannot start a transaction within a transaction". If you need
+ * idempotency inside an existing transaction, check the idempotency
+ * key manually before calling your write logic.
+ */
 export function writeWithIdempotency<T>(
   db: GraphDb,
   idempotencyKey: string | undefined,

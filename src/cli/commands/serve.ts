@@ -1,10 +1,10 @@
 import { Command } from "commander";
 import { spawn, execFileSync } from "child_process";
-import { resolve } from "path";
+import { resolve, dirname } from "path";
 import { existsSync } from "fs";
 import chalk from "chalk";
 import { config } from "../../config.js";
-import { getApiPort, getModelPort } from "../../tui/platform.js";
+import { getApiPort, getModelPort, getPythonCmd, findModelsScript } from "../../tui/platform.js";
 
 /**
  * Run both model server and ClawCore RAG API in a single terminal.
@@ -14,11 +14,7 @@ export const serveCommand = new Command("serve")
   .description("Run ClawCore services in this terminal (model server + RAG API)")
   .action(async () => {
     const root = config.rootDir;
-    const nemScript = resolve(root, "..", "rerank-server.py");
-    const nemScriptAlt = resolve(root, "server", "rerank-server.py");
-    const serverScript = nemScript.includes("rerank-server.py") && existsSync(nemScript)
-      ? nemScript
-      : nemScriptAlt;
+    const serverScript = findModelsScript(root);
 
     console.log("");
     console.log(chalk.bold.green("  ╔══════════════════════════════════╗"));
@@ -26,17 +22,8 @@ export const serveCommand = new Command("serve")
     console.log(chalk.bold.green("  ╚══════════════════════════════════╝"));
     console.log("");
 
-    // Find Python
-    let pythonCmd = "python";
-    try {
-      execFileSync("python3", ["--version"], { stdio: "pipe" });
-      pythonCmd = "python3";
-    } catch {
-      try {
-        execFileSync("python", ["--version"], { stdio: "pipe" });
-        pythonCmd = "python";
-      } catch {}
-    }
+    // Find Python (prefers venv)
+    const pythonCmd = getPythonCmd();
 
     const prefix = {
       nem: chalk.magenta("[models]  "),
@@ -83,7 +70,7 @@ export const serveCommand = new Command("serve")
 
     // Start Models
     const nemProcess = spawn(pythonCmd, [serverScript], {
-      cwd: resolve(root, ".."),
+      cwd: dirname(serverScript),
       stdio: ["ignore", "pipe", "pipe"],
     });
 

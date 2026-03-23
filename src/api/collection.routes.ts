@@ -19,7 +19,8 @@ function db() {
 }
 
 export function registerCollectionRoutes(server: FastifyInstance) {
-  server.get("/collections", async () => {
+  server.get("/collections", async (req, reply) => {
+    if (!isLocalRequest(req)) return reply.status(403).send({ error: "Forbidden" });
     const collections = listCollections(db());
     return { collections };
   });
@@ -95,6 +96,7 @@ export function registerCollectionRoutes(server: FastifyInstance) {
   });
 
   server.get("/collections/:id/stats", async (req, reply) => {
+    if (!isLocalRequest(req)) return reply.status(403).send({ error: "Forbidden" });
     const { id } = req.params as { id: string };
     const stats = getCollectionStats(db(), id);
     if (!stats) {

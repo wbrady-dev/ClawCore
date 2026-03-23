@@ -98,7 +98,12 @@ export class AppleNotesAdapter implements SourceAdapter {
     mkdirSync(STAGING_DIR, { recursive: true });
 
     // Initial sync
-    await this.sync();
+    try {
+      await this.sync();
+    } catch (err) {
+      logger.error({ source: "apple-notes", error: String(err) }, "Initial Apple Notes sync failed");
+      this.status = { state: "error", docCount: 0, error: `Initial sync failed: ${err}` };
+    }
 
     // Start polling
     const intervalMs = (cfg.syncInterval || 600) * 1000;
@@ -135,7 +140,10 @@ export class AppleNotesAdapter implements SourceAdapter {
         continue;
       }
 
+      const currentIds = new Set<string>();
+
       for (const note of notes) {
+        currentIds.add(note.id);
         const existing = this.manifest.get(note.id);
         if (!existing) {
           changes.added.push({
@@ -153,6 +161,13 @@ export class AppleNotesAdapter implements SourceAdapter {
             tags: ["apple-notes", folderName.toLowerCase().replace(/\s+/g, "-")],
             remoteTimestamp: note.modificationDate,
           });
+        }
+      }
+
+      // Detect removals: manifest entries no longer present in the folder
+      for (const [noteId] of this.manifest) {
+        if (!currentIds.has(noteId)) {
+          changes.removed.push(noteId);
         }
       }
     }
@@ -191,7 +206,7 @@ export class AppleNotesAdapter implements SourceAdapter {
     this.status = { ...this.status, state: "syncing" };
 
     const changes = await this.detectChanges();
-    const totalChanges = changes.added.length + changes.modified.length;
+    const totalChanges = changes.added.length + changes.modified.length + changes.removed.length;
 
     if (totalChanges === 0) {
       logger.info({ source: "apple-notes" }, "Apple Notes sync: no changes");
@@ -205,9 +220,17 @@ export class AppleNotesAdapter implements SourceAdapter {
     }
 
     logger.info(
-      { source: "apple-notes", added: changes.added.length, modified: changes.modified.length },
+      { source: "apple-notes", added: changes.added.length, modified: changes.modified.length, removed: changes.removed.length },
       "Apple Notes sync: changes detected",
     );
+
+    // Process removals — delete staging files and remove from manifest
+    for (const noteId of changes.removed) {
+      const stagingPath = join(STAGING_DIR, `${sanitizeFilename(noteId)}.html`);
+      try { if (existsSync(stagingPath)) unlinkSync(stagingPath); } catch {}
+      this.manifest.delete(noteId);
+      logger.info({ source: "apple-notes", noteId }, "Apple Note removed");
+    }
 
     const staged = await this.downloadToStaging(changes);
 
@@ -306,7 +329,12 @@ function getNoteBody(noteId: string): string {
 }
 
 function escapeAppleScript(s: string): string {
-  return s.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+  return s
+    .replace(/\\/g, "\\\\")
+    .replace(/"/g, '\\"')
+    .replace(/\n/g, "\\n")
+    .replace(/\r/g, "\\r")
+    .replace(/\t/g, "\\t");
 }
 
 function sanitizeFilename(s: string): string {

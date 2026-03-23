@@ -2,6 +2,7 @@ import Fastify from "fastify";
 import { resolve } from "path";
 import { existsSync, chmodSync, mkdirSync } from "fs";
 import { homedir } from "os";
+import { createHash, timingSafeEqual } from "crypto";
 import { config } from "./config.js";
 import { logger } from "./utils/logger.js";
 import { getDb, closeDb, runMigrations, ensureCollection } from "./storage/index.js";
@@ -79,27 +80,20 @@ export async function startServer() {
   // Rate limiting (before routes)
   registerRateLimit(server);
 
-  // Optional API key authentication
-  const apiKey = process.env.CLAWCORE_API_KEY;
-  if (apiKey) {
+  // Optional API key authentication (timing-safe comparison)
+  if (config.apiKey) {
+    const expectedHash = createHash("sha256").update(`Bearer ${config.apiKey}`).digest();
     server.addHook("onRequest", async (request, reply) => {
       const path = request.url.split("?")[0];
       if (path === "/health") return;
-      const auth = request.headers.authorization;
-      if (!auth || auth !== `Bearer ${apiKey}`) {
+      const auth = request.headers.authorization ?? "";
+      const suppliedHash = createHash("sha256").update(auth).digest();
+      if (!timingSafeEqual(expectedHash, suppliedHash)) {
         reply.code(401).send({ error: "Unauthorized — set Authorization: Bearer <key>" });
       }
     });
     logger.info("API key authentication enabled");
   }
-
-  // Register all routes
-  registerRoutes(server);
-
-  // Start source adapters (LocalAdapter handles file watching via WATCH_PATHS)
-  startSources().catch((err) => {
-    logger.error({ error: String(err) }, "Failed to start source adapters");
-  });
 
   // Graceful shutdown (guarded against double-call from SIGINT + /shutdown race)
   let shuttingDown = false;
@@ -117,11 +111,18 @@ export async function startServer() {
   process.on("SIGINT", shutdown);
   process.on("SIGTERM", shutdown);
 
+  // Register all routes (pass shutdown callback for /shutdown endpoint)
+  registerRoutes(server, shutdown);
+
+  // Start source adapters (LocalAdapter handles file watching via WATCH_PATHS)
+  startSources().catch((err) => {
+    logger.error({ error: String(err) }, "Failed to start source adapters");
+  });
+
   // Start HTTP server
   // Bind to localhost only — ClawCore serves local processes (OpenClaw, TUI)
   // Set CLAWCORE_HOST=0.0.0.0 in .env to expose to the network if needed
-  const host = process.env.CLAWCORE_HOST ?? "127.0.0.1";
-  await server.listen({ port: config.port, host });
+  await server.listen({ port: config.port, host: config.host });
   logger.info({ port: config.port }, "ClawCore HTTP server running");
 
   return server;
