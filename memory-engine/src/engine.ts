@@ -1657,7 +1657,8 @@ export class LcmContextEngine implements ContextEngine {
             const { upsertClaim } = await import("./relations/claim-store.js");
             const { upsertDecision } = await import("./relations/decision-store.js");
             const { openLoop } = await import("./relations/loop-store.js");
-            const { storeExtractionResult } = await import("./relations/graph-store.js");
+            const { storeExtractionResult, upsertEntity } = await import("./relations/graph-store.js");
+            const { upsertRelation } = await import("./relations/relation-store.js");
 
             withWriteTransaction(graphDb, () => {
               for (const obj of writerResult.objects) {
@@ -1695,6 +1696,27 @@ export class LcmContextEngine implements ContextEngine {
                     sourceType: "message",
                     sourceId: obj.provenance.source_id,
                   });
+                }
+
+                // Create entity relations from relationship events
+                // "Cassidy is my wife" → relation: Cassidy --married_to--> user
+                if (obj.kind === "claim" && s.subject && s.value && s.predicate
+                    && !["is", "states", "has", "user_i", "user_my"].includes(String(s.predicate))) {
+                  try {
+                    const subjEntity = upsertEntity(graphDb, { name: String(s.subject) });
+                    const objEntity = upsertEntity(graphDb, { name: String(s.value) });
+                    if (subjEntity.entityId && objEntity.entityId) {
+                      upsertRelation(graphDb, {
+                        scopeId: 1,
+                        subjectEntityId: subjEntity.entityId,
+                        predicate: String(s.predicate),
+                        objectEntityId: objEntity.entityId,
+                        confidence: obj.confidence,
+                        sourceType: "message",
+                        sourceId: obj.provenance.source_id,
+                      });
+                    }
+                  } catch { /* non-fatal */ }
                 }
 
                 if (obj.kind === "entity") {
