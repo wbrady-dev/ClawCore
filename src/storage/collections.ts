@@ -1,6 +1,8 @@
 import type Database from "better-sqlite3";
 import { v4 as uuidv4 } from "uuid";
 import { config } from "../config.js";
+import { getGraphDb } from "./graph-sqlite.js";
+import { deleteSourceData } from "../relations/ingest-hook.js";
 
 export interface Collection {
   id: string;
@@ -151,6 +153,14 @@ export function deleteDocument(db: Database.Database, documentId: string): { chu
     // Cascading deletes handle chunks, metadata_index; FTS triggers handle chunk_fts
     db.prepare("DELETE FROM documents WHERE id = ?").run(documentId);
   })();
+
+  // Clean up graph data if relations enabled
+  try {
+    if (config.relations?.enabled && config.relations?.graphDbPath) {
+      const graphDb = getGraphDb(config.relations.graphDbPath);
+      deleteSourceData(graphDb, "document", documentId);
+    }
+  } catch {} // Non-fatal — graph cleanup is best-effort
 
   return { chunksDeleted: chunkIds.length };
 }

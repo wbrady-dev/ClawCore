@@ -122,6 +122,8 @@ IMPORTANT — Do NOT extract any of the following:
 - The current time/date unless the user explicitly states it as a fact they want remembered
 - Repetitions of instructions, prompts, or system messages
 - That a user "sent" or "wrote" a message — focus on WHAT they communicated, not the act of communicating
+- Do NOT extract facts from code blocks, variable assignments, or programming constructs
+- Error messages and stack traces are transient debugging context, NOT permanent facts
 
 ONLY extract information the user is communicating as facts, decisions, preferences, tasks, or relationships about their world.
 
@@ -167,11 +169,14 @@ export async function semanticExtract(
 - If in doubt, do NOT extract. Return an empty events array.`
       : EXTRACTION_SYSTEM_PROMPT;
 
+    // Strip code blocks — they contain code, not user facts
+    const textForExtraction = text.replace(/```[\s\S]*?```/g, '[code block removed]');
+
     const result = await config.complete({
       model: config.model,
       provider: config.provider,
       system: systemPrompt,
-      messages: [{ role: "user", content: text.slice(0, maxChars) }],
+      messages: [{ role: "user", content: textForExtraction.slice(0, maxChars) }],
       temperature: 0.1,
       maxTokens: 1500,
     });
@@ -318,11 +323,21 @@ function isJunkClaim(event: { subject?: string; predicate?: string; value?: stri
   const pathPattern = /^[a-z]:\\|^\/[a-z]|\\users\\|\\home\//i;
   if (pathPattern.test(val) || pathPattern.test(subj)) return true;
 
+  // Skip URLs as values
+  if (val.startsWith("http://") || val.startsWith("https://") || val.startsWith("ftp://")) return true;
+
+  // Skip relative paths
+  if (val.startsWith("./") || val.startsWith("../") || val.match(/^src\/|^dist\/|^node_modules\//)) return true;
+
   // Skip very low confidence
-  if ((event.confidence ?? 0) < 0.2) return true;
+  if ((event.confidence ?? 0) < 0.35) return true;
 
   // Skip "X sent: message" type claims
   if (pred === "sent" || pred === "sender" || pred === "sent_by") return true;
+
+  // Skip claims with generic predicates that produce low-value knowledge
+  const genericPredicates = new Set(["states", "user_i", "user_my"]);
+  if (genericPredicates.has(pred)) return true;
 
   return false;
 }
@@ -338,7 +353,11 @@ function convertToWriterResult(
   const sourceKind: SourceKind = role === "user" ? "user_explicit" : "message";
   const timestamp = now();
 
+  const MAX_EVENTS_PER_MESSAGE = 15;
+  let eventCount = 0;
   for (const event of parsed.events) {
+    if (++eventCount > MAX_EVENTS_PER_MESSAGE) break;
+
     const kind = eventTypeToMemoryKind(event.type);
 
     // Filter junk claims before creating MemoryObjects
@@ -360,6 +379,14 @@ function convertToWriterResult(
       isPreference ? "high" :
       kind === "decision" ? "high" :
       "standard";
+
+    // Demote transient debugging context
+    if (kind === "claim") {
+      const lowerContent = (event.content ?? "").toLowerCase();
+      if (lowerContent.match(/\berror\b|\bexception\b|\bfailed\b|\bcrash\b|\b\d{3}\s+(error|not found|forbidden|unauthorized)\b/i)) {
+        confidence = Math.min(confidence, 0.4); // Cap at 0.4 — will decay quickly
+      }
+    }
 
     let structured: StructuredClaim | StructuredDecision | StructuredLoop;
     if (kind === "decision") {
