@@ -133,6 +133,7 @@ export function upsertMemoryObject(
         source_id = ?,
         source_detail = ?,
         source_authority = ?,
+        extraction_method = ?,
         last_observed_at = ?,
         observed_at = ?,
         updated_at = ?
@@ -153,6 +154,7 @@ export function upsertMemoryObject(
       sourceId,
       sourceDetail,
       sourceAuthority,
+      obj.provenance?.extraction_method ?? null,
       now,
       obj.observed_at ?? now,
       now,
@@ -168,6 +170,7 @@ export function upsertMemoryObject(
       scope_id, branch_id, status, confidence, trust_score,
       influence_weight, superseded_by,
       source_kind, source_id, source_detail, source_authority,
+      extraction_method,
       first_observed_at, last_observed_at, observed_at,
       created_at, updated_at
     ) VALUES (
@@ -175,6 +178,7 @@ export function upsertMemoryObject(
       ?, ?, ?, ?, ?,
       ?, ?,
       ?, ?, ?, ?,
+      ?,
       ?, ?, ?,
       ?, ?
     )
@@ -195,6 +199,7 @@ export function upsertMemoryObject(
     sourceId,
     sourceDetail,
     sourceAuthority,
+    obj.provenance?.extraction_method ?? null,
     obj.observed_at ?? now,
     obj.observed_at ?? now,
     obj.observed_at ?? now,
@@ -352,6 +357,7 @@ export function rowToMemoryObject(row: Record<string, unknown>): MemoryObject {
       source_detail: row.source_detail != null ? safeStr(row.source_detail) : undefined,
       actor: "system",
       trust: safeNum(row.trust_score, 0.5),
+      extraction_method: row.extraction_method != null ? safeStr(row.extraction_method) as import("./types.js").ExtractionMethod : undefined,
     },
 
     confidence: safeNum(row.confidence, 0.5),

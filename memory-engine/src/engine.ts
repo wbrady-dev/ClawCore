@@ -1735,6 +1735,52 @@ export class LcmContextEngine implements ContextEngine {
               } catch { /* non-fatal per relation */ }
             }
           } catch { /* non-fatal: relation extraction is best-effort */ }
+
+          // ── Deep extraction: LLM-powered entity relationship mining ──
+          // Uses the dedicated deep-extract module to find entity-to-entity
+          // relationships beyond what claim-based relation creation catches.
+          if (_config.relationsDeepExtractionEnabled && hasExtractionModel) {
+            try {
+              const { extractRelationsDeep } = await import("./relations/deep-extract.js");
+              const { upsertRelation: upsertRel } = await import("./relations/relation-store.js");
+              const { upsertEntity: upsertEnt } = await import("./relations/graph-store.js");
+
+              // Collect entity names from this extraction
+              const entityNames = writerResult.objects
+                .filter(o => o.kind === "entity")
+                .map(o => (o.structured as Record<string, unknown>)?.name)
+                .filter((n): n is string => typeof n === "string" && n.length > 0);
+
+              if (entityNames.length >= 2) {
+                const deepRelations = await extractRelationsDeep(
+                  _content,
+                  entityNames,
+                  _deps,
+                  _config,
+                );
+
+                for (const rel of deepRelations) {
+                  try {
+                    const subjEntity = upsertEnt(graphDb, { name: rel.subject });
+                    const objEntity = upsertEnt(graphDb, { name: rel.object });
+                    if (subjEntity.entityId && objEntity.entityId) {
+                      upsertRel(graphDb, {
+                        scopeId: 1,
+                        subjectEntityId: subjEntity.entityId,
+                        predicate: rel.predicate,
+                        objectEntityId: objEntity.entityId,
+                        confidence: rel.confidence ?? 0.8,
+                        sourceType: "message",
+                        sourceId: _messageId,
+                      });
+                    }
+                  } catch { /* non-fatal per relation */ }
+                }
+              }
+            } catch (deepErr) {
+              console.debug("[rsma] deep extraction failed:", deepErr instanceof Error ? deepErr.message : String(deepErr));
+            }
+          }
         }
         // Health monitoring: track success
         _rsmaSuccessCount++;

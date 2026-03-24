@@ -1129,6 +1129,15 @@ export function runGraphMigrations(db: GraphDb, dbPath?: string): void {
     markMigrationApplied(db, 19);
   }
 
+  // Migration v20: Add extraction_method column to memory_objects
+  if (!isMigrationApplied(db, 20)) {
+    const cols = db.prepare("PRAGMA table_info(memory_objects)").all() as Array<{ name: string }>;
+    if (!cols.some(c => c.name === "extraction_method")) {
+      db.exec("ALTER TABLE memory_objects ADD COLUMN extraction_method TEXT");
+    }
+    markMigrationApplied(db, 20);
+  }
+
   // File permissions: chmod 600 on Unix/macOS, skip on Windows
   if (dbPath && process.platform !== "win32") {
     try {
