@@ -26,7 +26,7 @@ import {
   type ModelInfo,
 } from "../models.js";
 import { selectMenu } from "../menu.js";
-import { readEnvMap, type EnvMap } from "../env.js";
+import { readEnvMap, writeEnvMap, backupEnvIfNeeded, updateEnvValues, getEnvPath, type EnvMap } from "../env.js";
 import { detectObsidianVaults } from "../../sources/adapters/obsidian.js";
 
 let cancelled = false;
@@ -491,6 +491,16 @@ export async function performInstallPlan(plan: InstallPlan): Promise<void> {
     }
   }
 
+  // ── Step 2b: Build TypeScript ──
+  sp = ora("Building ThreadClaw...").start();
+  try {
+    await runCommandWithSpinner(sp, "Building...", npmCmd, ["run", "build"], { cwd: root, timeoutMs: 60000 });
+    sp.succeed("ThreadClaw built");
+  } catch {
+    sp.warn("Build failed — will use development mode");
+    failures.push("Build: npm run build failed. Run: npm run build");
+  }
+
   // ── Step 3: Python dependencies ──
   // install.bat/install.sh handle venv creation and pinned pip installs.
   // If running directly (not via install script), install deps here.
@@ -832,7 +842,8 @@ export async function loginHuggingFace(
 
 async function warmModel(python: string, model: ModelInfo, trustRemoteCode: boolean, loader: "SentenceTransformer" | "CrossEncoder"): Promise<void> {
   const trustArg = trustRemoteCode ? ", trust_remote_code=True" : "";
-  const sp = ora(`Downloading ${model.name}...`).start();
+  const sizeLabel = model.sizeMb ? ` (~${model.sizeMb >= 1000 ? (model.sizeMb / 1000).toFixed(1) + " GB" : model.sizeMb + " MB"})` : "";
+  let sp = ora(`Downloading ${model.name}${sizeLabel}...`).start();
   // Write Python code to temp file instead of using -c flag.
   // On Windows, spawn with shell:false and long -c strings can cause EINVAL.
   const script = loader === "SentenceTransformer"
@@ -840,14 +851,27 @@ async function warmModel(python: string, model: ModelInfo, trustRemoteCode: bool
     : `import sys\nfrom sentence_transformers import CrossEncoder\nCrossEncoder(sys.argv[1]${trustArg})`;
   const tmpScript = resolve(tmpdir(), `threadclaw_warm_${randomUUID()}.py`);
   writeFileSync(tmpScript, script);
+  // 300ms per MB = ~3.3 MB/s minimum speed. 1.5GB model = 450s, 6GB model = 1800s
+  const timeoutMs = Math.max(900000, (model.sizeMb || 1500) * 300);
   try {
-    await runCommandWithSpinner(sp, `Downloading ${model.name}...`, python, [tmpScript, model.id], {
-      timeoutMs: 900000,
+    await runCommandWithSpinner(sp, `Downloading ${model.name}${sizeLabel}...`, python, [tmpScript, model.id], {
+      timeoutMs,
     });
     sp.succeed(`${model.name} ready`);
   } catch (error) {
-    sp.fail(`${model.name} download failed.`);
-    throw new Error(`Model download failed for ${model.name}: ${String(error).slice(0, 200)}`);
+    const msg = String(error);
+    let hint = "";
+    if (msg.includes("403") || msg.includes("Forbidden") || msg.includes("gated"))
+      hint = "\nThis model may require authentication. Run: huggingface-cli login";
+    else if (msg.includes("429") || msg.includes("rate"))
+      hint = "\nRate limited by HuggingFace. Wait 60 seconds and retry.";
+    else if (msg.includes("disk") || msg.includes("space") || msg.includes("ENOSPC"))
+      hint = "\nInsufficient disk space. Free up space and retry.";
+    else if (msg.includes("timed out") || msg.includes("timeout"))
+      hint = "\nDownload timed out. Check your internet connection and retry.";
+
+    sp.fail(`${model.name} download failed.${hint}`);
+    throw new Error(`Model download failed for ${model.name}: ${msg.slice(0, 300)}${hint}`);
   } finally {
     try { unlinkSync(tmpScript); } catch {}
   }

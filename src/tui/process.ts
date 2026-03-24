@@ -34,13 +34,26 @@ export async function runStreamedCommand(
     let stderrBuffer = "";
     let settled = false;
     let timeout: NodeJS.Timeout | null = null;
+    let lastActivity = Date.now();
+    let activityCheck: NodeJS.Timeout | null = null;
 
     const finish = (fn: () => void) => {
       if (settled) return;
       settled = true;
       if (timeout) clearTimeout(timeout);
+      if (activityCheck) clearInterval(activityCheck);
       fn();
     };
+
+    // Kill the process if no stdout/stderr output for 120 seconds
+    activityCheck = setInterval(() => {
+      if (settled) return;
+      const idle = Date.now() - lastActivity;
+      if (idle > 120_000) {
+        try { child.kill(); } catch {}
+        finish(() => reject(new Error(`Command stalled: no output for ${Math.round(idle / 1000)}s`)));
+      }
+    }, 10_000);
 
     const emitBufferedLines = (chunk: string, source: "stdout" | "stderr", carry: string): string => {
       const combined = carry + chunk;
@@ -56,12 +69,14 @@ export async function runStreamedCommand(
     child.stdout?.on("data", (chunk: Buffer | string) => {
       const text = chunk.toString();
       stdout += text;
+      lastActivity = Date.now();
       stdoutBuffer = emitBufferedLines(text, "stdout", stdoutBuffer);
     });
 
     child.stderr?.on("data", (chunk: Buffer | string) => {
       const text = chunk.toString();
       stderr += text;
+      lastActivity = Date.now();
       stderrBuffer = emitBufferedLines(text, "stderr", stderrBuffer);
     });
 
