@@ -4,6 +4,7 @@
  * Based on lossless-claw by Martian Engineering (MIT License).
  * Surface-rebranded for ClawCore integration.
  */
+console.log("[cc-mem] ████ ClawCore Memory Engine v0.3.2-unified loaded ████");
 import { readFileSync, writeFileSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
