@@ -662,7 +662,7 @@ export async function performInstallPlan(plan: InstallPlan): Promise<void> {
   // Three-way .env merge: preserve user customizations, add new keys, keep unknown keys
   const templateEnv: EnvMap = {
     THREADCLAW_PORT: "18800",
-    THREADCLAW_DATA_DIR: "./data",
+    THREADCLAW_DATA_DIR: resolve(root, "data"),
     EMBEDDING_URL: process.env.EMBEDDING_URL ?? "http://127.0.0.1:8012/v1",
     EMBEDDING_MODEL: embedChoice.id,
     EMBEDDING_DIMENSIONS: String(embedChoice.dims),
@@ -1136,6 +1136,14 @@ function printVerification(root: string, python: string, envPath: string): void 
   } catch {
     checks.push(["Tesseract OCR", false, "Download: https://github.com/UB-Mannheim/tesseract/wiki"]);
   }
+
+  // RAG database
+  const env = readEnvMap(root);
+  const dataDir = env.THREADCLAW_DATA_DIR || resolve(root, "data");
+  const dbPath = resolve(dataDir, "threadclaw.db");
+  const homeDbPath = resolve(process.env.HOME || process.env.USERPROFILE || "~", ".threadclaw", "data", "threadclaw.db");
+  const dbExists = existsSync(dbPath) || existsSync(homeDbPath);
+  checks.push(["RAG database", dbExists, dbExists ? undefined : "Database will be created on first service start"]);
 
   // Config
   checks.push(["Configuration file", existsSync(envPath)]);

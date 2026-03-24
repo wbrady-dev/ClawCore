@@ -110,7 +110,7 @@ if exist "%SCRIPT_DIR%\node_modules\.install-ok" (
 )
 echo.
 echo [install] Installing Node.js dependencies...
-call npm install --no-audit --no-fund
+call npm install --loglevel=http --no-audit --no-fund
 if errorlevel 1 (
     echo [ERROR] npm install failed.
     pause
@@ -157,13 +157,6 @@ echo.
 echo  ========================================
 echo   Installation complete!
 echo  ========================================
-echo.
-echo  Next steps:
-echo    1. Close this window completely
-echo    2. Open a NEW terminal (PowerShell or Command Prompt)
-echo    3. Type: threadclaw
-echo.
-echo  The 'threadclaw' command only works in NEW terminal windows.
 echo.
 
 pause

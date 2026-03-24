@@ -810,7 +810,7 @@ function HomeScreen({ onAction }: { onAction: (action: string) => void }) {
 
       {/* ── Onboarding CTA ── */}
       {!anyRunning && sourceIcons.length === 0 && docCount === 0 && (
-        <Text>{t.warn("  \u2192 Get started: select 'Sources' to add a folder, then 'Start Services'")}</Text>
+        <Text>{t.warn("  \u2192 Get started: select 'Start Services' to begin, then add folders from 'Sources'")}</Text>
       )}
 
       {/* ── Activity / Service Action ── */}

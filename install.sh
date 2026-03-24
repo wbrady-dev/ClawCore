@@ -83,7 +83,7 @@ if [ ! -f "$SCRIPT_DIR/node_modules/.install-ok" ]; then
   echo ""
   echo "[install] Installing Node.js dependencies..."
   set +e
-  npm install --no-audit --no-fund >> "$LOG" 2>&1
+  npm install --loglevel=http --no-audit --no-fund 2>&1 | tee -a "$LOG"
   NPM_RC=$?
   set -e
   if [ $NPM_RC -ne 0 ]; then
@@ -139,11 +139,6 @@ if [ $EXIT_CODE -eq 0 ]; then
   echo "  ========================================"
   echo "   Installation complete! (${MINS}m ${SECS}s)"
   echo "  ========================================"
-  echo ""
-  echo "  Next steps:"
-  echo "    1. Run 'threadclaw doctor' to verify everything"
-  echo "    2. Run 'threadclaw start' to launch services"
-  echo "    3. Run 'threadclaw tui' to open the dashboard"
   echo ""
   echo "  Full install log: $LOG"
 else
