@@ -39,8 +39,8 @@ export async function performServiceAction(
     // Model server may take time to release GPU memory
     options.onStatus?.("Waiting for services to stop...");
     await Promise.all([
-      waitForPortClosed(getApiPort(), STOP_WAIT_TIMEOUT),
-      waitForPortClosed(getModelPort(), STOP_WAIT_TIMEOUT),
+      waitForPortClosed(getApiPort(), STOP_WAIT_TIMEOUT, options.onStatus),
+      waitForPortClosed(getModelPort(), STOP_WAIT_TIMEOUT, options.onStatus),
     ]);
 
     // Verify ports are actually closed — if not, force-kill async
@@ -89,18 +89,36 @@ export async function performServiceAction(
 
   const modelWait = await waitForHealthWithLogs(getModelPort(), MODEL_WAIT_TIMEOUT, "models", root, "Waiting for model server...", options.onStatus);
   if (!modelWait.success) {
-    return modelWait;
+    options.onStatus?.("Model server failed — cleaning up...");
+    stopServices();
+    const msg = "Model server failed to start";
+    if (action === "restart") {
+      return { success: false, message: `Services stopped but failed to restart: ${msg}. Run 'threadclaw start' to retry.` };
+    }
+    return { success: false, message: msg };
   }
 
   options.onStatus?.("Launching ThreadClaw API...");
   const apiResult = startThreadClawApi();
   if (!apiResult.success) {
-    return { success: false, message: apiResult.error ?? "Failed to launch ThreadClaw API" };
+    options.onStatus?.("API launch failed — cleaning up model server...");
+    stopServices();
+    const msg = apiResult.error ?? "Failed to launch ThreadClaw API";
+    if (action === "restart") {
+      return { success: false, message: `Services stopped but failed to restart: ${msg}. Run 'threadclaw start' to retry.` };
+    }
+    return { success: false, message: `${msg} (model server cleaned up)` };
   }
 
   const apiWait = await waitForHealthWithLogs(getApiPort(), API_WAIT_TIMEOUT, "threadclaw", root, "Waiting for ThreadClaw API...", options.onStatus);
   if (!apiWait.success) {
-    return apiWait;
+    options.onStatus?.("API health check failed — cleaning up...");
+    stopServices();
+    const msg = "API failed to start (model server cleaned up)";
+    if (action === "restart") {
+      return { success: false, message: `Services stopped but failed to restart: ${msg}. Run 'threadclaw start' to retry.` };
+    }
+    return { success: false, message: msg };
   }
 
   return {
@@ -122,13 +140,15 @@ async function waitForHealthWithLogs(
 
   while (Date.now() - start < timeoutMs) {
     try {
-      const response = await fetch(`http://127.0.0.1:${port}/health`, {
+      // Any HTTP response (200, 503, etc.) means the server process is running.
+      // Only connection errors (fetch throws) mean "not started yet".
+      await fetch(`http://127.0.0.1:${port}/health`, {
         signal: AbortSignal.timeout(1200),
       });
-      if (response.ok) {
-        return { success: true, message: prefix.replace(/^Waiting for /, "").replace(/\.\.\.$/, "") };
-      }
-    } catch {}
+      return { success: true, message: prefix.replace(/^Waiting for /, "").replace(/\.\.\.$/, "") };
+    } catch {
+      // Connection refused / timeout — server not up yet
+    }
 
     const currentLine = readLatestServiceLogLine(logName, root);
     if (currentLine && currentLine !== lastLine) {
@@ -145,13 +165,23 @@ async function waitForHealthWithLogs(
   };
 }
 
-async function waitForPortClosed(port: number, timeoutMs: number): Promise<void> {
+async function waitForPortClosed(
+  port: number,
+  timeoutMs: number,
+  onStatus?: (detail: string) => void,
+): Promise<void> {
   const start = Date.now();
+  let lastLogAt = 0;
   while (Date.now() - start < timeoutMs) {
     try {
       await fetch(`http://127.0.0.1:${port}/health`, {
         signal: AbortSignal.timeout(800),
       });
+      const elapsed = Date.now() - start;
+      if (elapsed - lastLogAt >= 5000) {
+        lastLogAt = elapsed;
+        onStatus?.(`Waiting for services to stop... (${Math.round(elapsed / 1000)}s elapsed)`);
+      }
       await sleep(400);
     } catch {
       return;

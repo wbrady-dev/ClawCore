@@ -25,6 +25,40 @@ export function ensureEnvFile(root: string): string {
   return envPath;
 }
 
+/**
+ * Strip surrounding quotes from a value and unescape inner sequences.
+ * Handles both "double" and 'single' quoted strings.
+ */
+function stripQuotes(raw: string): string {
+  if (raw.length >= 2) {
+    if ((raw.startsWith('"') && raw.endsWith('"')) ||
+        (raw.startsWith("'") && raw.endsWith("'"))) {
+      const inner = raw.slice(1, -1);
+      // Unescape common sequences (only meaningful for double-quoted)
+      if (raw.startsWith('"')) {
+        return inner
+          .replace(/\\n/g, "\n")
+          .replace(/\\r/g, "\r")
+          .replace(/\\"/g, '"')
+          .replace(/\\\\/g, "\\");
+      }
+      return inner;
+    }
+  }
+  return raw;
+}
+
+/**
+ * Escape a value so it can be safely stored inside double quotes in .env.
+ */
+function escapeEnvValue(value: string): string {
+  return value
+    .replace(/\\/g, "\\\\")
+    .replace(/"/g, '\\"')
+    .replace(/\n/g, "\\n")
+    .replace(/\r/g, "\\r");
+}
+
 export function readEnvMap(root: string): EnvMap {
   const envPath = getEnvPath(root);
   if (!existsSync(envPath)) return {};
@@ -37,8 +71,9 @@ export function readEnvMap(root: string): EnvMap {
     const separator = trimmed.indexOf("=");
     if (separator <= 0) continue;
     const key = trimmed.slice(0, separator).trim();
-    const value = trimmed.slice(separator + 1).trim();
-    values[key] = value;
+    const raw = trimmed.slice(separator + 1).trim();
+    // Last occurrence wins (handles duplicate keys in file)
+    values[key] = stripQuotes(raw);
   }
   return values;
 }
@@ -50,9 +85,24 @@ export function readEnvValue(root: string, key: string, fallback = ""): string {
 export function writeEnvMap(root: string, values: EnvMap): void {
   const envPath = ensureEnvFile(root);
   const lines = ["# ThreadClaw Configuration"];
-  const entries = Object.entries(values).sort(([left], [right]) => left.localeCompare(right));
-  for (const [key, value] of entries) {
-    lines.push(`${key}=${value}`);
+
+  // Object.entries already deduplicates (last assignment wins), but sort for determinism
+  const seen = new Set<string>();
+  const deduped: [string, string][] = [];
+  const entries = Object.entries(values);
+  // Walk backwards so last occurrence wins, then reverse for correct order
+  for (let i = entries.length - 1; i >= 0; i--) {
+    const [key] = entries[i];
+    if (!seen.has(key)) {
+      seen.add(key);
+      deduped.push(entries[i]);
+    }
+  }
+  deduped.reverse();
+  deduped.sort(([left], [right]) => left.localeCompare(right));
+
+  for (const [key, value] of deduped) {
+    lines.push(`${key}="${escapeEnvValue(value)}"`);
   }
   const tmpPath = envPath + ".tmp";
   writeFileSync(tmpPath, lines.join("\n") + "\n");
@@ -81,11 +131,24 @@ export function updateEnvValues(root: string, updates: EnvMap): void {
   let content = readFileSync(envPath, "utf-8");
 
   for (const [key, value] of Object.entries(updates)) {
-    const pattern = new RegExp(`^${escapeRegExp(key)}=.*$`, "m");
-    if (pattern.test(content)) {
-      content = content.replace(pattern, `${key}=${value}`);
+    const quoted = `${key}="${escapeEnvValue(value)}"`;
+    // Global flag replaces ALL occurrences of this key (dedup on write)
+    const testPattern = new RegExp(`^${escapeRegExp(key)}=.*$`, "m");
+    if (testPattern.test(content)) {
+      // Replace first occurrence, remove subsequent duplicates
+      const replacePattern = new RegExp(`^${escapeRegExp(key)}=.*$`, "gm");
+      let first = true;
+      content = content.replace(replacePattern, (match) => {
+        if (first) {
+          first = false;
+          return quoted;
+        }
+        return ""; // remove duplicate lines
+      });
+      // Clean up blank lines left by removed duplicates
+      content = content.replace(/\n{3,}/g, "\n\n");
     } else {
-      content = content.trimEnd() + `\n${key}=${value}\n`;
+      content = content.trimEnd() + `\n${quoted}\n`;
     }
   }
 
