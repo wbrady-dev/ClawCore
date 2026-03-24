@@ -310,9 +310,17 @@ export async function runInstall(): Promise<void> {
     const remaining = gpu.vramTotalMb - totalVram;
     const remainingColor = remaining > 4000 ? t.ok : remaining > 1000 ? t.warn : t.err;
     console.log(kvLine("Remaining VRAM", remainingColor(`${remaining} MB`)));
+    // Warn when combined VRAM exceeds 90% of GPU — leaves too little for OS/desktop.
+    // Also warn when it exceeds 100% (obviously won't fit).
     if (remaining < 0) {
-      const { forceVram } = await prompts({ type: "confirm", name: "forceVram", message: "Continue with these models?", initial: false }, { onCancel });
+      console.log(t.err("  These models together exceed your GPU's VRAM. They will not fit."));
+      const { forceVram } = await prompts({ type: "confirm", name: "forceVram", message: "Force install anyway? (will likely OOM)", initial: false }, { onCancel });
       if (!forceVram || cancelled) return;
+    } else if (totalVram > gpu.vramTotalMb * 0.9) {
+      console.log(t.warn("  Combined VRAM usage is very high (>90%). Model server may OOM under load."));
+      console.log(t.dim("  Consider a lighter reranker or choosing Standard tier instead."));
+      const { continueVram } = await prompts({ type: "confirm", name: "continueVram", message: "Continue with these models?", initial: true }, { onCancel });
+      if (!continueVram || cancelled) return;
     }
   }
 
@@ -427,10 +435,15 @@ export async function performInstallPlan(plan: InstallPlan): Promise<void> {
 
   // ── Step 1: Node.js dependencies ──
   let sp = ora("Installing Node.js dependencies...").start();
-  if (process.env.THREADCLAW_SKIP_NODE_INSTALL === "1") {
+  // Only honour the skip flag when install root matches the source root (where
+  // install.bat ran npm install). If files were copied to a different location
+  // (e.g. .openclaw), we must run npm install there.
+  const canSkipNode = process.env.THREADCLAW_SKIP_NODE_INSTALL === "1" && root === sourceRoot;
+  if (canSkipNode) {
     sp.succeed("Node.js dependencies already bootstrapped");
     delete process.env.THREADCLAW_SKIP_NODE_INSTALL;
   } else {
+    delete process.env.THREADCLAW_SKIP_NODE_INSTALL;
     try {
       await runCommandWithSpinner(sp, "Installing Node.js dependencies...", npmCmd, ["install"], {
         cwd: root,
@@ -504,6 +517,9 @@ export async function performInstallPlan(plan: InstallPlan): Promise<void> {
   // ── Step 3: Python dependencies ──
   // install.bat/install.sh handle venv creation and pinned pip installs.
   // If running directly (not via install script), install deps here.
+  // Force progress output for pip and HuggingFace downloads so the spinner
+  // shows download progress instead of appearing frozen.
+  const pipEnv = { ...process.env, PIP_PROGRESS_BAR: "on", PYTHONUNBUFFERED: "1" };
   const reqsFile = resolve(root, "server", "requirements-pinned.txt");
   let pythonReady = false;
   try {
@@ -526,15 +542,15 @@ export async function performInstallPlan(plan: InstallPlan): Promise<void> {
       if (!hasTorch) {
         if (process.platform === "darwin") {
           await runCommandWithSpinner(sp, "Installing PyTorch...", python,
-            ["-m", "pip", "install", "torch", "torchvision"], { timeoutMs: 600000 });
+            ["-m", "pip", "install", "torch", "torchvision"], { timeoutMs: 600000, env: pipEnv });
         } else {
           try {
             await runCommandWithSpinner(sp, "Installing GPU PyTorch...", python,
               ["-m", "pip", "install", "torch", "torchvision", "--index-url", "https://download.pytorch.org/whl/cu124"],
-              { timeoutMs: 600000 });
+              { timeoutMs: 600000, env: pipEnv });
           } catch {
             await runCommandWithSpinner(sp, "Installing CPU PyTorch...", python,
-              ["-m", "pip", "install", "torch", "torchvision"], { timeoutMs: 600000 });
+              ["-m", "pip", "install", "torch", "torchvision"], { timeoutMs: 600000, env: pipEnv });
           }
         }
       }
@@ -542,10 +558,10 @@ export async function performInstallPlan(plan: InstallPlan): Promise<void> {
       // All other deps via pinned requirements or individual installs
       if (existsSync(reqsFile)) {
         await runCommandWithSpinner(sp, "Installing pinned dependencies...", python,
-          ["-m", "pip", "install", "-r", reqsFile], { timeoutMs: 600000 });
+          ["-m", "pip", "install", "-r", reqsFile], { timeoutMs: 600000, env: pipEnv });
       } else {
         await runCommandWithSpinner(sp, "Installing core deps...", python,
-          ["-m", "pip", "install", "sentence-transformers", "flask", "spacy", "docling"], { timeoutMs: 600000 });
+          ["-m", "pip", "install", "sentence-transformers", "flask", "spacy", "docling"], { timeoutMs: 600000, env: pipEnv });
       }
       sp.succeed("Python dependencies installed");
     } catch (error) {
@@ -746,6 +762,40 @@ export async function performInstallPlan(plan: InstallPlan): Promise<void> {
   }
 
   setRootDirOverride(root);
+
+  // ── Run schema migrations + write manifest (same as `threadclaw upgrade`) ──
+  // Fresh installs need this for DB init, schema creation, and manifest.
+  try {
+    const { ensureThreadClawHome, getAppVersion, readManifest, writeManifest, THREADCLAW_DATA_DIR } = await import("../../version.js");
+    ensureThreadClawHome();
+
+    // RAG DB migration
+    const ragDbPath = resolve(THREADCLAW_DATA_DIR, "threadclaw.db");
+    if (existsSync(ragDbPath)) {
+      try {
+        const { DatabaseSync } = await import("node:sqlite");
+        const { runMigrations } = await import("../../storage/index.js");
+        const db = new DatabaseSync(ragDbPath);
+        runMigrations(db as any);
+        db.close();
+      } catch {}
+    }
+
+    // Write initial manifest so upgrade detection works on next launch
+    const manifest = readManifest();
+    if (!manifest.appVersion) {
+      writeManifest({
+        ...manifest,
+        appVersion: getAppVersion(),
+        lastUpgradeAt: new Date().toISOString(),
+        features: { ...manifest.features, managedIntegration: true, consolidatedData: true, noAutoMigrate: true },
+      });
+    }
+  } catch (upgradeErr) {
+    console.error(t.warn(`  Post-install upgrade step failed (non-fatal): ${String(upgradeErr).slice(0, 200)}`));
+    console.error(t.dim("  Run `threadclaw upgrade` manually after install to complete setup."));
+  }
+
   printVerification(root, python, envPath);
   installSkills(openclawDir, sourceRoot, root);
 
@@ -880,6 +930,8 @@ async function warmModel(python: string, model: ModelInfo, trustRemoteCode: bool
   try {
     await runCommandWithSpinner(sp, `Downloading ${model.name}${sizeLabel}...`, python, [tmpScript, model.id], {
       timeoutMs,
+      activityTimeoutMs: 0, // HuggingFace downloads may produce no output for long periods
+      env: { ...process.env, HF_HUB_DISABLE_PROGRESS_BARS: "0", PYTHONUNBUFFERED: "1" },
     });
     sp.succeed(`${model.name} ready`);
   } catch (error) {
@@ -1137,7 +1189,10 @@ async function handleCustomModel(pythonCmd: string): Promise<ModelInfo | null> {
 
 export function getRecommendedTier(gpu: GpuInfo): "lite" | "standard" | "premium" {
   if (!gpu.detected) return "lite";
-  if (gpu.vramTotalMb >= 16000) return "premium";
+  // Premium needs ~11 GB (Nemotron 3B + Gemma reranker). Require 20GB+ to leave
+  // headroom for OS, desktop apps, and CUDA overhead. Previously 16GB triggered
+  // premium which caused OOM when both models loaded together.
+  if (gpu.vramTotalMb >= 20000) return "premium";
   if (gpu.vramTotalMb >= 8000) return "standard";
   return "lite";
 }
@@ -1203,12 +1258,13 @@ async function runCommandWithSpinner(
   prefix: string,
   command: string,
   args: string[],
-  options: { cwd?: string; env?: NodeJS.ProcessEnv; timeoutMs?: number } = {},
+  options: { cwd?: string; env?: NodeJS.ProcessEnv; timeoutMs?: number; activityTimeoutMs?: number } = {},
 ): Promise<void> {
   await runStreamedCommand(command, args, {
     cwd: options.cwd,
     env: options.env,
     timeoutMs: options.timeoutMs,
+    activityTimeoutMs: options.activityTimeoutMs,
     onLine: (line) => {
       const clean = sanitizeCommandLine(line);
       if (clean) spinner.text = `${prefix} ${clean}`.slice(0, 180);

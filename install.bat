@@ -285,31 +285,37 @@ node "%SCRIPT_DIR%\bin\threadclaw.mjs" install %*
 if errorlevel 1 goto :install_failed
 
 :: ── Step 9: Register global command ──
-echo.
-echo [install] Registering threadclaw command...
-if not exist "%LOCALAPPDATA%\ThreadClaw" mkdir "%LOCALAPPDATA%\ThreadClaw"
-(
-    echo @echo off
-    echo node "%SCRIPT_DIR%\bin\threadclaw.mjs" %%*
-) > "%LOCALAPPDATA%\ThreadClaw\threadclaw.cmd"
+:: The Node.js installer (performInstallPlan) already registers the global command
+:: using the correct install root (which may differ from SCRIPT_DIR if files were
+:: copied to .openclaw). Only register here as a fallback if it wasn't done.
+if not exist "%LOCALAPPDATA%\ThreadClaw\threadclaw.cmd" (
+    echo.
+    echo [install] Registering threadclaw command...
+    if not exist "%LOCALAPPDATA%\ThreadClaw" mkdir "%LOCALAPPDATA%\ThreadClaw"
+    (
+        echo @echo off
+        echo node "%SCRIPT_DIR%\bin\threadclaw.mjs" %%*
+    ) > "%LOCALAPPDATA%\ThreadClaw\threadclaw.cmd"
 
-:: ── Fix 2 & 3: Add to user PATH (fixed empty PATH + errorlevel syntax) ──
-setlocal enabledelayedexpansion
-set "TC_PATH=%LOCALAPPDATA%\ThreadClaw"
-for /f "tokens=2*" %%a in ('reg query "HKCU\Environment" /v PATH 2^>nul') do set "USER_PATH=%%b"
-if not defined USER_PATH (
-    setx PATH "!TC_PATH!" >nul 2>&1
-    echo [OK] threadclaw command registered. Restart your terminal to use it.
-) else (
-    echo !USER_PATH! | findstr /i /c:"ThreadClaw" >nul 2>&1
-    if errorlevel 1 (
-        setx PATH "!USER_PATH!;!TC_PATH!" >nul 2>&1
+    setlocal enabledelayedexpansion
+    set "TC_PATH=%LOCALAPPDATA%\ThreadClaw"
+    for /f "tokens=2*" %%a in ('reg query "HKCU\Environment" /v PATH 2^>nul') do set "USER_PATH=%%b"
+    if not defined USER_PATH (
+        setx PATH "!TC_PATH!" >nul 2>&1
         echo [OK] threadclaw command registered. Restart your terminal to use it.
     ) else (
-        echo [OK] threadclaw command already on PATH
+        echo !USER_PATH! | findstr /i /c:"ThreadClaw" >nul 2>&1
+        if errorlevel 1 (
+            setx PATH "!USER_PATH!;!TC_PATH!" >nul 2>&1
+            echo [OK] threadclaw command registered. Restart your terminal to use it.
+        ) else (
+            echo [OK] threadclaw command already on PATH
+        )
     )
+    endlocal
+) else (
+    echo [OK] threadclaw command already registered
 )
-endlocal
 
 :: ── Fix 6: Smoke test with visible output ──
 echo.
@@ -322,7 +328,6 @@ if errorlevel 1 (
 )
 
 :: ── Done ──
-:: ── Fix 8: Better next-steps message ──
 echo.
 echo  ========================================
 echo   Installation complete!
@@ -335,7 +340,8 @@ echo    3. Type: threadclaw
 echo.
 echo  The 'threadclaw' command only works in NEW terminal windows.
 echo  If it doesn't work, run directly:
-echo    node "%SCRIPT_DIR%\bin\threadclaw.mjs"
+echo    Command Prompt: node "%SCRIPT_DIR%\bin\threadclaw.mjs"
+echo    PowerShell:     node "%SCRIPT_DIR%\bin\threadclaw.mjs"
 echo.
 
 pause

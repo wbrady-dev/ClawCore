@@ -4,6 +4,8 @@ export interface StreamedCommandOptions {
   cwd?: string;
   env?: NodeJS.ProcessEnv;
   timeoutMs?: number;
+  /** Inactivity timeout in ms. Default 120_000. Set 0 to disable. */
+  activityTimeoutMs?: number;
   onLine?: (line: string, source: "stdout" | "stderr") => void;
   spawnImpl?: typeof spawn;
 }
@@ -21,14 +23,20 @@ export async function runStreamedCommand(
 ): Promise<StreamedCommandResult> {
   return new Promise((resolve, reject) => {
     const spawnImpl = options.spawnImpl ?? spawn;
-    // On Windows, .cmd/.bat files require shell:true to execute via spawn.
-    // Node.js spawn with shell:false can produce EINVAL for batch files.
-    const needsShell = process.platform === "win32" && /\.(cmd|bat)$/i.test(command);
-    const child = spawnImpl(command, args, {
+    // On Windows, .cmd/.bat files need cmd.exe to execute.
+    // Node 24 deprecated shell:true for .cmd files (DeprecationWarning + hangs).
+    // Instead, spawn cmd.exe directly with /c to avoid shell:true entirely.
+    let spawnCmd = command;
+    let spawnArgs = args;
+    if (process.platform === "win32" && /\.(cmd|bat)$/i.test(command)) {
+      spawnCmd = process.env.COMSPEC ?? "cmd.exe";
+      spawnArgs = ["/c", command, ...args];
+    }
+    const child = spawnImpl(spawnCmd, spawnArgs, {
       cwd: options.cwd,
       env: options.env,
       stdio: ["ignore", "pipe", "pipe"],
-      shell: needsShell,
+      shell: false,
     });
 
     let stdout = "";
@@ -48,19 +56,25 @@ export async function runStreamedCommand(
       fn();
     };
 
-    // Kill the process if no stdout/stderr output for 120 seconds
-    activityCheck = setInterval(() => {
-      if (settled) return;
-      const idle = Date.now() - lastActivity;
-      if (idle > 120_000) {
-        try { child.kill(); } catch {}
-        finish(() => reject(new Error(`Command stalled: no output for ${Math.round(idle / 1000)}s`)));
-      }
-    }, 10_000);
+    // Kill the process if no stdout/stderr output for activityTimeoutMs (default 120s).
+    // Set activityTimeoutMs=0 to disable (e.g. for large model downloads).
+    const activityLimit = options.activityTimeoutMs ?? 120_000;
+    if (activityLimit > 0) {
+      activityCheck = setInterval(() => {
+        if (settled) return;
+        const idle = Date.now() - lastActivity;
+        if (idle > activityLimit) {
+          try { child.kill(); } catch {}
+          finish(() => reject(new Error(`Command stalled: no output for ${Math.round(idle / 1000)}s`)));
+        }
+      }, 10_000);
+    }
 
     const emitBufferedLines = (chunk: string, source: "stdout" | "stderr", carry: string): string => {
       const combined = carry + chunk;
-      const parts = combined.split(/\r?\n/);
+      // Split on \n, \r\n, or standalone \r so pip/HuggingFace progress bars
+      // (which use \r to overwrite) are emitted as individual updates.
+      const parts = combined.split(/\r\n|\n|\r/);
       const remainder = parts.pop() ?? "";
       for (const part of parts) {
         const clean = sanitizeCommandLine(part);

@@ -100,40 +100,54 @@ def load_models():
 
     kwargs = {"trust_remote_code": True} if TRUST_REMOTE else {}
 
+    # Load directly in float16 on CUDA to avoid the double-VRAM spike of
+    # loading float32 then converting.  Falls back to float32 if unsupported.
+    use_fp16 = torch.cuda.is_available()
+    if use_fp16:
+        kwargs["model_kwargs"] = {"torch_dtype": torch.float16}
+        logger.info("CUDA detected — loading models in float16 to halve VRAM usage")
+
     # Load embedding model (graceful — server continues if this fails)
     try:
         logger.info(f"Loading embedding model: {EMBED_MODEL_ID} ...")
         embed_model = SentenceTransformer(EMBED_MODEL_ID, **kwargs)
         logger.info(f"Embedding model loaded. Dimension: {embed_model.get_sentence_embedding_dimension()}")
+        if use_fp16:
+            logger.info("Embedding model using float16 (CUDA)")
     except Exception as e:
-        logger.error(f"Failed to load embedding model '{EMBED_MODEL_ID}': {e}")
-        logger.error("The /v1/embeddings endpoint will be unavailable.")
+        if use_fp16 and "float16" in str(e).lower():
+            logger.warning(f"float16 load failed, retrying in float32: {e}")
+            fp32_kwargs = {k: v for k, v in kwargs.items() if k != "model_kwargs"}
+            try:
+                embed_model = SentenceTransformer(EMBED_MODEL_ID, **fp32_kwargs)
+                logger.info(f"Embedding model loaded (float32 fallback). Dimension: {embed_model.get_sentence_embedding_dimension()}")
+            except Exception as e2:
+                logger.error(f"Failed to load embedding model '{EMBED_MODEL_ID}': {e2}")
+                logger.error("The /v1/embeddings endpoint will be unavailable.")
+        else:
+            logger.error(f"Failed to load embedding model '{EMBED_MODEL_ID}': {e}")
+            logger.error("The /v1/embeddings endpoint will be unavailable.")
 
     # Load rerank model (graceful — server continues if this fails)
     try:
         logger.info(f"Loading rerank model: {RERANK_MODEL_ID} ...")
         rerank_model = CrossEncoder(RERANK_MODEL_ID, **kwargs)
         logger.info("Rerank model loaded and ready.")
+        if use_fp16:
+            logger.info("Rerank model using float16 (CUDA)")
     except Exception as e:
-        logger.error(f"Failed to load rerank model '{RERANK_MODEL_ID}': {e}")
-        logger.error("The /rerank endpoint will be unavailable.")
-
-    # Enable float16 inference on CUDA for ~30% speedup, 50% less VRAM
-    if embed_model:
-        try:
-            if torch.cuda.is_available():
-                embed_model.half()
-                logger.info("Embedding model using float16 (CUDA)")
-        except Exception as e:
-            logger.warning(f"Could not enable float16 for embedding model: {e}")
-
-    if rerank_model:
-        try:
-            if torch.cuda.is_available():
-                rerank_model.model.half()
-                logger.info("Rerank model using float16 (CUDA)")
-        except Exception as e:
-            logger.warning(f"Could not enable float16 for reranker: {e}")
+        if use_fp16 and "float16" in str(e).lower():
+            logger.warning(f"float16 load failed for reranker, retrying in float32: {e}")
+            fp32_kwargs = {k: v for k, v in kwargs.items() if k != "model_kwargs"}
+            try:
+                rerank_model = CrossEncoder(RERANK_MODEL_ID, **fp32_kwargs)
+                logger.info("Rerank model loaded (float32 fallback).")
+            except Exception as e2:
+                logger.error(f"Failed to load rerank model '{RERANK_MODEL_ID}': {e2}")
+                logger.error("The /rerank endpoint will be unavailable.")
+        else:
+            logger.error(f"Failed to load rerank model '{RERANK_MODEL_ID}': {e}")
+            logger.error("The /rerank endpoint will be unavailable.")
 
     # Warmup: run a dummy inference to trigger CUDA kernel compilation / JIT.
     # Also validates float16 didn't produce NaN.
@@ -147,12 +161,16 @@ def load_models():
                 embed_model.encode(["warmup"], normalize_embeddings=True, show_progress_bar=False)
         if rerank_model:
             warmup_scores = rerank_model.predict([("warmup query", "warmup document")])
-            if isinstance(warmup_scores, (list, tuple)):
-                if any(math.isnan(s) for s in warmup_scores):
-                    logger.warning("float16 rerank produced NaN — reverting to float32")
-                    rerank_model.model.float()
-                    rerank_model.predict([("warmup query", "warmup document")])
-            elif math.isnan(warmup_scores):
+            # predict() may return a numpy scalar (0-d array), a 1-d array, or a list.
+            # Normalize to a plain Python float to avoid "only 0-dimensional arrays" warnings.
+            import numpy as np  # noqa: local import — only needed during warmup
+            if isinstance(warmup_scores, np.ndarray):
+                score_list = warmup_scores.flatten().tolist()
+            elif isinstance(warmup_scores, (list, tuple)):
+                score_list = list(warmup_scores)
+            else:
+                score_list = [float(warmup_scores)]
+            if any(math.isnan(s) for s in score_list):
                 logger.warning("float16 rerank produced NaN — reverting to float32")
                 rerank_model.model.float()
                 rerank_model.predict([("warmup query", "warmup document")])

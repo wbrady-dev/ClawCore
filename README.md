@@ -88,12 +88,20 @@ ThreadClaw's Evidence OS extracts structured knowledge from conversations, docum
 
 ## Quick Start
 
-### Windows
+### Windows (Command Prompt)
 
-```bash
+```cmd
 git clone https://github.com/wbrady-dev/ThreadClaw.git
 cd ThreadClaw
 install.bat
+```
+
+### Windows (PowerShell)
+
+```powershell
+git clone https://github.com/wbrady-dev/ThreadClaw.git
+cd ThreadClaw
+.\install.bat
 ```
 
 ### Linux / Mac

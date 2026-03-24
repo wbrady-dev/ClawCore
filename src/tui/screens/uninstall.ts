@@ -21,14 +21,15 @@ import {
 export async function runUninstall(): Promise<void> {
   clearScreen();
   console.log(section("Uninstall ThreadClaw"));
-  console.log(t.warn("  This will COMPLETELY remove ThreadClaw and leave no trace:"));
+  console.log(t.warn("  This will remove ThreadClaw runtime and data:"));
   console.log(t.warn("  • All dependencies (node_modules, .venv, dist)"));
   console.log(t.warn("  • All config (.env, config.json, manifest)"));
   console.log(t.warn("  • All data (databases, evidence graph, backups)"));
   console.log(t.warn("  • Downloaded model cache (~2-6 GB)"));
   console.log(t.warn("  • Global command and PATH entry"));
   console.log(t.warn("  • OpenClaw integration\n"));
-  console.log(t.dim("  Source code (git repo) will be preserved for reinstall.\n"));
+  console.log(t.dim("  Source code (git repo) will be preserved. You will be shown"));
+  console.log(t.dim("  instructions to remove it after uninstall completes.\n"));
 
   let cancelled = false;
   const onCancel = () => { cancelled = true; };
@@ -314,8 +315,18 @@ export async function performUninstall(options: { deleteData: boolean }): Promis
   console.log(t.ok("  OpenClaw restored to its original state."));
   console.log(t.ok("  All data, config, dependencies, and model cache deleted."));
   console.log("");
-  console.log(t.dim("  Source code preserved at: " + root));
-  console.log(t.dim("  To reinstall: run install.bat (Windows) or install.sh (Linux/macOS)"));
+  console.log(t.dim("  Source code (git repo) preserved at:"));
+  console.log(t.dim(`    ${root}`));
+  console.log("");
+  console.log(t.dim("  To remove source code completely:"));
+  if (plat === "windows") {
+    console.log(t.dim(`    rmdir /s /q "${root}"`));
+    console.log(t.dim(`    (PowerShell: Remove-Item -Recurse -Force "${root}")`));
+  } else {
+    console.log(t.dim(`    rm -rf "${root}"`));
+  }
+  console.log("");
+  console.log(t.dim("  To reinstall instead: run install.bat (Windows) or install.sh (Linux/macOS)"));
   console.log("");
 }
 
