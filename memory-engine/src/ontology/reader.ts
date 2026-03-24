@@ -154,7 +154,8 @@ export function readMemoryObjects(
 
     scored.sort((a, b) => b.score - a.score);
     return scored.slice(0, limit).map((s) => s.obj);
-  } catch {
+  } catch (err) {
+    console.error("[reader] queryMemoryObjects failed:", err);
     return [];
   }
 }

@@ -158,5 +158,5 @@ export async function embedQuery(text: string): Promise<number[]> {
     if (oldest !== undefined) queryEmbedCache.delete(oldest);
   }
   queryEmbedCache.set(key, embedding);
-  return embedding;
+  return embedding.slice();
 }

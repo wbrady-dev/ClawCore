@@ -54,24 +54,25 @@ export function migrateToProvenanceLinks(db: GraphDb): MigrationStats {
     SELECT
       'entity:' || entity_id,
       'mentioned_in',
-      source_type || ':' || source_id,
+      COALESCE(source_type, 'unknown') || ':' || COALESCE(source_id, ''),
       1.0,
       source_detail
     FROM __TABLE__
     WHERE entity_id IS NOT NULL AND source_id IS NOT NULL
   `, "entity_mentions");
 
-  // claim_evidence → supports/contradicts
+  // claim_evidence → supports/contradicts (evidence source is subject, claim is object)
   stats.claimEvidence = tryLegacy(db, `
     INSERT OR IGNORE INTO provenance_links (subject_id, predicate, object_id, confidence, detail)
     SELECT
-      'claim:' || claim_id,
+      COALESCE(source_type, 'unknown') || ':' || COALESCE(source_id, ''),
       CASE
         WHEN evidence_role = 'contradict' THEN 'contradicts'
+        WHEN evidence_role = 'contradicts' THEN 'contradicts'
         WHEN evidence_role = 'update' THEN 'supports'
         ELSE 'supports'
       END,
-      source_type || ':' || source_id,
+      'claim:' || claim_id,
       MAX(0.0, MIN(1.0, COALESCE(confidence_delta, 1.0))),
       source_detail
     FROM __TABLE__

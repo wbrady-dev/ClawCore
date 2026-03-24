@@ -50,5 +50,5 @@ if (process.argv.length <= 2) {
   program.addCommand(installCommand);
   program.addCommand(uninstallCommand);
 
-  program.parse();
+  await program.parseAsync();
 }

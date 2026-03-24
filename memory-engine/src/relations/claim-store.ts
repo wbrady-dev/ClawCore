@@ -142,8 +142,8 @@ export function addClaimEvidence(db: GraphDb, input: AddClaimEvidenceInput): num
 // ---------------------------------------------------------------------------
 
 export function supersedeClaim(db: GraphDb, claimId: number, supersededBy: number): void {
-  // Find composite_ids from moIds
-  const oldRow = db.prepare("SELECT composite_id FROM memory_objects WHERE id = ?").get(claimId) as { composite_id: string } | undefined;
+  // Find composite_ids and scope from moIds
+  const oldRow = db.prepare("SELECT composite_id, scope_id FROM memory_objects WHERE id = ?").get(claimId) as { composite_id: string; scope_id: number } | undefined;
   const newRow = db.prepare("SELECT composite_id FROM memory_objects WHERE id = ?").get(supersededBy) as { composite_id: string } | undefined;
 
   if (oldRow && newRow) {
@@ -151,7 +151,7 @@ export function supersedeClaim(db: GraphDb, claimId: number, supersededBy: numbe
   }
 
   logEvidence(db, {
-    scopeId: 1,
+    scopeId: oldRow?.scope_id ?? 1,
     objectType: "claim",
     objectId: claimId,
     eventType: "supersede",
@@ -181,7 +181,7 @@ export interface ClaimRow {
   last_seen_at: string;
 }
 
-function moRowToClaimRow(row: Record<string, unknown>): ClaimRow {
+export function moRowToClaimRow(row: Record<string, unknown>): ClaimRow {
   let structured: Record<string, unknown> = {};
   if (row.structured_json != null && typeof row.structured_json === "string") {
     try { structured = JSON.parse(row.structured_json); } catch { /* empty */ }

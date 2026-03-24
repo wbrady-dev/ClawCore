@@ -540,6 +540,8 @@ INSERT OR IGNORE INTO promotion_policies (object_type, min_confidence, requires_
     ('loop',         0.3, 0, NULL, 1, 72,   'Open loops promote at low confidence. Expire if stale after 3 days'),
     ('attempt',      0.0, 0, NULL, 1, NULL, 'Attempts always write directly (factual records)'),
     ('procedure',    0.5, 0, NULL, 2, NULL, 'Procedures need 2+ evidence. No auto-expire'),
+    ('runbook',      0.5, 0, NULL, 2, NULL, 'Alias for procedure (backward compat). 2+ evidence. No auto-expire'),
+    ('anti_runbook', 0.5, 0, NULL, 2, NULL, 'Alias for procedure (backward compat). 2+ evidence. No auto-expire'),
     ('invariant',    0.7, 1, 0.9,  1, NULL, 'Invariants need user confirm, OR auto-promote at confidence >= 0.9'),
     ('capability',   0.0, 0, NULL, 1, NULL, 'Capabilities always write directly (observed state)');
 

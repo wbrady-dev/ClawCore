@@ -1852,7 +1852,7 @@ export class LcmContextEngine implements ContextEngine {
     const ingestBatch: AgentMessage[] = [];
     if (params.autoCompactionSummary) {
       ingestBatch.push({
-        role: "user",
+        role: "system",
         content: params.autoCompactionSummary,
       } as AgentMessage);
     }

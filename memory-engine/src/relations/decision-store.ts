@@ -118,7 +118,7 @@ export interface DecisionRow {
   source_detail: string | null;
 }
 
-function moRowToDecisionRow(row: Record<string, unknown>): DecisionRow {
+export function moRowToDecisionRow(row: Record<string, unknown>): DecisionRow {
   let structured: Record<string, unknown> = {};
   if (row.structured_json != null && typeof row.structured_json === "string") {
     try { structured = JSON.parse(row.structured_json); } catch { /* empty */ }

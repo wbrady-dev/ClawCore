@@ -17,9 +17,9 @@ export function getGraphDb(dbPath: string): Database.Database {
   const normalized = resolve(dbPath);
   if (graphDb) {
     if (storedGraphPath && storedGraphPath !== normalized) {
-      logger.warn(
-        { expected: storedGraphPath, received: normalized },
-        "getGraphDb called with different path — returning existing connection",
+      throw new Error(
+        `getGraphDb called with path "${normalized}" but already connected to "${storedGraphPath}". ` +
+        `ThreadClaw uses a singleton DB connection — cannot open two databases.`,
       );
     }
     return graphDb;

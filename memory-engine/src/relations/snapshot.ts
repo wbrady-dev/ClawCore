@@ -7,10 +7,10 @@
  */
 
 import type { GraphDb } from "./types.js";
-import type { ClaimRow } from "./claim-store.js";
-import type { DecisionRow } from "./decision-store.js";
-import type { LoopRow } from "./loop-store.js";
-import type { InvariantRow } from "./invariant-store.js";
+import { moRowToClaimRow, type ClaimRow } from "./claim-store.js";
+import { moRowToDecisionRow, type DecisionRow } from "./decision-store.js";
+import { moRowToLoopRow, type LoopRow } from "./loop-store.js";
+import { moRowToInvariantRow, type InvariantRow } from "./invariant-store.js";
 
 export interface StateSnapshot {
   timestamp: string;
@@ -20,93 +20,6 @@ export interface StateSnapshot {
   openLoops: LoopRow[];
   invariants: InvariantRow[];
   evidenceCount: number;
-}
-
-// ── Row adapters ────────────────────────────────────────────────────────────
-// Convert memory_objects rows to legacy Row types for backward compatibility.
-
-function moRowToClaimRow(row: Record<string, unknown>): ClaimRow {
-  let structured: Record<string, unknown> = {};
-  if (row.structured_json != null && typeof row.structured_json === "string") {
-    try { structured = JSON.parse(row.structured_json as string); } catch { /* empty */ }
-  }
-  return {
-    id: Number(row.id),
-    scope_id: Number(row.scope_id ?? 1),
-    branch_id: Number(row.branch_id ?? 0),
-    subject: String(structured.subject ?? ""),
-    predicate: String(structured.predicate ?? ""),
-    object_text: structured.objectText != null ? String(structured.objectText) : null,
-    object_json: structured.objectJson != null ? String(structured.objectJson) : null,
-    value_type: String(structured.valueType ?? "text"),
-    status: String(row.status ?? "active"),
-    confidence: Number(row.confidence ?? 0.5),
-    trust_score: Number(row.trust_score ?? 0.5),
-    source_authority: Number(row.source_authority ?? 0.5),
-    canonical_key: String(row.canonical_key ?? ""),
-    first_seen_at: String(row.first_observed_at ?? row.created_at ?? ""),
-    last_seen_at: String(row.last_observed_at ?? row.updated_at ?? ""),
-  };
-}
-
-function moRowToDecisionRow(row: Record<string, unknown>): DecisionRow {
-  let structured: Record<string, unknown> = {};
-  if (row.structured_json != null && typeof row.structured_json === "string") {
-    try { structured = JSON.parse(row.structured_json as string); } catch { /* empty */ }
-  }
-  return {
-    id: Number(row.id),
-    scope_id: Number(row.scope_id ?? 1),
-    branch_id: Number(row.branch_id ?? 0),
-    topic: String(structured.topic ?? ""),
-    decision_text: String(structured.decisionText ?? row.content ?? ""),
-    status: String(row.status ?? "active"),
-    decided_at: String(row.created_at ?? ""),
-    superseded_by: row.superseded_by != null ? Number(row.superseded_by) : null,
-    source_type: row.source_kind != null ? String(row.source_kind) : null,
-    source_id: row.source_id != null ? String(row.source_id) : null,
-    source_detail: row.source_detail != null ? String(row.source_detail) : null,
-  };
-}
-
-function moRowToLoopRow(row: Record<string, unknown>): LoopRow {
-  let structured: Record<string, unknown> = {};
-  if (row.structured_json != null && typeof row.structured_json === "string") {
-    try { structured = JSON.parse(row.structured_json as string); } catch { /* empty */ }
-  }
-  return {
-    id: Number(row.id),
-    scope_id: Number(row.scope_id ?? 1),
-    branch_id: Number(row.branch_id ?? 0),
-    loop_type: String(structured.loopType ?? "task"),
-    text: String(structured.text ?? row.content ?? ""),
-    status: String(row.status ?? "active"),
-    priority: Number(structured.priority ?? 0),
-    owner: structured.owner != null ? String(structured.owner) : null,
-    due_at: structured.dueAt != null ? String(structured.dueAt) : null,
-    waiting_on: structured.waitingOn != null ? String(structured.waitingOn) : null,
-    opened_at: String(row.created_at ?? ""),
-    closed_at: row.status === "superseded" ? String(row.updated_at ?? "") : null,
-  };
-}
-
-function moRowToInvariantRow(row: Record<string, unknown>): InvariantRow {
-  let structured: Record<string, unknown> = {};
-  if (row.structured_json != null && typeof row.structured_json === "string") {
-    try { structured = JSON.parse(row.structured_json as string); } catch { /* empty */ }
-  }
-  return {
-    id: Number(row.id),
-    scope_id: Number(row.scope_id ?? 1),
-    invariant_key: String(structured.key ?? ""),
-    category: structured.category != null ? String(structured.category) : null,
-    description: String(row.content ?? ""),
-    severity: String(structured.severity ?? "warning"),
-    enforcement_mode: String(structured.enforcementMode ?? "warn"),
-    status: String(row.status ?? "active"),
-    created_at: String(row.created_at ?? ""),
-    updated_at: String(row.updated_at ?? ""),
-  };
 }
 
 // ── Public API ──────────────────────────────────────────────────────────────

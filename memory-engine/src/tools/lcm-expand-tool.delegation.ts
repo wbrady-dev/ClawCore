@@ -13,7 +13,7 @@ import {
   stampDelegatedExpansionContext,
 } from "./lcm-expansion-recursion-guard.js";
 
-const MAX_GATEWAY_TIMEOUT_MS = 2_147_483_647;
+const MAX_GATEWAY_TIMEOUT_MS = 120_000;
 
 type DelegatedPassStatus = "ok" | "timeout" | "error";
 

@@ -18,7 +18,7 @@ export const serveCommand = new Command("serve")
 
     console.log("");
     console.log(chalk.bold.green("  ╔══════════════════════════════════╗"));
-    console.log(chalk.bold.green("  ║") + chalk.bold.white("   C L A W C O R E   S E R V E R ") + chalk.bold.green("║"));
+    console.log(chalk.bold.green("  ║") + chalk.bold.white("  T H R E A D C L A W  S E R V E R ") + chalk.bold.green("║"));
     console.log(chalk.bold.green("  ╚══════════════════════════════════╝"));
     console.log("");
 
@@ -26,7 +26,7 @@ export const serveCommand = new Command("serve")
     const pythonCmd = getPythonCmd();
 
     const prefix = {
-      nem: chalk.magenta("[models]  "),
+      models: chalk.magenta("[models]  "),
       tal: chalk.green("[threadclaw]"),
       sys: chalk.dim("[system]  "),
     };
@@ -69,20 +69,20 @@ export const serveCommand = new Command("serve")
     console.log("");
 
     // Start Models
-    const nemProcess = spawn(pythonCmd, [serverScript], {
+    const modelsProcess = spawn(pythonCmd, [serverScript], {
       cwd: dirname(serverScript),
       stdio: ["ignore", "pipe", "pipe"],
     });
 
-    nemProcess.stdout?.on("data", (data: Buffer) => {
+    modelsProcess.stdout?.on("data", (data: Buffer) => {
       for (const line of data.toString().split("\n").filter((l: string) => l.trim())) {
-        console.log(`${prefix.nem} ${line}`);
+        console.log(`${prefix.models} ${line}`);
       }
     });
 
-    nemProcess.stderr?.on("data", (data: Buffer) => {
+    modelsProcess.stderr?.on("data", (data: Buffer) => {
       for (const line of data.toString().split("\n").filter((l: string) => l.trim())) {
-        console.log(`${prefix.nem} ${chalk.dim(line)}`);
+        console.log(`${prefix.models} ${chalk.dim(line)}`);
       }
     });
 
@@ -96,7 +96,7 @@ export const serveCommand = new Command("serve")
       console.error(`${prefix.sys}   - Model not downloaded yet (first run takes longer)`);
       console.error(`${prefix.sys}   - Insufficient VRAM/RAM for the selected model`);
       console.error(`${prefix.sys}   - Port ${getModelPort()} already in use`);
-      nemProcess.kill();
+      modelsProcess.kill();
       process.exit(1);
     }
     console.log(`${prefix.sys} ${chalk.green("●")} Model server ready on port ${getModelPort()}`);
@@ -134,7 +134,7 @@ export const serveCommand = new Command("serve")
       console.error(`${prefix.sys} ${chalk.red("✗")} ThreadClaw API failed to start within 30s`);
       console.error(`${prefix.sys}   Check logs above for errors.`);
       talProcess.kill();
-      nemProcess.kill();
+      modelsProcess.kill();
       process.exit(1);
     }
     console.log(`${prefix.sys} ${chalk.green("●")} ThreadClaw RAG API ready on port ${getApiPort()}`);
@@ -148,11 +148,11 @@ export const serveCommand = new Command("serve")
       console.log("");
       console.log(`${prefix.sys} Shutting down...`);
       talProcess.kill("SIGTERM");
-      nemProcess.kill("SIGTERM");
+      modelsProcess.kill("SIGTERM");
 
       setTimeout(() => {
         talProcess.kill("SIGKILL");
-        nemProcess.kill("SIGKILL");
+        modelsProcess.kill("SIGKILL");
         process.exit(0);
       }, 5000);
     };
@@ -160,8 +160,8 @@ export const serveCommand = new Command("serve")
     process.on("SIGINT", cleanup);
     process.on("SIGTERM", cleanup);
 
-    nemProcess.on("exit", (code) => {
-      console.log(`${prefix.nem} ${chalk.red("Process exited")} (code ${code})`);
+    modelsProcess.on("exit", (code) => {
+      console.log(`${prefix.models} ${chalk.red("Process exited")} (code ${code})`);
     });
 
     talProcess.on("exit", (code) => {

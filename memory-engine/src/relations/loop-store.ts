@@ -146,7 +146,7 @@ export interface LoopRow {
   closed_at: string | null;
 }
 
-function moRowToLoopRow(row: Record<string, unknown>): LoopRow {
+export function moRowToLoopRow(row: Record<string, unknown>): LoopRow {
   let structured: Record<string, unknown> = {};
   if (row.structured_json != null && typeof row.structured_json === "string") {
     try { structured = JSON.parse(row.structured_json); } catch { /* empty */ }

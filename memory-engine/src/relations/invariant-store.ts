@@ -73,7 +73,7 @@ export interface InvariantRow {
   updated_at: string;
 }
 
-function moRowToInvariantRow(row: Record<string, unknown>): InvariantRow {
+export function moRowToInvariantRow(row: Record<string, unknown>): InvariantRow {
   let structured: Record<string, unknown> = {};
   if (row.structured_json != null && typeof row.structured_json === "string") {
     try { structured = JSON.parse(row.structured_json); } catch { /* empty */ }

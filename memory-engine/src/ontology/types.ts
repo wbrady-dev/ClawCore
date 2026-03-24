@@ -22,7 +22,8 @@ export type MemoryKind =
   | "procedure"  // runbooks + anti-runbooks merged (projected to graph.db)
   | "invariant"  // constraints/rules (projected to graph.db)
   | "delta"      // state changes (projected to graph.db)
-  | "conflict";  // first-class contradiction between two+ claims/decisions
+  | "conflict"    // first-class contradiction between two+ claims/decisions
+  | "capability"; // tracked tools, systems, and services
 
 /** How the knowledge entered the system. */
 export type SourceKind =
