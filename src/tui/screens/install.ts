@@ -1140,7 +1140,7 @@ function installSkills(openclawDir: string | null, sourceRoot: string, root: str
   try {
     const openclawConfig = JSON.parse(readFileSync(resolve(openclawDir, "openclaw.json"), "utf-8"));
     const workspace = openclawConfig?.agents?.defaults?.workspace ?? resolve(openclawDir, "workspace");
-    const skillsSource = existsSync(resolve(root, "skills")) ? resolve(root, "skills") : resolve(sourceRoot, "skills");
+    const skillsSource = resolve(root, "skills");
     if (!existsSync(skillsSource)) return;
     const skillsDestination = resolve(workspace, "skills");
     mkdirSync(skillsDestination, { recursive: true });
