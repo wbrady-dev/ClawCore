@@ -41,13 +41,15 @@ describe("H2 Schema", () => {
       "SELECT name FROM sqlite_master WHERE type='table' ORDER BY name",
     ).all() as Array<{ name: string }>).map((r) => r.name);
 
-    expect(tables).toContain("claims");
-    expect(tables).toContain("claim_evidence");
-    expect(tables).toContain("decisions");
-    expect(tables).toContain("open_loops");
+    // Legacy tables renamed to _legacy_* in v18; memory_objects is the unified table
+    expect(tables).toContain("memory_objects");
+    expect(tables).toContain("_legacy_claims");
+    expect(tables).toContain("_legacy_claim_evidence");
+    expect(tables).toContain("_legacy_decisions");
+    expect(tables).toContain("_legacy_open_loops");
     expect(tables).toContain("state_deltas");
     expect(tables).toContain("capabilities");
-    expect(tables).toContain("invariants");
+    expect(tables).toContain("_legacy_invariants");
   });
 
   it("migration v2 is idempotent", () => {

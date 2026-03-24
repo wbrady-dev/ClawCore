@@ -1,64 +1,66 @@
 /**
- * Evidence decay — lazy confidence reduction for runbooks and anti-runbooks.
+ * Evidence decay — lazy confidence reduction for procedures and loops.
  *
- * Called from query functions (getRunbooks, getAntiRunbooks) to apply
- * time-based decay before returning results. No background job needed.
+ * Phase 3: All queries now target the unified memory_objects table.
  *
- * Anti-runbooks: If no new failure evidence in decayDays (default 90),
- *   reduce confidence by 0.8×. If confidence < 0.2, mark 'under_review'.
+ * Anti-runbooks (procedure with isNegative=true): If no new failure evidence
+ *   in decayDays (default 90), reduce confidence by 0.8x. If confidence < 0.2,
+ *   mark 'under_review'.
  *
- * Runbooks: If failure_rate > 0.5, demote confidence.
- *   If no usage in 180 days, mark 'stale'.
+ * Runbooks (procedure with isNegative=false/null): If failure_rate > 0.5,
+ *   demote confidence. If no usage in 180 days, mark 'stale'.
+ *
+ * Loops: Mark as 'stale' when they exceed their max_age_hours policy.
  */
 
 import type { GraphDb } from "./types.js";
 import { logEvidence } from "./evidence-log.js";
 
 /**
- * Apply decay to anti-runbooks that haven't seen new failure evidence recently.
+ * Apply decay to anti-runbooks (procedure kind, isNegative=true) that
+ * haven't seen new failure evidence recently.
  */
 export function decayAntiRunbooks(db: GraphDb, scopeId: number, decayDays = 90): number {
   // First: decay anti-runbooks whose tool has recent successes (tool-success decay)
   const toolDecayed = db.prepare(`
-    UPDATE anti_runbooks
+    UPDATE memory_objects
     SET confidence = confidence * 0.7,
         updated_at = strftime('%Y-%m-%dT%H:%M:%f', 'now')
     WHERE scope_id = ?
+      AND kind = 'procedure'
+      AND json_extract(structured_json, '$.isNegative') = 1
       AND status = 'active'
       AND confidence > 0.3
-      AND tool_name IN (
-        SELECT DISTINCT tool_name FROM attempts
-        WHERE scope_id = ? AND status = 'success'
-        AND created_at > datetime('now', ?)
+      AND json_extract(structured_json, '$.toolName') IN (
+        SELECT DISTINCT json_extract(mo2.structured_json, '$.toolName')
+        FROM memory_objects mo2
+        WHERE mo2.scope_id = ? AND mo2.kind = 'attempt' AND mo2.status = 'active'
+        AND json_extract(mo2.structured_json, '$.status') = 'success'
+        AND mo2.created_at > datetime('now', ?)
       )
   `).run(scopeId, scopeId, `-${decayDays} days`);
 
   // Second: staleness decay — exclude rows already decayed by tool-success above
   const decayed = db.prepare(`
-    UPDATE anti_runbooks
+    UPDATE memory_objects
     SET confidence = confidence * 0.8,
         updated_at = strftime('%Y-%m-%dT%H:%M:%f', 'now')
     WHERE scope_id = ?
+      AND kind = 'procedure'
+      AND json_extract(structured_json, '$.isNegative') = 1
       AND status = 'active'
       AND confidence > 0.2
       AND updated_at < datetime('now', ?)
-      AND id NOT IN (
-        SELECT id FROM anti_runbooks
-        WHERE scope_id = ? AND status = 'active' AND confidence > 0.3
-        AND tool_name IN (
-          SELECT DISTINCT tool_name FROM attempts
-          WHERE scope_id = ? AND status = 'success'
-          AND created_at > datetime('now', ?)
-        )
-      )
-  `).run(scopeId, `-${decayDays} days`, scopeId, scopeId, `-${decayDays} days`);
+  `).run(scopeId, `-${decayDays} days`);
 
   // Mark very low confidence for review
   const reviewed = db.prepare(`
-    UPDATE anti_runbooks
-    SET status = 'under_review',
+    UPDATE memory_objects
+    SET status = 'stale',
         updated_at = strftime('%Y-%m-%dT%H:%M:%f', 'now')
     WHERE scope_id = ?
+      AND kind = 'procedure'
+      AND json_extract(structured_json, '$.isNegative') = 1
       AND confidence <= 0.2
       AND status = 'active'
   `).run(scopeId);
@@ -66,12 +68,13 @@ export function decayAntiRunbooks(db: GraphDb, scopeId: number, decayDays = 90):
   if (Number(decayed.changes) > 0 || Number(reviewed.changes) > 0) {
     logEvidence(db, {
       scopeId,
-      objectType: "anti_runbook",
+      objectType: "procedure",
       objectId: 0,
       eventType: "decay",
       payload: {
+        subKind: "anti_runbook",
         confidenceDecayed: Number(decayed.changes),
-        markedUnderReview: Number(reviewed.changes),
+        markedStale: Number(reviewed.changes),
       },
     });
   }
@@ -80,27 +83,37 @@ export function decayAntiRunbooks(db: GraphDb, scopeId: number, decayDays = 90):
 }
 
 /**
- * Apply decay to runbooks with high failure rates or no recent usage.
+ * Apply decay to runbooks (procedure kind, isNegative=false/null) with
+ * high failure rates or no recent usage.
  */
 export function decayRunbooks(db: GraphDb, scopeId: number, staleDays = 180): number {
-  // Demote runbooks with failure_rate > 0.5 (at most once per staleDays/2 interval)
+  // Demote runbooks with failure_rate > 0.5
   const demoted = db.prepare(`
-    UPDATE runbooks
+    UPDATE memory_objects
     SET confidence = confidence * 0.5,
         updated_at = strftime('%Y-%m-%dT%H:%M:%f', 'now')
     WHERE scope_id = ?
+      AND kind = 'procedure'
+      AND (json_extract(structured_json, '$.isNegative') IS NULL
+           OR json_extract(structured_json, '$.isNegative') = 0)
       AND status = 'active'
-      AND (success_count + failure_count) > 0
-      AND CAST(failure_count AS REAL) / (success_count + failure_count) > 0.5
+      AND (COALESCE(json_extract(structured_json, '$.successCount'), 0)
+           + COALESCE(json_extract(structured_json, '$.failureCount'), 0)) > 0
+      AND CAST(COALESCE(json_extract(structured_json, '$.failureCount'), 0) AS REAL)
+          / (COALESCE(json_extract(structured_json, '$.successCount'), 0)
+             + COALESCE(json_extract(structured_json, '$.failureCount'), 0)) > 0.5
       AND updated_at < datetime('now', ?)
   `).run(scopeId, `-${Math.floor(staleDays / 2)} days`);
 
   // Mark stale if no usage in staleDays
   const staled = db.prepare(`
-    UPDATE runbooks
+    UPDATE memory_objects
     SET status = 'stale',
         updated_at = strftime('%Y-%m-%dT%H:%M:%f', 'now')
     WHERE scope_id = ?
+      AND kind = 'procedure'
+      AND (json_extract(structured_json, '$.isNegative') IS NULL
+           OR json_extract(structured_json, '$.isNegative') = 0)
       AND status = 'active'
       AND updated_at < datetime('now', ?)
   `).run(scopeId, `-${staleDays} days`);
@@ -108,10 +121,11 @@ export function decayRunbooks(db: GraphDb, scopeId: number, staleDays = 180): nu
   if (Number(demoted.changes) > 0 || Number(staled.changes) > 0) {
     logEvidence(db, {
       scopeId,
-      objectType: "runbook",
+      objectType: "procedure",
       objectId: 0,
       eventType: "decay",
       payload: {
+        subKind: "runbook",
         confidenceDemoted: Number(demoted.changes),
         markedStale: Number(staled.changes),
       },
@@ -133,17 +147,19 @@ export function decayLoops(db: GraphDb, scopeId: number): number {
   const maxAgeHours = policy?.max_age_hours ?? 72;
 
   const staled = db.prepare(`
-    UPDATE open_loops
-    SET status = 'stale', closed_at = strftime('%Y-%m-%dT%H:%M:%f', 'now')
+    UPDATE memory_objects
+    SET status = 'stale',
+        updated_at = strftime('%Y-%m-%dT%H:%M:%f', 'now')
     WHERE scope_id = ?
-      AND status IN ('open', 'blocked')
-      AND opened_at < datetime('now', '-' || ? || ' hours')
+      AND kind = 'loop'
+      AND status = 'active'
+      AND created_at < datetime('now', '-' || ? || ' hours')
   `).run(scopeId, maxAgeHours);
 
   if (Number(staled.changes) > 0) {
     logEvidence(db, {
       scopeId,
-      objectType: "open_loop",
+      objectType: "loop",
       objectId: 0,
       eventType: "decay",
       payload: { markedStale: Number(staled.changes), maxAgeHours },

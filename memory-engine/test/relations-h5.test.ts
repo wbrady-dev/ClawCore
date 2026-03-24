@@ -46,7 +46,7 @@ describe("H5 Schema", () => {
     const tables = (db.prepare(
       "SELECT name FROM sqlite_master WHERE type='table' ORDER BY name",
     ).all() as Array<{ name: string }>).map((r) => r.name);
-    expect(tables).toContain("entity_relations");
+    expect(tables).toContain("_legacy_entity_relations");
   });
 
   it("migration v6 is idempotent", () => {

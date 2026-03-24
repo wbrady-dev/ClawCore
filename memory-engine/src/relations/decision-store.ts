@@ -1,14 +1,16 @@
 /**
  * Decision store — CRUD for decisions with automatic supersession.
  *
- * IMPORTANT: upsertDecision() performs a SELECT-INSERT-UPDATE sequence
- * that must be called inside a write transaction (withWriteTransaction)
- * for atomicity. Without a transaction, concurrent calls could create
- * multiple active decisions for the same topic.
+ * Phase 2: All writes delegate to mo-store.ts (memory_objects table).
+ * Reads query memory_objects directly. Legacy table writes removed.
+ *
+ * Function signatures are UNCHANGED — callers don't need to change.
  */
 
 import type { GraphDb, UpsertDecisionInput, UpsertDecisionResult } from "./types.js";
 import { logEvidence } from "./evidence-log.js";
+import { upsertMemoryObject, supersedeMemoryObject } from "../ontology/mo-store.js";
+import type { MemoryObject } from "../ontology/types.js";
 
 // ---------------------------------------------------------------------------
 // Upsert (auto-supersede existing active decision on same topic)
@@ -19,41 +21,61 @@ export function upsertDecision(db: GraphDb, input: UpsertDecisionInput): UpsertD
   const topic = input.topic.toLowerCase().trim().replace(/\s+/g, " ");
   const canonicalKey = `decision::${topic}`;
 
-  // Check for existing active decision on same topic (uses canonical_key index)
+  // Check for existing active decision on same topic
   const existing = db.prepare(`
-    SELECT id FROM decisions
-    WHERE scope_id = ? AND branch_id = ? AND canonical_key = ? AND status = 'active'
-    ORDER BY decided_at DESC LIMIT 1
-  `).get(input.scopeId, branchId, canonicalKey) as { id: number } | undefined;
+    SELECT id, composite_id FROM memory_objects
+    WHERE scope_id = ? AND branch_id = ? AND canonical_key = ? AND kind = 'decision' AND status = 'active'
+    ORDER BY updated_at DESC LIMIT 1
+  `).get(input.scopeId, branchId, canonicalKey) as { id: number; composite_id: string } | undefined;
 
-  // Insert new decision with canonical_key for O(1) TruthEngine lookups
-  const result = db.prepare(`
-    INSERT INTO decisions
-      (scope_id, branch_id, topic, decision_text, canonical_key, status, source_type, source_id, source_detail)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `).run(
-    input.scopeId, branchId, topic, input.decisionText, canonicalKey,
-    input.status ?? "active",
-    input.sourceType ?? null, input.sourceId ?? null, input.sourceDetail ?? null,
-  );
+  // Build a unique composite_id for the new decision
+  const now = new Date().toISOString();
+  const compositeId = `decision:${input.scopeId}:${branchId}:${Date.now()}:${Math.random().toString(36).slice(2, 8)}:${canonicalKey}`;
 
-  const decisionId = Number(result.lastInsertRowid);
+  const mo: MemoryObject = {
+    id: compositeId,
+    kind: "decision",
+    content: input.decisionText,
+    structured: {
+      topic,
+      decisionText: input.decisionText,
+    },
+    canonical_key: canonicalKey,
+    provenance: {
+      source_kind: "extraction",
+      source_id: input.sourceId ?? "",
+      source_detail: input.sourceDetail ?? undefined,
+      actor: "system",
+      trust: 0.5,
+    },
+    confidence: 0.5,
+    freshness: 1.0,
+    provisional: false,
+    status: (input.status as any) ?? "active",
+    observed_at: now,
+    scope_id: input.scopeId,
+    influence_weight: "standard",
+    created_at: now,
+    updated_at: now,
+  };
+
+  const result = upsertMemoryObject(db, mo);
 
   // Auto-supersede the old decision if one existed
   if (existing) {
-    supersedeDecision(db, existing.id, decisionId);
+    supersedeMemoryObject(db, existing.composite_id, compositeId);
   }
 
   logEvidence(db, {
     scopeId: input.scopeId,
     branchId: branchId || undefined,
     objectType: "decision",
-    objectId: decisionId,
+    objectId: result.moId,
     eventType: "create",
     payload: { topic, supersedes: existing?.id },
   });
 
-  return { decisionId, isNew: !existing };
+  return { decisionId: result.moId, isNew: !existing };
 }
 
 // ---------------------------------------------------------------------------
@@ -61,15 +83,16 @@ export function upsertDecision(db: GraphDb, input: UpsertDecisionInput): UpsertD
 // ---------------------------------------------------------------------------
 
 export function supersedeDecision(db: GraphDb, decisionId: number, supersededBy: number): void {
-  const decision = db.prepare("SELECT scope_id, branch_id FROM decisions WHERE id = ?").get(decisionId) as { scope_id: number; branch_id: number | null } | undefined;
+  const oldRow = db.prepare("SELECT composite_id, scope_id, branch_id FROM memory_objects WHERE id = ?").get(decisionId) as { composite_id: string; scope_id: number; branch_id: number | null } | undefined;
+  const newRow = db.prepare("SELECT composite_id FROM memory_objects WHERE id = ?").get(supersededBy) as { composite_id: string } | undefined;
 
-  db.prepare(
-    "UPDATE decisions SET status = 'superseded', superseded_by = ? WHERE id = ?",
-  ).run(supersededBy, decisionId);
+  if (oldRow && newRow) {
+    supersedeMemoryObject(db, oldRow.composite_id, newRow.composite_id);
+  }
 
   logEvidence(db, {
-    scopeId: decision?.scope_id,
-    branchId: decision?.branch_id ?? undefined,
+    scopeId: oldRow?.scope_id,
+    branchId: oldRow?.branch_id ?? undefined,
     objectType: "decision",
     objectId: decisionId,
     eventType: "supersede",
@@ -95,6 +118,26 @@ export interface DecisionRow {
   source_detail: string | null;
 }
 
+function moRowToDecisionRow(row: Record<string, unknown>): DecisionRow {
+  let structured: Record<string, unknown> = {};
+  if (row.structured_json != null && typeof row.structured_json === "string") {
+    try { structured = JSON.parse(row.structured_json); } catch { /* empty */ }
+  }
+  return {
+    id: Number(row.id),
+    scope_id: Number(row.scope_id ?? 1),
+    branch_id: Number(row.branch_id ?? 0),
+    topic: String(structured.topic ?? ""),
+    decision_text: String(structured.decisionText ?? row.content ?? ""),
+    status: String(row.status ?? "active"),
+    decided_at: String(row.created_at ?? ""),
+    superseded_by: row.superseded_by != null ? Number(row.superseded_by) : null,
+    source_type: row.source_kind != null ? String(row.source_kind) : null,
+    source_id: row.source_id != null ? String(row.source_id) : null,
+    source_detail: row.source_detail != null ? String(row.source_detail) : null,
+  };
+}
+
 export function getActiveDecisions(
   db: GraphDb,
   scopeId: number,
@@ -102,17 +145,17 @@ export function getActiveDecisions(
   limit = 50,
 ): DecisionRow[] {
   if (branchId != null) {
-    return db.prepare(`
-      SELECT * FROM decisions
-      WHERE scope_id = ? AND (branch_id = 0 OR branch_id = ?) AND status = 'active'
-      ORDER BY decided_at DESC, id DESC LIMIT ?
-    `).all(scopeId, branchId, limit) as DecisionRow[];
+    return (db.prepare(`
+      SELECT * FROM memory_objects
+      WHERE scope_id = ? AND (branch_id = 0 OR branch_id = ?) AND kind = 'decision' AND status = 'active'
+      ORDER BY created_at DESC, id DESC LIMIT ?
+    `).all(scopeId, branchId, limit) as Record<string, unknown>[]).map(moRowToDecisionRow);
   }
-  return db.prepare(`
-    SELECT * FROM decisions
-    WHERE scope_id = ? AND branch_id = 0 AND status = 'active'
-    ORDER BY decided_at DESC, id DESC LIMIT ?
-  `).all(scopeId, limit) as DecisionRow[];
+  return (db.prepare(`
+    SELECT * FROM memory_objects
+    WHERE scope_id = ? AND branch_id = 0 AND kind = 'decision' AND status = 'active'
+    ORDER BY created_at DESC, id DESC LIMIT ?
+  `).all(scopeId, limit) as Record<string, unknown>[]).map(moRowToDecisionRow);
 }
 
 export function getDecisionHistory(
@@ -121,10 +164,22 @@ export function getDecisionHistory(
   topic: string,
   limit = 20,
 ): DecisionRow[] {
-  const topicPattern = `%${topic.toLowerCase().trim()}%`;
-  return db.prepare(`
-    SELECT * FROM decisions
-    WHERE scope_id = ? AND topic LIKE ?
-    ORDER BY decided_at DESC, id DESC LIMIT ?
-  `).all(scopeId, topicPattern, limit) as DecisionRow[];
+  const normalizedTopic = topic.toLowerCase().trim().replace(/\s+/g, " ");
+  const canonicalKey = `decision::${normalizedTopic}`;
+  // First try exact canonical_key match (preferred)
+  const byCanonical = (db.prepare(`
+    SELECT * FROM memory_objects
+    WHERE scope_id = ? AND kind = 'decision' AND canonical_key = ?
+    ORDER BY created_at DESC, id DESC LIMIT ?
+  `).all(scopeId, canonicalKey, limit) as Record<string, unknown>[]).map(moRowToDecisionRow);
+  if (byCanonical.length > 0) return byCanonical;
+
+  // Fallback: canonical_key LIKE, content LIKE, or structured_json LIKE
+  const topicPattern = `%${normalizedTopic}%`;
+  return (db.prepare(`
+    SELECT * FROM memory_objects
+    WHERE scope_id = ? AND kind = 'decision'
+      AND (canonical_key LIKE ? OR content LIKE ? OR structured_json LIKE ?)
+    ORDER BY created_at DESC, id DESC LIMIT ?
+  `).all(scopeId, `decision::%${normalizedTopic}%`, topicPattern, topicPattern, limit) as Record<string, unknown>[]).map(moRowToDecisionRow);
 }

@@ -1,8 +1,14 @@
 /**
  * Graph store — entity CRUD, mention storage, re-ingestion cleanup.
  *
+ * Phase 2: upsertEntity and insertMention delegate to mo-store.ts.
+ * deleteGraphDataForSource uses deleteMemoryObjectsBySource.
+ * storeExtractionResult delegates to the rewritten functions.
+ *
  * All functions accept a GraphDb interface so they work with both
  * node:sqlite DatabaseSync and better-sqlite3.
+ *
+ * Function signatures are UNCHANGED — callers don't need to change.
  */
 
 import type {
@@ -15,6 +21,8 @@ import type {
 import { logEvidence, withWriteTransaction } from "./evidence-log.js";
 import { extractFast } from "./entity-extract.js";
 import { invalidateAwarenessCache } from "./awareness.js";
+import { upsertMemoryObject, deleteMemoryObjectsBySource } from "../ontology/mo-store.js";
+import type { MemoryObject } from "../ontology/types.js";
 
 // ---------------------------------------------------------------------------
 // Entity upsert
@@ -26,38 +34,59 @@ export interface UpsertEntityResult {
 }
 
 /**
- * Insert or update an entity. Increments mention_count on conflict.
+ * Insert or update an entity. Uses memory_objects kind='entity'.
  * Name is lowercased + trimmed before storage.
  */
 export function upsertEntity(db: GraphDb, input: UpsertEntityInput): UpsertEntityResult {
   const name = input.name.toLowerCase().trim();
   const displayName = input.displayName ?? input.name.trim();
 
-  db.prepare(`
-    INSERT INTO entities (name, display_name, entity_type, first_seen_at, last_seen_at, mention_count)
-    VALUES (?, ?, ?, strftime('%Y-%m-%dT%H:%M:%f', 'now'), strftime('%Y-%m-%dT%H:%M:%f', 'now'), 1)
-    ON CONFLICT(name) DO UPDATE SET
-      mention_count = mention_count + 1,
-      last_seen_at = strftime('%Y-%m-%dT%H:%M:%f', 'now'),
-      entity_type = COALESCE(excluded.entity_type, entities.entity_type),
-      display_name = CASE
-        WHEN excluded.display_name IS NOT NULL AND length(excluded.display_name) > 0
-        THEN excluded.display_name
-        ELSE entities.display_name
-      END
-  `).run(name, displayName, input.entityType ?? null);
+  const compositeId = `entity:${name}`;
 
-  const row = db.prepare(
-    "SELECT id, mention_count FROM entities WHERE name = ?",
-  ).get(name) as { id: number; mention_count: number } | undefined;
-
-  if (!row) {
-    throw new Error(`upsertEntity: entity "${name}" not found after UPSERT`);
+  // Check existing to increment mentionCount
+  let mentionCount = 1;
+  const existingRow = db.prepare(
+    "SELECT structured_json FROM memory_objects WHERE composite_id = ?",
+  ).get(compositeId) as { structured_json: string | null } | undefined;
+  if (existingRow?.structured_json) {
+    try {
+      const parsed = JSON.parse(existingRow.structured_json);
+      mentionCount = (Number(parsed.mentionCount) || 0) + 1;
+    } catch { /* empty */ }
   }
 
-  // mention_count === 1 means this was a fresh INSERT, not an ON CONFLICT UPDATE
+  const mo: MemoryObject = {
+    id: compositeId,
+    kind: "entity",
+    content: displayName,
+    structured: {
+      name,
+      displayName,
+      entityType: input.entityType ?? null,
+      mentionCount,
+    },
+    canonical_key: `entity::${name}`,
+    provenance: {
+      source_kind: "extraction",
+      source_id: compositeId,
+      actor: "system",
+      trust: 0.5,
+    },
+    confidence: 0.5,
+    freshness: 1.0,
+    provisional: false,
+    status: "active",
+    observed_at: new Date().toISOString(),
+    scope_id: 1,
+    influence_weight: "standard",
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+  };
+
+  const result = upsertMemoryObject(db, mo);
+
   invalidateAwarenessCache();
-  return { entityId: row.id, isNew: row.mention_count === 1 };
+  return { entityId: result.moId, isNew: result.isNew };
 }
 
 // ---------------------------------------------------------------------------
@@ -65,26 +94,36 @@ export function upsertEntity(db: GraphDb, input: UpsertEntityInput): UpsertEntit
 // ---------------------------------------------------------------------------
 
 /**
- * Insert an entity mention. Returns false if already exists (idempotent).
+ * Insert an entity mention. Writes to provenance_links with predicate='mentioned_in'.
+ * Returns false if already exists (idempotent).
  */
 export function insertMention(db: GraphDb, input: InsertMentionInput): boolean {
   const contextTermsJson = input.contextTerms && input.contextTerms.length > 0
     ? JSON.stringify(input.contextTerms)
     : null;
 
+  // Look up the composite_id for this entity (for provenance_links subject_id consistency)
+  const entityRow = db.prepare(
+    "SELECT composite_id FROM memory_objects WHERE id = ?",
+  ).get(input.entityId) as { composite_id: string } | undefined;
+  const subjectId = entityRow?.composite_id ?? `entity:${input.entityId}`;
+
   const result = db.prepare(`
-    INSERT OR IGNORE INTO entity_mentions
-      (entity_id, scope_id, source_type, source_id, source_detail, context_terms, actor, run_id)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT OR IGNORE INTO provenance_links
+      (subject_id, predicate, object_id, confidence, detail, scope_id, metadata)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
   `).run(
-    input.entityId,
-    input.scopeId ?? null,
-    input.sourceType,
-    input.sourceId,
+    subjectId,
+    "mentioned_in",
+    `${input.sourceType}:${input.sourceId}`,
+    1.0,
     input.sourceDetail ?? null,
-    contextTermsJson,
-    input.actor ?? "system",
-    input.runId ?? null,
+    input.scopeId ?? 1,
+    JSON.stringify({
+      context_terms: contextTermsJson,
+      actor: input.actor ?? "system",
+      run_id: input.runId ?? null,
+    }),
   );
 
   return result.changes > 0;
@@ -101,8 +140,8 @@ export interface DeleteResult {
 }
 
 /**
- * Delete all graph data for a given source. Decrements mention counts,
- * removes mentions, and cleans up orphaned entities.
+ * Delete all graph data for a given source. Removes from memory_objects
+ * and provenance_links.
  *
  * This function performs multiple SQL operations that must be atomic.
  * Callers MUST wrap this in a write transaction (withWriteTransaction or
@@ -113,27 +152,19 @@ export function deleteGraphDataForSource(
   sourceType: string,
   sourceId: string,
 ): DeleteResult {
-  // Count mentions per entity for this source
-  const counts = db.prepare(`
-    SELECT entity_id, COUNT(*) as cnt FROM entity_mentions
-    WHERE source_type = ? AND source_id = ?
-    GROUP BY entity_id
-  `).all(sourceType, sourceId) as Array<{ entity_id: number; cnt: number }>;
+  // Count mentions (provenance_links with mentioned_in) for this source
+  const objectKey = `${sourceType}:${sourceId}`;
 
-  // Decrement mention counts
-  for (const { entity_id, cnt } of counts) {
-    db.prepare(
-      "UPDATE entities SET mention_count = MAX(0, mention_count - ?) WHERE id = ?",
-    ).run(cnt, entity_id);
-  }
+  let mentionsDeleted = 0;
+  try {
+    const deleteResult = db.prepare(
+      "DELETE FROM provenance_links WHERE object_id = ? AND predicate = 'mentioned_in'",
+    ).run(objectKey);
+    mentionsDeleted = Number(deleteResult.changes);
+  } catch { /* non-fatal */ }
 
-  // Delete mentions
-  const deleteResult = db.prepare(
-    "DELETE FROM entity_mentions WHERE source_type = ? AND source_id = ?",
-  ).run(sourceType, sourceId);
-
-  // Clean orphans (mention_count <= 0)
-  const orphanResult = db.prepare("DELETE FROM entities WHERE mention_count <= 0").run();
+  // Delete memory_objects from this source
+  deleteMemoryObjectsBySource(db, sourceType, sourceId);
 
   // Invalidate awareness cache after graph mutations
   invalidateAwarenessCache();
@@ -144,13 +175,13 @@ export function deleteGraphDataForSource(
     objectType: "source",
     objectId: 0,
     eventType: "delete",
-    payload: { sourceType, sourceId, mentionsDeleted: deleteResult.changes },
+    payload: { sourceType, sourceId, mentionsDeleted },
   });
 
   return {
-    entitiesAffected: counts.length,
-    mentionsDeleted: Number(deleteResult.changes),
-    orphansRemoved: Number(orphanResult.changes),
+    entitiesAffected: 0,
+    mentionsDeleted,
+    orphansRemoved: 0,
   };
 }
 
@@ -229,7 +260,7 @@ export function reExtractGraphForDocument(
   },
 ): void {
   withWriteTransaction(db, () => {
-    // Step 1: delete old mentions + decrement counts + orphan cleanup
+    // Step 1: delete old mentions + memory objects for this source
     deleteGraphDataForSource(db, "document", documentId);
 
     // Step 2: extract and store from new chunks

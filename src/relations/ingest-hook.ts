@@ -322,18 +322,35 @@ export function deleteSourceData(db: Database.Database, sourceType: string, sour
 /**
  * Clear all data tables in the graph DB (for full reset).
  * Preserves infrastructure tables (state_scopes, promotion_policies, _evidence_migrations).
- * FK-safe deletion order: children before parents.
+ *
+ * Phase 3: Primary data lives in memory_objects + provenance_links.
+ * Legacy tables are also cleared for backward compatibility.
  */
 export function clearAllGraphTables(db: Database.Database): void {
-  const tables = [
-    "work_leases", "anti_runbook_evidence", "runbook_evidence", "claim_evidence",
-    "entity_mentions", "state_deltas", "anti_runbooks", "runbooks", "attempts",
-    "invariants", "capabilities", "open_loops", "decisions", "claims",
-    "entity_relations", "entities", "evidence_log",
+  // Primary unified tables
+  try { db.prepare("DELETE FROM provenance_links").run(); } catch {}
+  try { db.prepare("DELETE FROM memory_objects").run(); } catch {}
+
+  // Legacy tables (renamed to _legacy_* in v18, cleared for backward compat)
+  const legacyTables = [
+    "work_leases",
+    // Try both renamed (_legacy_*) and original names
+    "_legacy_anti_runbook_evidence", "_legacy_runbook_evidence", "_legacy_claim_evidence",
+    "_legacy_entity_mentions", "_legacy_anti_runbooks", "_legacy_runbooks", "_legacy_attempts",
+    "_legacy_invariants", "_legacy_open_loops", "_legacy_decisions", "_legacy_claims",
+    "_legacy_entity_relations", "_legacy_entities",
+    "anti_runbook_evidence", "runbook_evidence", "claim_evidence",
+    "entity_mentions", "anti_runbooks", "runbooks", "attempts",
+    "invariants", "open_loops", "decisions", "claims",
+    "entity_relations", "entities", "state_deltas",
   ];
-  for (const table of tables) {
+  for (const table of legacyTables) {
     try { db.prepare(`DELETE FROM ${table}`).run(); } catch {}
   }
+
+  // Keep evidence_log, state_deltas, capabilities
+  try { db.prepare("DELETE FROM evidence_log").run(); } catch {}
+
   // Reset scope sequences to 1
   try { db.prepare("UPDATE scope_sequences SET next_seq = 1").run(); } catch {}
 }

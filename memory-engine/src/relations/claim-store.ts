@@ -1,10 +1,10 @@
 /**
  * Claim store — CRUD for structured claims with evidence tracking.
  *
- * IMPORTANT: upsertClaim() and storeClaimExtractionResults() use a
- * SELECT-before-UPSERT pattern for isNew detection. These must be
- * called inside a write transaction (withWriteTransaction) for atomicity.
- * The primary caller (compaction.ts) already wraps in withWriteTransaction.
+ * Phase 2: All writes delegate to mo-store.ts (memory_objects table).
+ * Reads query memory_objects directly. Legacy table writes removed.
+ *
+ * Function signatures are UNCHANGED — callers don't need to change.
  */
 
 import type {
@@ -16,6 +16,8 @@ import type {
 } from "./types.js";
 import { logEvidence } from "./evidence-log.js";
 import { buildCanonicalKey as ontologyCanonicalKey, normalize } from "../ontology/canonical.js";
+import { upsertMemoryObject, supersedeMemoryObject } from "../ontology/mo-store.js";
+import type { MemoryObject } from "../ontology/types.js";
 
 // ---------------------------------------------------------------------------
 // Canonical key — delegates to the RSMA ontology canonical.ts for ONE key system
@@ -40,55 +42,50 @@ export function upsertClaim(db: GraphDb, input: UpsertClaimInput): UpsertClaimRe
   const branchId = input.branchId ?? 0;
   const confidence = input.confidence ?? 0.5;
   const trustScore = input.trustScore ?? 0.5;
-  const sourceAuthority = input.sourceAuthority ?? 0.5;
 
-  // Check existence before upsert for reliable isNew detection
-  const existing = db.prepare(
-    "SELECT id FROM claims WHERE scope_id = ? AND branch_id = ? AND canonical_key = ?",
-  ).get(input.scopeId, branchId, input.canonicalKey) as { id: number } | undefined;
+  const compositeId = `claim:${input.scopeId}:${branchId}:${input.canonicalKey}`;
 
-  db.prepare(`
-    INSERT INTO claims
-      (scope_id, branch_id, subject, predicate, object_text, object_json,
-       value_type, confidence, trust_score, source_authority, canonical_key, extraction_version)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    ON CONFLICT(scope_id, branch_id, canonical_key) DO UPDATE SET
-      confidence = excluded.confidence * 0.7 + claims.confidence * 0.3,
-      trust_score = excluded.trust_score * 0.7 + claims.trust_score * 0.3,
-      source_authority = MAX(claims.source_authority, excluded.source_authority),
-      object_text = COALESCE(excluded.object_text, claims.object_text),
-      object_json = COALESCE(excluded.object_json, claims.object_json),
-      last_seen_at = strftime('%Y-%m-%dT%H:%M:%f', 'now'),
-      updated_at = strftime('%Y-%m-%dT%H:%M:%f', 'now')
-  `).run(
-    input.scopeId, branchId, input.subject, input.predicate,
-    input.objectText ?? null, input.objectJson ?? null,
-    input.valueType ?? "text", confidence, trustScore, sourceAuthority,
-    input.canonicalKey, input.extractionVersion ?? 1,
-  );
+  const mo: MemoryObject = {
+    id: compositeId,
+    kind: "claim",
+    content: `${input.subject} ${input.predicate} ${input.objectText ?? ""}`.trim(),
+    structured: {
+      subject: input.subject,
+      predicate: input.predicate,
+      objectText: input.objectText ?? null,
+      objectJson: input.objectJson ?? null,
+      valueType: input.valueType ?? "text",
+    },
+    canonical_key: input.canonicalKey,
+    provenance: {
+      source_kind: "extraction",
+      source_id: compositeId,
+      actor: "system",
+      trust: trustScore,
+    },
+    confidence,
+    freshness: 1.0,
+    provisional: false,
+    status: "active",
+    observed_at: new Date().toISOString(),
+    scope_id: input.scopeId,
+    influence_weight: "standard",
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+  };
 
-  const row = db.prepare(
-    "SELECT id FROM claims WHERE scope_id = ? AND branch_id = ? AND canonical_key = ?",
-  ).get(input.scopeId, branchId, input.canonicalKey) as { id: number } | undefined;
-
-  if (!row) {
-    throw new Error(`upsertClaim: claim not found after UPSERT for key "${input.canonicalKey}"`);
-  }
-
-  const isNew = !existing;
+  const result = upsertMemoryObject(db, mo);
 
   logEvidence(db, {
     scopeId: input.scopeId,
     branchId: branchId || undefined,
     objectType: "claim",
-    objectId: row.id,
-    eventType: isNew ? "create" : "update",
-    // Only use idempotency key on create to prevent duplicate first-inserts.
-    // Updates are allowed to log multiple times (each observation is valid).
-    idempotencyKey: isNew ? `claim:create:${input.scopeId}:${branchId}:${input.canonicalKey}` : undefined,
+    objectId: result.moId,
+    eventType: result.isNew ? "create" : "update",
+    idempotencyKey: result.isNew ? `claim:create:${input.scopeId}:${branchId}:${input.canonicalKey}` : undefined,
   });
 
-  return { claimId: row.id, isNew };
+  return { claimId: result.moId, isNew: result.isNew };
 }
 
 // ---------------------------------------------------------------------------
@@ -96,53 +93,40 @@ export function upsertClaim(db: GraphDb, input: UpsertClaimInput): UpsertClaimRe
 // ---------------------------------------------------------------------------
 
 export function addClaimEvidence(db: GraphDb, input: AddClaimEvidenceInput): number {
-  const claim = db.prepare("SELECT scope_id, branch_id FROM claims WHERE id = ?").get(input.claimId) as { scope_id: number; branch_id: number | null } | undefined;
-
+  // Write ONLY to provenance_links (unified relationship table)
   const result = db.prepare(`
-    INSERT INTO claim_evidence
-      (claim_id, source_type, source_id, source_detail, evidence_role, snippet_hash, confidence_delta)
+    INSERT INTO provenance_links (subject_id, predicate, object_id, confidence, detail, scope_id, metadata)
     VALUES (?, ?, ?, ?, ?, ?, ?)
-    ON CONFLICT(claim_id, source_type, source_id, evidence_role) DO UPDATE SET
-      observed_at = strftime('%Y-%m-%dT%H:%M:%f', 'now'),
-      confidence_delta = MAX(claim_evidence.confidence_delta, excluded.confidence_delta),
-      source_detail = COALESCE(excluded.source_detail, claim_evidence.source_detail)
+    ON CONFLICT(subject_id, predicate, object_id) DO UPDATE SET
+      confidence = MAX(provenance_links.confidence, excluded.confidence),
+      detail = COALESCE(excluded.detail, provenance_links.detail)
   `).run(
-    input.claimId, input.sourceType, input.sourceId,
-    input.sourceDetail ?? null, input.evidenceRole,
-    input.snippetHash ?? null, input.confidenceDelta ?? 0,
+    `claim:${input.claimId}`,
+    input.evidenceRole === "contradict" ? "contradicts" : "supports",
+    `${input.sourceType}:${input.sourceId}`,
+    Math.min(1.0, Math.max(0.0, input.confidenceDelta ?? 0.1)),
+    input.sourceDetail ?? null,
+    1,
+    JSON.stringify({ evidence_role: input.evidenceRole, snippet_hash: input.snippetHash, confidence_delta: input.confidenceDelta }),
   );
 
-  // On upsert conflict, lastInsertRowid may not reflect the actual row.
-  // SELECT the real ID to handle both insert and update paths.
+  // Get the actual row ID
   const evidenceRow = db.prepare(
-    "SELECT id FROM claim_evidence WHERE claim_id = ? AND source_type = ? AND source_id = ? AND evidence_role = ?",
-  ).get(input.claimId, input.sourceType, input.sourceId, input.evidenceRole) as { id: number };
+    "SELECT id FROM provenance_links WHERE subject_id = ? AND predicate = ? AND object_id = ?",
+  ).get(
+    `claim:${input.claimId}`,
+    input.evidenceRole === "contradict" ? "contradicts" : "supports",
+    `${input.sourceType}:${input.sourceId}`,
+  ) as { id: number };
   const evidenceId = evidenceRow.id;
 
   logEvidence(db, {
-    scopeId: claim?.scope_id,
-    branchId: claim?.branch_id ?? undefined,
+    scopeId: 1,
     objectType: "claim_evidence",
     objectId: evidenceId,
     eventType: "create",
     payload: { claimId: input.claimId, role: input.evidenceRole },
   });
-
-  // RSMA: also write to provenance_links (unified relationship table)
-  try {
-    db.prepare(`
-      INSERT OR IGNORE INTO provenance_links (subject_id, predicate, object_id, confidence, detail, scope_id, metadata)
-      VALUES (?, ?, ?, ?, ?, ?, ?)
-    `).run(
-      `claim:${input.claimId}`,
-      input.evidenceRole === "contradict" ? "contradicts" : "supports",
-      `${input.sourceType}:${input.sourceId}`,
-      Math.min(1.0, Math.max(0.0, input.confidenceDelta ?? 0.1)), // clamp to [0,1] range
-      input.sourceDetail ?? null,
-      claim?.scope_id ?? 1,
-      JSON.stringify({ evidence_role: input.evidenceRole, snippet_hash: input.snippetHash, confidence_delta: input.confidenceDelta }),
-    );
-  } catch { /* non-fatal */ }
 
   return evidenceId;
 }
@@ -152,15 +136,16 @@ export function addClaimEvidence(db: GraphDb, input: AddClaimEvidenceInput): num
 // ---------------------------------------------------------------------------
 
 export function supersedeClaim(db: GraphDb, claimId: number, supersededBy: number): void {
-  const claim = db.prepare("SELECT scope_id, branch_id FROM claims WHERE id = ?").get(claimId) as { scope_id: number; branch_id: number | null } | undefined;
+  // Find composite_ids from moIds
+  const oldRow = db.prepare("SELECT composite_id FROM memory_objects WHERE id = ?").get(claimId) as { composite_id: string } | undefined;
+  const newRow = db.prepare("SELECT composite_id FROM memory_objects WHERE id = ?").get(supersededBy) as { composite_id: string } | undefined;
 
-  db.prepare(
-    "UPDATE claims SET status = 'superseded', superseded_by = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%f', 'now') WHERE id = ?",
-  ).run(supersededBy, claimId);
+  if (oldRow && newRow) {
+    supersedeMemoryObject(db, oldRow.composite_id, newRow.composite_id);
+  }
 
   logEvidence(db, {
-    scopeId: claim?.scope_id,
-    branchId: claim?.branch_id ?? undefined,
+    scopeId: 1,
     objectType: "claim",
     objectId: claimId,
     eventType: "supersede",
@@ -190,6 +175,30 @@ export interface ClaimRow {
   last_seen_at: string;
 }
 
+function moRowToClaimRow(row: Record<string, unknown>): ClaimRow {
+  let structured: Record<string, unknown> = {};
+  if (row.structured_json != null && typeof row.structured_json === "string") {
+    try { structured = JSON.parse(row.structured_json); } catch { /* empty */ }
+  }
+  return {
+    id: Number(row.id),
+    scope_id: Number(row.scope_id ?? 1),
+    branch_id: Number(row.branch_id ?? 0),
+    subject: String(structured.subject ?? ""),
+    predicate: String(structured.predicate ?? ""),
+    object_text: structured.objectText != null ? String(structured.objectText) : null,
+    object_json: structured.objectJson != null ? String(structured.objectJson) : null,
+    value_type: String(structured.valueType ?? "text"),
+    status: String(row.status ?? "active"),
+    confidence: Number(row.confidence ?? 0.5),
+    trust_score: Number(row.trust_score ?? 0.5),
+    source_authority: Number(row.source_authority ?? 0.5),
+    canonical_key: String(row.canonical_key ?? ""),
+    first_seen_at: String(row.first_observed_at ?? row.created_at ?? ""),
+    last_seen_at: String(row.last_observed_at ?? row.updated_at ?? ""),
+  };
+}
+
 export function getActiveClaims(
   db: GraphDb,
   scopeId: number,
@@ -197,17 +206,17 @@ export function getActiveClaims(
   limit = 50,
 ): ClaimRow[] {
   if (branchId != null) {
-    return db.prepare(`
-      SELECT * FROM claims
-      WHERE scope_id = ? AND (branch_id = 0 OR branch_id = ?) AND status = 'active'
-      ORDER BY confidence DESC, last_seen_at DESC LIMIT ?
-    `).all(scopeId, branchId, limit) as ClaimRow[];
+    return (db.prepare(`
+      SELECT * FROM memory_objects
+      WHERE scope_id = ? AND (branch_id = 0 OR branch_id = ?) AND kind = 'claim' AND status = 'active'
+      ORDER BY confidence DESC, last_observed_at DESC LIMIT ?
+    `).all(scopeId, branchId, limit) as Record<string, unknown>[]).map(moRowToClaimRow);
   }
-  return db.prepare(`
-    SELECT * FROM claims
-    WHERE scope_id = ? AND branch_id = 0 AND status = 'active'
-    ORDER BY confidence DESC, last_seen_at DESC LIMIT ?
-  `).all(scopeId, limit) as ClaimRow[];
+  return (db.prepare(`
+    SELECT * FROM memory_objects
+    WHERE scope_id = ? AND branch_id = 0 AND kind = 'claim' AND status = 'active'
+    ORDER BY confidence DESC, last_observed_at DESC LIMIT ?
+  `).all(scopeId, limit) as Record<string, unknown>[]).map(moRowToClaimRow);
 }
 
 export interface ClaimWithEvidence extends ClaimRow {
@@ -231,62 +240,51 @@ export function getClaimsWithEvidence(
     ? "(branch_id = 0 OR branch_id = ?)"
     : "branch_id = 0";
   const branchArgs = opts?.branchId != null ? [opts.branchId] : [];
-  let claims: ClaimRow[];
+
+  let rows: Record<string, unknown>[];
 
   if (opts?.subject) {
     const subjectPattern = `%${opts.subject.toLowerCase().trim()}%`;
-    claims = db.prepare(`
-      SELECT * FROM claims
-      WHERE scope_id = ? AND ${branchFilter} AND status = 'active' AND subject LIKE ?
+    rows = db.prepare(`
+      SELECT * FROM memory_objects
+      WHERE scope_id = ? AND ${branchFilter} AND kind = 'claim' AND status = 'active' AND content LIKE ?
       ORDER BY confidence DESC LIMIT ?
-    `).all(scopeId, ...branchArgs, subjectPattern, limit) as ClaimRow[];
+    `).all(scopeId, ...branchArgs, subjectPattern, limit) as Record<string, unknown>[];
   } else {
-    claims = db.prepare(`
-      SELECT * FROM claims
-      WHERE scope_id = ? AND ${branchFilter} AND status = 'active'
+    rows = db.prepare(`
+      SELECT * FROM memory_objects
+      WHERE scope_id = ? AND ${branchFilter} AND kind = 'claim' AND status = 'active'
       ORDER BY confidence DESC LIMIT ?
-    `).all(scopeId, ...branchArgs, limit) as ClaimRow[];
+    `).all(scopeId, ...branchArgs, limit) as Record<string, unknown>[];
   }
 
+  const claims = rows.map(moRowToClaimRow);
+
   return claims.map((claim) => {
-    // Read from provenance_links (RSMA unified table), fall back to claim_evidence
-    let evidence: ClaimWithEvidence["evidence"];
+    let evidence: ClaimWithEvidence["evidence"] = [];
     try {
-      const rows = db.prepare(`
+      const evRows = db.prepare(`
         SELECT id, predicate, object_id, confidence, detail, metadata, created_at
         FROM provenance_links
         WHERE subject_id = ? AND predicate IN ('supports', 'contradicts')
         ORDER BY created_at DESC
       `).all(`claim:${claim.id}`) as Array<Record<string, unknown>>;
 
-      if (rows.length > 0) {
-        evidence = rows.map((r) => {
-          let meta: Record<string, unknown> = {};
-          try { if (r.metadata) meta = JSON.parse(String(r.metadata)); } catch { /* malformed JSON */ }
-          const objParts = String(r.object_id).split(":");
-          return {
-            id: Number(r.id),
-            source_type: objParts[0] ?? "",
-            source_id: objParts.slice(1).join(":"),
-            evidence_role: r.predicate === "contradicts" ? "contradict" : (meta.evidence_role ?? "support"),
-            observed_at: String(r.created_at),
-            confidence_delta: meta.confidence_delta ?? Number(r.confidence),
-          };
-        });
-      } else {
-        // Fallback to legacy table
-        evidence = db.prepare(`
-          SELECT id, source_type, source_id, evidence_role, observed_at, confidence_delta
-          FROM claim_evidence WHERE claim_id = ? ORDER BY observed_at DESC
-        `).all(claim.id) as ClaimWithEvidence["evidence"];
-      }
-    } catch {
-      // Fallback on any error
-      evidence = db.prepare(`
-        SELECT id, source_type, source_id, evidence_role, observed_at, confidence_delta
-        FROM claim_evidence WHERE claim_id = ? ORDER BY observed_at DESC
-      `).all(claim.id) as ClaimWithEvidence["evidence"];
-    }
+      evidence = evRows.map((r) => {
+        let meta: Record<string, unknown> = {};
+        try { if (r.metadata) meta = JSON.parse(String(r.metadata)); } catch { /* malformed JSON */ }
+        const objParts = String(r.object_id).split(":");
+        return {
+          id: Number(r.id),
+          source_type: objParts[0] ?? "",
+          source_id: objParts.slice(1).join(":"),
+          evidence_role: r.predicate === "contradicts" ? "contradict" : String(meta.evidence_role ?? "support"),
+          observed_at: String(r.created_at),
+          confidence_delta: Number(meta.confidence_delta ?? r.confidence),
+        };
+      });
+    } catch { /* empty evidence */ }
+
     return { ...claim, evidence };
   });
 }

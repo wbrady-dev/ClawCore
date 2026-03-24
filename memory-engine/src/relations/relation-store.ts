@@ -1,5 +1,10 @@
 /**
  * Relation store — entity-to-entity relationships extracted by deep mode.
+ *
+ * Phase 2: All writes go to provenance_links ONLY. Legacy entity_relations
+ * table writes removed. Reads from provenance_links only.
+ *
+ * Function signatures are UNCHANGED — callers don't need to change.
  */
 
 import type { GraphDb } from "./types.js";
@@ -31,24 +36,40 @@ export function upsertRelation(
   db: GraphDb,
   input: UpsertRelationInput,
 ): { relationId: number; isNew: boolean } {
-  const existing = db.prepare(
-    "SELECT id FROM entity_relations WHERE scope_id = ? AND subject_entity_id = ? AND predicate = ? AND object_entity_id = ?",
-  ).get(input.scopeId, input.subjectEntityId, input.predicate, input.objectEntityId) as { id: number } | undefined;
+  const subjectKey = `entity:${input.subjectEntityId}`;
+  const objectKey = `entity:${input.objectEntityId}`;
+  const confidence = input.confidence ?? 0.5;
 
-  db.prepare(`
-    INSERT INTO entity_relations
-      (scope_id, subject_entity_id, predicate, object_entity_id, confidence, source_type, source_id)
-    VALUES (?, ?, ?, ?, ?, ?, ?)
-    ON CONFLICT(scope_id, subject_entity_id, predicate, object_entity_id) DO UPDATE SET
-      confidence = (entity_relations.confidence + excluded.confidence) / 2.0
-  `).run(
-    input.scopeId, input.subjectEntityId, input.predicate, input.objectEntityId,
-    input.confidence ?? 0.5, input.sourceType, input.sourceId,
-  );
+  // Check for existing
+  const existing = db.prepare(
+    "SELECT id FROM provenance_links WHERE subject_id = ? AND predicate = 'relates_to' AND object_id = ? AND detail = ? AND scope_id = ?",
+  ).get(subjectKey, objectKey, input.predicate, input.scopeId) as { id: number } | undefined;
+
+  if (existing) {
+    // Update confidence (average)
+    db.prepare(`
+      UPDATE provenance_links SET
+        confidence = (confidence + ?) / 2.0
+      WHERE id = ?
+    `).run(confidence, existing.id);
+  } else {
+    db.prepare(`
+      INSERT INTO provenance_links (subject_id, predicate, object_id, confidence, detail, scope_id, metadata)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      subjectKey,
+      "relates_to",
+      objectKey,
+      confidence,
+      input.predicate,
+      input.scopeId,
+      JSON.stringify({ source_type: input.sourceType, source_id: input.sourceId }),
+    );
+  }
 
   const row = db.prepare(
-    "SELECT id FROM entity_relations WHERE scope_id = ? AND subject_entity_id = ? AND predicate = ? AND object_entity_id = ?",
-  ).get(input.scopeId, input.subjectEntityId, input.predicate, input.objectEntityId) as { id: number };
+    "SELECT id FROM provenance_links WHERE subject_id = ? AND predicate = 'relates_to' AND object_id = ? AND detail = ? AND scope_id = ?",
+  ).get(subjectKey, objectKey, input.predicate, input.scopeId) as { id: number };
 
   const isNew = !existing;
 
@@ -60,29 +81,13 @@ export function upsertRelation(
     payload: { predicate: input.predicate },
   });
 
-  // RSMA: also write to provenance_links
-  try {
-    db.prepare(`
-      INSERT OR IGNORE INTO provenance_links (subject_id, predicate, object_id, confidence, detail, scope_id, metadata)
-      VALUES (?, ?, ?, ?, ?, ?, ?)
-    `).run(
-      `entity:${input.subjectEntityId}`,
-      "relates_to",
-      `entity:${input.objectEntityId}`,
-      input.confidence ?? 0.5,
-      input.predicate, // original predicate (e.g. "manages") stored in detail
-      input.scopeId,
-      JSON.stringify({ source_type: input.sourceType, source_id: input.sourceId }),
-    );
-  } catch { /* non-fatal */ }
-
   return { relationId: row.id, isNew };
 }
 
 /**
  * Get relations for an entity (as subject, object, or both).
  */
-/** Parse "entity:42" → 42, returning 0 on failure. */
+/** Parse "entity:42" -> 42, returning 0 on failure. */
 function parseEntityId(compositeId: unknown): number {
   const parts = String(compositeId ?? "").split(":");
   const n = Number(parts[1]);
@@ -101,14 +106,37 @@ function batchResolveEntityNames(db: GraphDb, ids: number[]): Map<number, string
   const names = new Map<number, string>();
   if (ids.length === 0) return names;
   const unique = [...new Set(ids)];
-  // SQLite max variables is 999; batch if needed
+
+  // Try memory_objects first for entity names
   for (let i = 0; i < unique.length; i += 500) {
     const batch = unique.slice(i, i + 500);
     const placeholders = batch.map(() => "?").join(",");
-    const rows = db.prepare(
-      `SELECT id, display_name FROM entities WHERE id IN (${placeholders})`,
-    ).all(...batch) as Array<{ id: number; display_name: string }>;
-    for (const r of rows) names.set(r.id, r.display_name);
+    try {
+      const rows = db.prepare(
+        `SELECT id, structured_json FROM memory_objects WHERE id IN (${placeholders}) AND kind = 'entity'`,
+      ).all(...batch) as Array<{ id: number; structured_json: string | null }>;
+      for (const r of rows) {
+        try {
+          const s = r.structured_json ? JSON.parse(r.structured_json) : {};
+          names.set(r.id, String(s.displayName ?? s.name ?? r.id));
+        } catch { names.set(r.id, String(r.id)); }
+      }
+    } catch { /* fall through */ }
+
+    // Fill in any missing from legacy entities table (renamed to _legacy_entities in v18)
+    const missing = batch.filter((id) => !names.has(id));
+    if (missing.length > 0) {
+      const missingPlaceholders = missing.map(() => "?").join(",");
+      for (const tbl of ["_legacy_entities", "entities"]) {
+        try {
+          const rows = db.prepare(
+            `SELECT id, display_name FROM ${tbl} WHERE id IN (${missingPlaceholders})`,
+          ).all(...missing) as Array<{ id: number; display_name: string }>;
+          for (const r of rows) names.set(r.id, r.display_name);
+          break; // Found the table, stop trying
+        } catch { /* non-fatal — table may not exist */ }
+      }
+    }
   }
   return names;
 }
@@ -118,7 +146,6 @@ function mapProvLinksToRelations(
   db: GraphDb,
   rows: Array<Record<string, unknown>>,
 ): Array<RelationRow & { subject_name: string; object_name: string }> {
-  // Batch-resolve all entity names in ONE query
   const allIds = rows.flatMap((r) => [parseEntityId(r.subject_id), parseEntityId(r.object_id)]);
   const names = batchResolveEntityNames(db, allIds);
 
@@ -162,22 +189,12 @@ export function getRelationsForEntity(
     args = [entityKey, entityKey];
   }
 
-  try {
-    const rows = db.prepare(`
-      SELECT p.id, p.subject_id, p.object_id, p.confidence, p.detail, p.scope_id, p.metadata, p.created_at
-      FROM provenance_links p WHERE ${whereClause} ORDER BY p.confidence DESC
-    `).all(...args) as Array<Record<string, unknown>>;
-    if (rows.length > 0) return mapProvLinksToRelations(db, rows);
-  } catch { /* fall through to legacy */ }
+  const rows = db.prepare(`
+    SELECT p.id, p.subject_id, p.object_id, p.confidence, p.detail, p.scope_id, p.metadata, p.created_at
+    FROM provenance_links p WHERE ${whereClause} ORDER BY p.confidence DESC
+  `).all(...args) as Array<Record<string, unknown>>;
 
-  // Fallback to legacy entity_relations table
-  if (direction === "subject") {
-    return db.prepare(`SELECT r.*, e1.display_name AS subject_name, e2.display_name AS object_name FROM entity_relations r JOIN entities e1 ON r.subject_entity_id = e1.id JOIN entities e2 ON r.object_entity_id = e2.id WHERE r.subject_entity_id = ? ORDER BY r.confidence DESC`).all(entityId) as Array<RelationRow & { subject_name: string; object_name: string }>;
-  }
-  if (direction === "object") {
-    return db.prepare(`SELECT r.*, e1.display_name AS subject_name, e2.display_name AS object_name FROM entity_relations r JOIN entities e1 ON r.subject_entity_id = e1.id JOIN entities e2 ON r.object_entity_id = e2.id WHERE r.object_entity_id = ? ORDER BY r.confidence DESC`).all(entityId) as Array<RelationRow & { subject_name: string; object_name: string }>;
-  }
-  return db.prepare(`SELECT r.*, e1.display_name AS subject_name, e2.display_name AS object_name FROM entity_relations r JOIN entities e1 ON r.subject_entity_id = e1.id JOIN entities e2 ON r.object_entity_id = e2.id WHERE r.subject_entity_id = ? OR r.object_entity_id = ? ORDER BY r.confidence DESC`).all(entityId, entityId) as Array<RelationRow & { subject_name: string; object_name: string }>;
+  return mapProvLinksToRelations(db, rows);
 }
 
 /**
@@ -190,29 +207,20 @@ export function getRelationGraph(
 ): Array<RelationRow & { subject_name: string; object_name: string }> {
   const limit = opts?.limit ?? 50;
 
-  try {
-    const where = ["p.predicate = 'relates_to'", "p.scope_id = ?"];
-    const args: unknown[] = [scopeId];
-    if (opts?.predicate) {
-      where.push("p.detail = ?");
-      args.push(opts.predicate);
-    }
-    args.push(limit);
-
-    const rows = db.prepare(`
-      SELECT p.id, p.subject_id, p.object_id, p.confidence, p.detail, p.scope_id, p.metadata, p.created_at
-      FROM provenance_links p
-      WHERE ${where.join(" AND ")}
-      ORDER BY p.confidence DESC LIMIT ?
-    `).all(...args) as Array<Record<string, unknown>>;
-
-    if (rows.length > 0) return mapProvLinksToRelations(db, rows);
-  } catch { /* fall through to legacy */ }
-
-  // Fallback to legacy
-  const where = ["r.scope_id = ?"];
+  const where = ["p.predicate = 'relates_to'", "p.scope_id = ?"];
   const args: unknown[] = [scopeId];
-  if (opts?.predicate) { where.push("r.predicate = ?"); args.push(opts.predicate); }
+  if (opts?.predicate) {
+    where.push("p.detail = ?");
+    args.push(opts.predicate);
+  }
   args.push(limit);
-  return db.prepare(`SELECT r.*, e1.display_name AS subject_name, e2.display_name AS object_name FROM entity_relations r JOIN entities e1 ON r.subject_entity_id = e1.id JOIN entities e2 ON r.object_entity_id = e2.id WHERE ${where.join(" AND ")} ORDER BY r.confidence DESC LIMIT ?`).all(...args) as Array<RelationRow & { subject_name: string; object_name: string }>;
+
+  const rows = db.prepare(`
+    SELECT p.id, p.subject_id, p.object_id, p.confidence, p.detail, p.scope_id, p.metadata, p.created_at
+    FROM provenance_links p
+    WHERE ${where.join(" AND ")}
+    ORDER BY p.confidence DESC LIMIT ?
+  `).all(...args) as Array<Record<string, unknown>>;
+
+  return mapProvLinksToRelations(db, rows);
 }

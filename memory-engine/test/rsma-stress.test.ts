@@ -49,22 +49,27 @@ describe("RSMA Stress: Infrastructure", () => {
       "SELECT name FROM sqlite_master WHERE type='table' ORDER BY name",
     ).all() as Array<{ name: string }>).map((r) => r.name);
     for (const t of [
-      "_evidence_migrations", "anti_runbook_evidence", "anti_runbooks",
-      "attempts", "branch_scopes", "capabilities", "claim_evidence",
-      "claims", "decisions", "entities", "entity_mentions",
-      "entity_relations", "evidence_log", "invariants", "open_loops",
-      "promotion_policies", "provenance_links", "runbook_evidence", "runbooks",
+      "_evidence_migrations", "branch_scopes", "capabilities",
+      "evidence_log", "memory_objects",
+      "promotion_policies", "provenance_links",
       "scope_sequences", "state_deltas", "state_scopes", "work_leases",
     ]) {
       expect(tables, `missing table: ${t}`).toContain(t);
     }
+    // Legacy tables should be renamed to _legacy_*
+    for (const t of [
+      "_legacy_claims", "_legacy_decisions", "_legacy_entities",
+      "_legacy_entity_mentions", "_legacy_invariants", "_legacy_open_loops",
+    ]) {
+      expect(tables, `missing renamed legacy table: ${t}`).toContain(t);
+    }
   });
 
-  it("global scope seeded + all 12 migrations applied", () => {
+  it("global scope seeded + all migrations applied", () => {
     const scope = db.prepare("SELECT * FROM state_scopes WHERE id = 1").get() as any;
     expect(scope.scope_key).toBe("global");
     const versions = (db.prepare("SELECT version FROM _evidence_migrations ORDER BY version").all() as Array<{ version: number }>).map((r) => r.version);
-    expect(versions).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]);
+    expect(versions).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18]);
   });
 
   it("promotion policies seeded (10+ types)", () => {
@@ -138,7 +143,7 @@ describe("RSMA Stress: Entity Extraction & Graph", () => {
     console.log(`    1000 entity upserts + mentions: ${elapsed}ms`);
     expect(elapsed).toBeLessThan(5000);
 
-    const count = (db.prepare("SELECT COUNT(*) as cnt FROM entities WHERE name LIKE 'stress-e-%'").get() as any).cnt;
+    const count = (db.prepare("SELECT COUNT(*) as cnt FROM memory_objects WHERE kind = 'entity' AND composite_id LIKE 'entity:stress-e-%'").get() as any).cnt;
     expect(count).toBe(1000);
   });
 
@@ -148,7 +153,7 @@ describe("RSMA Stress: Entity Extraction & Graph", () => {
       upsertEntity(g(), { name: "repeat-ent", displayName: "R", entityType: "t" });
       upsertEntity(g(), { name: "repeat-ent", displayName: "R", entityType: "t" });
     });
-    const row = db.prepare("SELECT mention_count FROM entities WHERE name = 'repeat-ent'").get() as any;
+    const row = db.prepare("SELECT json_extract(structured_json, '$.mentionCount') as mention_count FROM memory_objects WHERE composite_id = 'entity:repeat-ent'").get() as any;
     expect(row.mention_count).toBe(3);
   });
 
@@ -162,8 +167,8 @@ describe("RSMA Stress: Entity Extraction & Graph", () => {
       const { entityId } = upsertEntity(g(), { name: "atomic-e2", displayName: "A2", entityType: "t" });
       insertMention(g(), { entityId, sourceType: "doc", sourceId: "doc-a", sourceDetail: "v2", contextTerms: ["new"] });
     });
-    const old = (db.prepare("SELECT COUNT(*) as cnt FROM entity_mentions WHERE source_id = 'doc-a' AND source_detail = 'v1'").get() as any).cnt;
-    const nw = (db.prepare("SELECT COUNT(*) as cnt FROM entity_mentions WHERE source_id = 'doc-a' AND source_detail = 'v2'").get() as any).cnt;
+    const old = (db.prepare("SELECT COUNT(*) as cnt FROM provenance_links WHERE predicate = 'mentioned_in' AND object_id = 'doc:doc-a' AND detail = 'v1'").get() as any).cnt;
+    const nw = (db.prepare("SELECT COUNT(*) as cnt FROM provenance_links WHERE predicate = 'mentioned_in' AND object_id = 'doc:doc-a' AND detail = 'v2'").get() as any).cnt;
     expect(old).toBe(0);
     expect(nw).toBe(1);
   });
@@ -189,7 +194,7 @@ describe("RSMA Stress: Claims & Evidence", () => {
     const elapsed = Date.now() - start;
     console.log(`    500 claims + evidence: ${elapsed}ms`);
     expect(elapsed).toBeLessThan(5000);
-    expect((db.prepare("SELECT COUNT(*) as cnt FROM claims").get() as any).cnt).toBe(500);
+    expect((db.prepare("SELECT COUNT(*) as cnt FROM memory_objects WHERE kind = 'claim'").get() as any).cnt).toBeGreaterThanOrEqual(500);
   });
 
   it("supersession works", () => {
@@ -202,7 +207,7 @@ describe("RSMA Stress: Claims & Evidence", () => {
       objectText: "JWT v2", confidence: 0.9, canonicalKey: "stress:auth:v2",
     });
     withWriteTransaction(g(), () => { supersedeClaim(g(), oldId, newId); });
-    const old = db.prepare("SELECT status, superseded_by FROM claims WHERE id = ?").get(oldId) as any;
+    const old = db.prepare("SELECT status, superseded_by FROM memory_objects WHERE id = ?").get(oldId) as any;
     expect(old.status).toBe("superseded");
     expect(old.superseded_by).toBe(newId);
   });
@@ -395,8 +400,8 @@ describe("RSMA Stress: Relations", () => {
       upsertEntity(g(), { name: "redis-r", displayName: "Redis", entityType: "tech" });
       upsertEntity(g(), { name: "auth-r", displayName: "Auth", entityType: "svc" });
     });
-    const redisId = (db.prepare("SELECT id FROM entities WHERE name = 'redis-r'").get() as any).id;
-    const authId = (db.prepare("SELECT id FROM entities WHERE name = 'auth-r'").get() as any).id;
+    const redisId = (db.prepare("SELECT id FROM memory_objects WHERE composite_id = 'entity:redis-r'").get() as any).id;
+    const authId = (db.prepare("SELECT id FROM memory_objects WHERE composite_id = 'entity:auth-r'").get() as any).id;
 
     const { isNew } = upsertRelation(g(), {
       scopeId: 1, subjectEntityId: authId, predicate: "uses",

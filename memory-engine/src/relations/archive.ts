@@ -2,17 +2,20 @@
  * Cold structured archive — moves stale/old evidence out of the hot graph DB
  * into a separate archive.db while preserving full structured fidelity.
  *
+ * Phase 3: Archives from the unified memory_objects table into a single
+ * archived_memory_objects table. Legacy per-table archive tables preserved
+ * for backward compatibility but new archives go to the unified table.
+ *
  * Three-tier design:
- *   Hot (graph.db)    — active claims, decisions, loops, recent events
- *   Cold (archive.db) — superseded decisions, stale claims, old events
+ *   Hot (graph.db)    — active memory_objects, recent events
+ *   Cold (archive.db) — superseded/stale memory_objects, old events
  *   RAG (optional)    — semantic discovery over narratives, NOT the ledger
  *
  * Safety rules:
  *   1. Archive writes happen BEFORE hot deletes (copy-then-delete)
  *   2. Each category is independent (one failing doesn't block others)
- *   3. Rows are soft-marked as 'archived' before hard delete
- *   4. Every archived row has archive_run_id for traceability
- *   5. Restore is supported from day one
+ *   3. Every archived row has archive_run_id for traceability
+ *   4. Restore is supported from day one
  */
 
 import { DatabaseSync } from "node:sqlite";
@@ -24,41 +27,29 @@ import type { GraphDb } from "./types.js";
 // ── Archive DB schema ──
 
 const ARCHIVE_SCHEMA = `
-CREATE TABLE IF NOT EXISTS archived_claims (
+CREATE TABLE IF NOT EXISTS archived_memory_objects (
     id INTEGER,
+    composite_id TEXT,
+    kind TEXT,
+    canonical_key TEXT,
+    content TEXT,
+    structured_json TEXT,
     scope_id INTEGER,
     branch_id INTEGER,
-    subject TEXT,
-    predicate TEXT,
-    object_text TEXT,
-    object_json TEXT,
-    value_type TEXT,
     status TEXT,
     confidence REAL,
     trust_score REAL,
-    source_authority REAL,
-    canonical_key TEXT,
-    first_seen_at TEXT,
-    last_seen_at TEXT,
+    influence_weight TEXT,
     superseded_by INTEGER,
-    original_created_at TEXT,
-    archived_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%f', 'now')),
-    archive_reason TEXT,
-    archive_run_id TEXT
-);
-
-CREATE TABLE IF NOT EXISTS archived_decisions (
-    id INTEGER,
-    scope_id INTEGER,
-    branch_id INTEGER,
-    topic TEXT,
-    decision_text TEXT,
-    status TEXT,
-    decided_at TEXT,
-    superseded_by INTEGER,
-    source_type TEXT,
+    source_kind TEXT,
     source_id TEXT,
+    source_detail TEXT,
+    source_authority REAL,
+    first_observed_at TEXT,
+    last_observed_at TEXT,
+    observed_at TEXT,
     original_created_at TEXT,
+    original_updated_at TEXT,
     archived_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%f', 'now')),
     archive_reason TEXT,
     archive_run_id TEXT
@@ -81,41 +72,6 @@ CREATE TABLE IF NOT EXISTS archived_evidence_log (
     archive_run_id TEXT
 );
 
-CREATE TABLE IF NOT EXISTS archived_loops (
-    id INTEGER,
-    scope_id INTEGER,
-    branch_id INTEGER,
-    loop_type TEXT,
-    text TEXT,
-    status TEXT,
-    priority INTEGER,
-    owner TEXT,
-    opened_at TEXT,
-    closed_at TEXT,
-    source_type TEXT,
-    source_id TEXT,
-    original_created_at TEXT,
-    archived_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%f', 'now')),
-    archive_reason TEXT,
-    archive_run_id TEXT
-);
-
-CREATE TABLE IF NOT EXISTS archived_claim_evidence (
-    id INTEGER,
-    claim_id INTEGER,
-    source_type TEXT,
-    source_id TEXT,
-    source_detail TEXT,
-    evidence_role TEXT,
-    snippet_hash TEXT,
-    confidence_delta REAL,
-    created_at TEXT,
-    archived_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%f', 'now')),
-    archive_run_id TEXT
-);
-CREATE INDEX IF NOT EXISTS idx_arch_claim_ev_claim ON archived_claim_evidence(claim_id);
-CREATE INDEX IF NOT EXISTS idx_arch_claim_ev_run ON archived_claim_evidence(archive_run_id);
-
 CREATE TABLE IF NOT EXISTS _archive_metadata (
     key TEXT PRIMARY KEY,
     value TEXT
@@ -125,24 +81,19 @@ CREATE TABLE IF NOT EXISTS _archive_runs (
     run_id TEXT PRIMARY KEY,
     started_at TEXT,
     completed_at TEXT,
-    claims_archived INTEGER DEFAULT 0,
-    decisions_archived INTEGER DEFAULT 0,
+    objects_archived INTEGER DEFAULT 0,
     events_archived INTEGER DEFAULT 0,
-    loops_archived INTEGER DEFAULT 0,
     status TEXT DEFAULT 'running'
 );
 
 -- Indexes for queryability
-CREATE INDEX IF NOT EXISTS idx_arch_claims_subject ON archived_claims(subject);
-CREATE INDEX IF NOT EXISTS idx_arch_claims_archived_at ON archived_claims(archived_at);
-CREATE INDEX IF NOT EXISTS idx_arch_claims_run ON archived_claims(archive_run_id);
-CREATE INDEX IF NOT EXISTS idx_arch_decisions_topic ON archived_decisions(topic);
-CREATE INDEX IF NOT EXISTS idx_arch_decisions_archived_at ON archived_decisions(archived_at);
-CREATE INDEX IF NOT EXISTS idx_arch_decisions_run ON archived_decisions(archive_run_id);
+CREATE INDEX IF NOT EXISTS idx_arch_mo_kind ON archived_memory_objects(kind);
+CREATE INDEX IF NOT EXISTS idx_arch_mo_composite ON archived_memory_objects(composite_id);
+CREATE INDEX IF NOT EXISTS idx_arch_mo_archived_at ON archived_memory_objects(archived_at);
+CREATE INDEX IF NOT EXISTS idx_arch_mo_run ON archived_memory_objects(archive_run_id);
 CREATE INDEX IF NOT EXISTS idx_arch_events_type ON archived_evidence_log(object_type);
 CREATE INDEX IF NOT EXISTS idx_arch_events_created ON archived_evidence_log(created_at);
 CREATE INDEX IF NOT EXISTS idx_arch_events_run ON archived_evidence_log(archive_run_id);
-CREATE INDEX IF NOT EXISTS idx_arch_loops_run ON archived_loops(archive_run_id);
 `;
 
 // ── Archive DB connection ──
@@ -184,64 +135,47 @@ export interface ArchiveResult {
 
 // ── Archive operations ──
 
-function archiveStaleClaims(
+function archiveStaleObjects(
   hotDb: GraphDb, archiveDb: DatabaseSync, runId: string,
-  confidenceThreshold: number, staleDays: number,
+  kind: string, confidenceThreshold: number, staleDays: number,
 ): { archived: number; candidates: number } {
   const cutoff = new Date(Date.now() - staleDays * 86_400_000).toISOString();
   const stale = hotDb.prepare(`
-    SELECT * FROM claims
-    WHERE status = 'active' AND confidence < ? AND last_seen_at < ?
-  `).all(confidenceThreshold, cutoff) as any[];
+    SELECT * FROM memory_objects
+    WHERE kind = ? AND status = 'active' AND confidence < ? AND last_observed_at < ?
+  `).all(kind, confidenceThreshold, cutoff) as any[];
 
   if (stale.length === 0) return { archived: 0, candidates: 0 };
 
   const insert = archiveDb.prepare(`
-    INSERT INTO archived_claims
-      (id, scope_id, branch_id, subject, predicate, object_text, object_json,
-       value_type, status, confidence, trust_score, source_authority,
-       canonical_key, first_seen_at, last_seen_at, superseded_by,
-       original_created_at, archive_reason, archive_run_id)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO archived_memory_objects
+      (id, composite_id, kind, canonical_key, content, structured_json,
+       scope_id, branch_id, status, confidence, trust_score,
+       influence_weight, superseded_by,
+       source_kind, source_id, source_detail, source_authority,
+       first_observed_at, last_observed_at, observed_at,
+       original_created_at, original_updated_at,
+       archive_reason, archive_run_id)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
 
-  for (const c of stale) {
+  for (const row of stale) {
     insert.run(
-      c.id, c.scope_id, c.branch_id, c.subject, c.predicate,
-      c.object_text, c.object_json, c.value_type, c.status,
-      c.confidence, c.trust_score, c.source_authority,
-      c.canonical_key, c.first_seen_at, c.last_seen_at,
-      c.superseded_by, c.created_at,
+      row.id, row.composite_id, row.kind, row.canonical_key,
+      row.content, row.structured_json,
+      row.scope_id, row.branch_id, row.status, row.confidence,
+      row.trust_score, row.influence_weight, row.superseded_by,
+      row.source_kind, row.source_id, row.source_detail, row.source_authority,
+      row.first_observed_at, row.last_observed_at, row.observed_at,
+      row.created_at, row.updated_at,
       `stale:conf<${confidenceThreshold}:${staleDays}d`, runId,
     );
   }
 
-  // Archive claim evidence before deleting
-  const insertEvidence = archiveDb.prepare(`
-    INSERT INTO archived_claim_evidence
-      (id, claim_id, source_type, source_id, source_detail, evidence_role,
-       snippet_hash, confidence_delta, created_at, archive_run_id)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `);
-  for (const c of stale) {
-    const evidence = hotDb.prepare(
-      "SELECT * FROM claim_evidence WHERE claim_id = ?",
-    ).all(c.id) as any[];
-    for (const e of evidence) {
-      insertEvidence.run(
-        e.id, e.claim_id, e.source_type, e.source_id,
-        e.source_detail, e.evidence_role, e.snippet_hash,
-        e.confidence_delta, e.created_at, runId,
-      );
-    }
-  }
-
-  // Wrap ALL hot-DB deletes in a single transaction (copy-before-delete is complete above)
   hotDb.exec("BEGIN IMMEDIATE");
   try {
-    for (const c of stale) {
-      hotDb.prepare("DELETE FROM claim_evidence WHERE claim_id = ?").run(c.id);
-      hotDb.prepare("DELETE FROM claims WHERE id = ?").run(c.id);
+    for (const row of stale) {
+      hotDb.prepare("DELETE FROM memory_objects WHERE id = ?").run(row.id);
     }
     hotDb.exec("COMMIT");
   } catch (err) {
@@ -252,38 +186,47 @@ function archiveStaleClaims(
   return { archived: stale.length, candidates: stale.length };
 }
 
-function archiveSupersededDecisions(
+function archiveSupersededObjects(
   hotDb: GraphDb, archiveDb: DatabaseSync, runId: string,
-  olderThanDays: number,
+  kind: string, olderThanDays: number,
 ): { archived: number; candidates: number } {
   const cutoff = new Date(Date.now() - olderThanDays * 86_400_000).toISOString();
   const old = hotDb.prepare(`
-    SELECT * FROM decisions WHERE status = 'superseded' AND decided_at < ?
-  `).all(cutoff) as any[];
+    SELECT * FROM memory_objects
+    WHERE kind = ? AND status = 'superseded' AND created_at < ?
+  `).all(kind, cutoff) as any[];
 
   if (old.length === 0) return { archived: 0, candidates: 0 };
 
   const insert = archiveDb.prepare(`
-    INSERT INTO archived_decisions
-      (id, scope_id, branch_id, topic, decision_text, status,
-       decided_at, superseded_by, source_type, source_id,
-       original_created_at, archive_reason, archive_run_id)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO archived_memory_objects
+      (id, composite_id, kind, canonical_key, content, structured_json,
+       scope_id, branch_id, status, confidence, trust_score,
+       influence_weight, superseded_by,
+       source_kind, source_id, source_detail, source_authority,
+       first_observed_at, last_observed_at, observed_at,
+       original_created_at, original_updated_at,
+       archive_reason, archive_run_id)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
 
-  for (const d of old) {
+  for (const row of old) {
     insert.run(
-      d.id, d.scope_id, d.branch_id, d.topic, d.decision_text,
-      d.status, d.decided_at, d.superseded_by,
-      d.source_type, d.source_id, d.created_at,
+      row.id, row.composite_id, row.kind, row.canonical_key,
+      row.content, row.structured_json,
+      row.scope_id, row.branch_id, row.status, row.confidence,
+      row.trust_score, row.influence_weight, row.superseded_by,
+      row.source_kind, row.source_id, row.source_detail, row.source_authority,
+      row.first_observed_at, row.last_observed_at, row.observed_at,
+      row.created_at, row.updated_at,
       `superseded:${olderThanDays}d`, runId,
     );
   }
 
   hotDb.exec("BEGIN IMMEDIATE");
   try {
-    for (const d of old) {
-      hotDb.prepare("DELETE FROM decisions WHERE id = ?").run(d.id);
+    for (const row of old) {
+      hotDb.prepare("DELETE FROM memory_objects WHERE id = ?").run(row.id);
     }
     hotDb.exec("COMMIT");
   } catch (err) {
@@ -300,7 +243,6 @@ function archiveOldEvents(
 ): { archived: number; candidates: number } {
   const cutoff = new Date(Date.now() - olderThanDays * 86_400_000).toISOString();
 
-  // Count total candidates
   const total = (hotDb.prepare(
     "SELECT COUNT(*) as cnt FROM evidence_log WHERE created_at < ?",
   ).get(cutoff) as any).cnt;
@@ -310,7 +252,6 @@ function archiveOldEvents(
   let archived = 0;
   let iterations = 0;
 
-  // Process in batches
   while (true) {
     if (++iterations >= 10000) {
       console.warn("[cc-mem] archive: hit iteration limit (10000 batches), some events may remain unarchived");
@@ -354,48 +295,6 @@ function archiveOldEvents(
   return { archived, candidates: total };
 }
 
-function archiveClosedLoops(
-  hotDb: GraphDb, archiveDb: DatabaseSync, runId: string,
-  olderThanDays: number,
-): { archived: number; candidates: number } {
-  const cutoff = new Date(Date.now() - olderThanDays * 86_400_000).toISOString();
-  const old = hotDb.prepare(`
-    SELECT * FROM open_loops WHERE status = 'closed' AND closed_at < ?
-  `).all(cutoff) as any[];
-
-  if (old.length === 0) return { archived: 0, candidates: 0 };
-
-  const insert = archiveDb.prepare(`
-    INSERT INTO archived_loops
-      (id, scope_id, branch_id, loop_type, text, status, priority,
-       owner, opened_at, closed_at, source_type, source_id,
-       original_created_at, archive_reason, archive_run_id)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `);
-
-  for (const l of old) {
-    insert.run(
-      l.id, l.scope_id, l.branch_id, l.loop_type, l.text, l.status,
-      l.priority, l.owner, l.opened_at, l.closed_at,
-      l.source_type, l.source_id, l.opened_at,
-      `closed:${olderThanDays}d`, runId,
-    );
-  }
-
-  hotDb.exec("BEGIN IMMEDIATE");
-  try {
-    for (const l of old) {
-      hotDb.prepare("DELETE FROM open_loops WHERE id = ?").run(l.id);
-    }
-    hotDb.exec("COMMIT");
-  } catch (err) {
-    hotDb.exec("ROLLBACK");
-    throw err;
-  }
-
-  return { archived: old.length, candidates: old.length };
-}
-
 // ── Public API ──
 
 export function runArchive(
@@ -426,12 +325,12 @@ export function runArchive(
   let loopsResult = { archived: 0, candidates: 0 };
 
   try {
-    claimsResult = archiveStaleClaims(hotDb, archiveDb, runId,
+    claimsResult = archiveStaleObjects(hotDb, archiveDb, runId, "claim",
       opts?.claimConfidenceThreshold ?? 0.1, opts?.claimStaleDays ?? 30);
   } catch (e: any) { errors.push(`claims: ${e.message}`); }
 
   try {
-    decisionsResult = archiveSupersededDecisions(hotDb, archiveDb, runId,
+    decisionsResult = archiveSupersededObjects(hotDb, archiveDb, runId, "decision",
       opts?.decisionStaleDays ?? 90);
   } catch (e: any) { errors.push(`decisions: ${e.message}`); }
 
@@ -441,22 +340,67 @@ export function runArchive(
   } catch (e: any) { errors.push(`events: ${e.message}`); }
 
   try {
-    loopsResult = archiveClosedLoops(hotDb, archiveDb, runId,
-      opts?.loopStaleDays ?? 30);
+    // Archive stale/closed loops (status = 'superseded' or 'stale')
+    const cutoff = new Date(Date.now() - (opts?.loopStaleDays ?? 30) * 86_400_000).toISOString();
+    const old = hotDb.prepare(`
+      SELECT * FROM memory_objects
+      WHERE kind = 'loop' AND status IN ('superseded', 'stale') AND updated_at < ?
+    `).all(cutoff) as any[];
+
+    if (old.length > 0) {
+      const insert = archiveDb.prepare(`
+        INSERT INTO archived_memory_objects
+          (id, composite_id, kind, canonical_key, content, structured_json,
+           scope_id, branch_id, status, confidence, trust_score,
+           influence_weight, superseded_by,
+           source_kind, source_id, source_detail, source_authority,
+           first_observed_at, last_observed_at, observed_at,
+           original_created_at, original_updated_at,
+           archive_reason, archive_run_id)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `);
+
+      for (const row of old) {
+        insert.run(
+          row.id, row.composite_id, row.kind, row.canonical_key,
+          row.content, row.structured_json,
+          row.scope_id, row.branch_id, row.status, row.confidence,
+          row.trust_score, row.influence_weight, row.superseded_by,
+          row.source_kind, row.source_id, row.source_detail, row.source_authority,
+          row.first_observed_at, row.last_observed_at, row.observed_at,
+          row.created_at, row.updated_at,
+          `closed:${opts?.loopStaleDays ?? 30}d`, runId,
+        );
+      }
+
+      hotDb.exec("BEGIN IMMEDIATE");
+      try {
+        for (const row of old) {
+          hotDb.prepare("DELETE FROM memory_objects WHERE id = ?").run(row.id);
+        }
+        hotDb.exec("COMMIT");
+      } catch (err) {
+        hotDb.exec("ROLLBACK");
+        throw err;
+      }
+
+      loopsResult = { archived: old.length, candidates: old.length };
+    }
   } catch (e: any) { errors.push(`loops: ${e.message}`); }
 
   const durationMs = Date.now() - start;
+  const totalArchived = claimsResult.archived + decisionsResult.archived + eventsResult.archived + loopsResult.archived;
 
   // Record run completion
   archiveDb.prepare(`
     UPDATE _archive_runs SET
-      completed_at = ?, claims_archived = ?, decisions_archived = ?,
-      events_archived = ?, loops_archived = ?, status = ?
+      completed_at = ?, objects_archived = ?,
+      events_archived = ?, status = ?
     WHERE run_id = ?
   `).run(
     new Date().toISOString(),
-    claimsResult.archived, decisionsResult.archived,
-    eventsResult.archived, loopsResult.archived,
+    claimsResult.archived + decisionsResult.archived + loopsResult.archived,
+    eventsResult.archived,
     errors.length > 0 ? "partial" : "complete",
     runId,
   );
@@ -470,7 +414,6 @@ export function runArchive(
   `).run(runId);
 
   // VACUUM hot DB after large purges to reclaim disk space
-  const totalArchived = claimsResult.archived + decisionsResult.archived + eventsResult.archived + loopsResult.archived;
   if (totalArchived > 100) {
     try { hotDb.exec("VACUUM"); } catch { /* non-fatal */ }
   }
@@ -499,7 +442,7 @@ export interface RestoreResult {
 
 /**
  * Restore archived items back to the hot graph DB.
- * Supports restore by run_id, by type, or by specific IDs.
+ * Supports restore by run_id, by type (kind), or by specific IDs.
  */
 export function restoreFromArchive(
   hotDb: GraphDb,
@@ -509,143 +452,65 @@ export function restoreFromArchive(
   if (!existsSync(archivePath)) return { restored: 0, type: "none" };
   const archiveDb = getArchiveDb(archivePath);
 
-  if (filter.type === "claims" || (!filter.type && !filter.runId)) {
-    return restoreClaims(hotDb, archiveDb, filter);
-  }
-  if (filter.type === "decisions") {
-    return restoreDecisions(hotDb, archiveDb, filter);
-  }
-  if (filter.type === "loops") {
-    return restoreLoops(hotDb, archiveDb, filter);
-  }
+  // Map legacy type names to memory_objects kinds
+  const kindMap: Record<string, string> = {
+    claims: "claim",
+    decisions: "decision",
+    loops: "loop",
+  };
 
-  // Restore by run_id across all types
-  let total = 0;
-  total += restoreClaims(hotDb, archiveDb, filter).restored;
-  total += restoreDecisions(hotDb, archiveDb, filter).restored;
-  total += restoreLoops(hotDb, archiveDb, filter).restored;
-  return { restored: total, type: "all" };
-}
+  const kind = filter.type ? kindMap[filter.type] : undefined;
 
-function restoreClaims(hotDb: GraphDb, archiveDb: DatabaseSync, filter: { runId?: string; ids?: number[] }): RestoreResult {
   let rows: any[];
   if (filter.ids && filter.ids.length > 0) {
     const placeholders = filter.ids.map(() => "?").join(",");
-    rows = archiveDb.prepare(`SELECT * FROM archived_claims WHERE id IN (${placeholders})`).all(...filter.ids) as any[];
+    const kindClause = kind ? ` AND kind = '${kind}'` : "";
+    rows = archiveDb.prepare(
+      `SELECT * FROM archived_memory_objects WHERE id IN (${placeholders})${kindClause}`,
+    ).all(...filter.ids) as any[];
   } else if (filter.runId) {
-    rows = archiveDb.prepare("SELECT * FROM archived_claims WHERE archive_run_id = ?").all(filter.runId) as any[];
+    const kindClause = kind ? ` AND kind = '${kind}'` : "";
+    rows = archiveDb.prepare(
+      `SELECT * FROM archived_memory_objects WHERE archive_run_id = ?${kindClause}`,
+    ).all(filter.runId) as any[];
+  } else if (kind) {
+    // No specific filter — restore nothing to avoid accidental mass restore
+    return { restored: 0, type: filter.type ?? "none" };
   } else {
-    return { restored: 0, type: "claims" };
+    return { restored: 0, type: "none" };
   }
 
-  for (const c of rows) {
+  for (const row of rows) {
     hotDb.prepare(`
-      INSERT OR IGNORE INTO claims
-        (id, scope_id, branch_id, subject, predicate, object_text, object_json,
-         value_type, status, confidence, trust_score, source_authority,
-         canonical_key, first_seen_at, last_seen_at, superseded_by)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT OR IGNORE INTO memory_objects
+        (id, composite_id, kind, canonical_key, content, structured_json,
+         scope_id, branch_id, status, confidence, trust_score,
+         influence_weight, superseded_by,
+         source_kind, source_id, source_detail, source_authority,
+         first_observed_at, last_observed_at, observed_at,
+         created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
-      c.id, c.scope_id, c.branch_id, c.subject, c.predicate,
-      c.object_text, c.object_json, c.value_type, c.status,
-      c.confidence, c.trust_score, c.source_authority,
-      c.canonical_key, c.first_seen_at, c.last_seen_at, c.superseded_by,
-    );
-
-    // Restore associated claim evidence
-    const evidence = archiveDb.prepare(
-      "SELECT * FROM archived_claim_evidence WHERE claim_id = ?",
-    ).all(c.id) as any[];
-    for (const e of evidence) {
-      hotDb.prepare(`
-        INSERT OR IGNORE INTO claim_evidence
-          (id, claim_id, source_type, source_id, source_detail, evidence_role,
-           snippet_hash, confidence_delta)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-      `).run(
-        e.id, e.claim_id, e.source_type, e.source_id,
-        e.source_detail, e.evidence_role, e.snippet_hash, e.confidence_delta,
-      );
-    }
-  }
-
-  // Remove from archive (claims + evidence)
-  if (filter.ids && filter.ids.length > 0) {
-    const placeholders = filter.ids.map(() => "?").join(",");
-    archiveDb.prepare(`DELETE FROM archived_claim_evidence WHERE claim_id IN (${placeholders})`).run(...filter.ids);
-    archiveDb.prepare(`DELETE FROM archived_claims WHERE id IN (${placeholders})`).run(...filter.ids);
-  } else if (filter.runId) {
-    archiveDb.prepare("DELETE FROM archived_claim_evidence WHERE archive_run_id = ?").run(filter.runId);
-    archiveDb.prepare("DELETE FROM archived_claims WHERE archive_run_id = ?").run(filter.runId);
-  }
-
-  return { restored: rows.length, type: "claims" };
-}
-
-function restoreDecisions(hotDb: GraphDb, archiveDb: DatabaseSync, filter: { runId?: string; ids?: number[] }): RestoreResult {
-  let rows: any[];
-  if (filter.ids && filter.ids.length > 0) {
-    const placeholders = filter.ids.map(() => "?").join(",");
-    rows = archiveDb.prepare(`SELECT * FROM archived_decisions WHERE id IN (${placeholders})`).all(...filter.ids) as any[];
-  } else if (filter.runId) {
-    rows = archiveDb.prepare("SELECT * FROM archived_decisions WHERE archive_run_id = ?").all(filter.runId) as any[];
-  } else {
-    return { restored: 0, type: "decisions" };
-  }
-
-  for (const d of rows) {
-    hotDb.prepare(`
-      INSERT OR IGNORE INTO decisions
-        (id, scope_id, branch_id, topic, decision_text, status,
-         decided_at, superseded_by, source_type, source_id)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(
-      d.id, d.scope_id, d.branch_id, d.topic, d.decision_text,
-      d.status, d.decided_at, d.superseded_by, d.source_type, d.source_id,
+      row.id, row.composite_id, row.kind, row.canonical_key,
+      row.content, row.structured_json,
+      row.scope_id, row.branch_id, row.status, row.confidence,
+      row.trust_score, row.influence_weight, row.superseded_by,
+      row.source_kind, row.source_id, row.source_detail, row.source_authority,
+      row.first_observed_at, row.last_observed_at, row.observed_at,
+      row.original_created_at, row.original_updated_at,
     );
   }
 
+  // Remove from archive
   if (filter.ids && filter.ids.length > 0) {
     const placeholders = filter.ids.map(() => "?").join(",");
-    archiveDb.prepare(`DELETE FROM archived_decisions WHERE id IN (${placeholders})`).run(...filter.ids);
+    archiveDb.prepare(`DELETE FROM archived_memory_objects WHERE id IN (${placeholders})`).run(...filter.ids);
   } else if (filter.runId) {
-    archiveDb.prepare("DELETE FROM archived_decisions WHERE archive_run_id = ?").run(filter.runId);
+    const kindClause = kind ? ` AND kind = '${kind}'` : "";
+    archiveDb.prepare(`DELETE FROM archived_memory_objects WHERE archive_run_id = ?${kindClause}`).run(filter.runId);
   }
 
-  return { restored: rows.length, type: "decisions" };
-}
-
-function restoreLoops(hotDb: GraphDb, archiveDb: DatabaseSync, filter: { runId?: string; ids?: number[] }): RestoreResult {
-  let rows: any[];
-  if (filter.ids && filter.ids.length > 0) {
-    const placeholders = filter.ids.map(() => "?").join(",");
-    rows = archiveDb.prepare(`SELECT * FROM archived_loops WHERE id IN (${placeholders})`).all(...filter.ids) as any[];
-  } else if (filter.runId) {
-    rows = archiveDb.prepare("SELECT * FROM archived_loops WHERE archive_run_id = ?").all(filter.runId) as any[];
-  } else {
-    return { restored: 0, type: "loops" };
-  }
-
-  for (const l of rows) {
-    hotDb.prepare(`
-      INSERT OR IGNORE INTO open_loops
-        (id, scope_id, branch_id, loop_type, text, status, priority,
-         owner, opened_at, closed_at, source_type, source_id)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(
-      l.id, l.scope_id, l.branch_id, l.loop_type, l.text, l.status,
-      l.priority, l.owner, l.opened_at, l.closed_at, l.source_type, l.source_id,
-    );
-  }
-
-  if (filter.ids && filter.ids.length > 0) {
-    const placeholders = filter.ids.map(() => "?").join(",");
-    archiveDb.prepare(`DELETE FROM archived_loops WHERE id IN (${placeholders})`).run(...filter.ids);
-  } else if (filter.runId) {
-    archiveDb.prepare("DELETE FROM archived_loops WHERE archive_run_id = ?").run(filter.runId);
-  }
-
-  return { restored: rows.length, type: "loops" };
+  return { restored: rows.length, type: filter.type ?? "all" };
 }
 
 // ── Stats ──
@@ -669,10 +534,10 @@ export function getArchiveStats(archivePath: string): {
       (db.prepare("SELECT value FROM _archive_metadata WHERE key = ?").get(key) as { value: string } | undefined)?.value ?? null;
 
     return {
-      claims: safe("SELECT COUNT(*) as cnt FROM archived_claims"),
-      decisions: safe("SELECT COUNT(*) as cnt FROM archived_decisions"),
+      claims: safe("SELECT COUNT(*) as cnt FROM archived_memory_objects WHERE kind = 'claim'"),
+      decisions: safe("SELECT COUNT(*) as cnt FROM archived_memory_objects WHERE kind = 'decision'"),
       events: safe("SELECT COUNT(*) as cnt FROM archived_evidence_log"),
-      loops: safe("SELECT COUNT(*) as cnt FROM archived_loops"),
+      loops: safe("SELECT COUNT(*) as cnt FROM archived_memory_objects WHERE kind = 'loop'"),
       lastRun: getMeta("last_run"),
       lastRunId: getMeta("last_run_id"),
       totalRuns: safe("SELECT COUNT(*) as cnt FROM _archive_runs"),

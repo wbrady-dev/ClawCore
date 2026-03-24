@@ -618,6 +618,501 @@ export function runGraphMigrations(db: GraphDb, dbPath?: string): void {
     markMigrationApplied(db, 15);
   }
 
+  // Migration v16: Unified memory_objects table — one true ontology
+  if (!isMigrationApplied(db, 16)) {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS memory_objects (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        composite_id TEXT NOT NULL,
+        kind TEXT NOT NULL,
+        canonical_key TEXT,
+        content TEXT NOT NULL,
+        structured_json TEXT,
+        scope_id INTEGER NOT NULL DEFAULT 1,
+        branch_id INTEGER NOT NULL DEFAULT 0,
+        status TEXT NOT NULL DEFAULT 'active',
+        confidence REAL NOT NULL DEFAULT 0.5,
+        trust_score REAL NOT NULL DEFAULT 0.5,
+        influence_weight TEXT DEFAULT 'standard',
+        superseded_by INTEGER,
+        source_kind TEXT,
+        source_id TEXT,
+        source_detail TEXT,
+        source_authority REAL DEFAULT 0.5,
+        first_observed_at TEXT,
+        last_observed_at TEXT,
+        observed_at TEXT,
+        created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%f', 'now')),
+        updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%f', 'now'))
+      );
+      CREATE INDEX IF NOT EXISTS idx_mo_kind_status ON memory_objects(kind, status, scope_id);
+      CREATE INDEX IF NOT EXISTS idx_mo_canonical ON memory_objects(canonical_key, scope_id);
+      CREATE INDEX IF NOT EXISTS idx_mo_composite ON memory_objects(composite_id);
+      CREATE INDEX IF NOT EXISTS idx_mo_scope_branch ON memory_objects(scope_id, branch_id, kind);
+      CREATE INDEX IF NOT EXISTS idx_mo_source ON memory_objects(source_kind, source_id);
+    `);
+    markMigrationApplied(db, 16);
+  }
+
+  // Migration v17: Copy ALL legacy data into memory_objects + provenance_links
+  if (!isMigrationApplied(db, 17)) {
+    // ── Claims → memory_objects (kind='claim') ──
+    db.exec(`
+      INSERT OR IGNORE INTO memory_objects (
+        composite_id, kind, canonical_key, content, structured_json,
+        scope_id, branch_id, status, confidence, trust_score,
+        influence_weight, source_kind, source_id, source_detail, source_authority,
+        first_observed_at, last_observed_at, observed_at,
+        created_at, updated_at
+      )
+      SELECT
+        'claim:' || id,
+        'claim',
+        canonical_key,
+        COALESCE(subject, '(unknown)') || ' ' || COALESCE(predicate, '(unknown)') || ': ' || COALESCE(object_text, '(no value)'),
+        json_object(
+          'subject', subject,
+          'predicate', predicate,
+          'objectText', object_text,
+          'objectJson', object_json,
+          'valueType', value_type
+        ),
+        scope_id,
+        branch_id,
+        status,
+        confidence,
+        trust_score,
+        'standard',
+        'extraction',
+        CAST(id AS TEXT),
+        NULL,
+        source_authority,
+        first_seen_at,
+        last_seen_at,
+        first_seen_at,
+        created_at,
+        updated_at
+      FROM claims
+    `);
+
+    // ── Decisions → memory_objects (kind='decision') ──
+    db.exec(`
+      INSERT OR IGNORE INTO memory_objects (
+        composite_id, kind, canonical_key, content, structured_json,
+        scope_id, branch_id, status, confidence, trust_score,
+        influence_weight, source_kind, source_id, source_detail, source_authority,
+        first_observed_at, last_observed_at, observed_at,
+        created_at, updated_at
+      )
+      SELECT
+        'decision:' || id,
+        'decision',
+        canonical_key,
+        COALESCE(topic, '(no topic)') || ': ' || COALESCE(decision_text, '(no text)'),
+        json_object('topic', topic, 'decisionText', decision_text),
+        scope_id,
+        branch_id,
+        status,
+        0.9,
+        0.9,
+        'high',
+        COALESCE(source_type, 'user_explicit'),
+        COALESCE(source_id, CAST(id AS TEXT)),
+        source_detail,
+        0.9,
+        decided_at,
+        decided_at,
+        decided_at,
+        created_at,
+        COALESCE(decided_at, created_at)
+      FROM decisions
+    `);
+
+    // ── Entities → memory_objects (kind='entity') ──
+    db.exec(`
+      INSERT OR IGNORE INTO memory_objects (
+        composite_id, kind, canonical_key, content, structured_json,
+        scope_id, branch_id, status, confidence, trust_score,
+        influence_weight, source_kind, source_id, source_detail, source_authority,
+        first_observed_at, last_observed_at, observed_at,
+        created_at, updated_at
+      )
+      SELECT
+        'entity:' || id,
+        'entity',
+        'entity::' || LOWER(TRIM(name)),
+        COALESCE(display_name, name),
+        json_object(
+          'name', name,
+          'displayName', display_name,
+          'entityType', entity_type,
+          'mentionCount', mention_count
+        ),
+        1,
+        0,
+        'active',
+        MIN(1.0, 0.4 + 0.15),
+        0.6,
+        'standard',
+        'extraction',
+        CAST(id AS TEXT),
+        NULL,
+        0.6,
+        first_seen_at,
+        last_seen_at,
+        first_seen_at,
+        first_seen_at,
+        last_seen_at
+      FROM entities
+    `);
+
+    // ── Open Loops → memory_objects (kind='loop') ──
+    db.exec(`
+      INSERT OR IGNORE INTO memory_objects (
+        composite_id, kind, canonical_key, content, structured_json,
+        scope_id, branch_id, status, confidence, trust_score,
+        influence_weight, source_kind, source_id, source_detail, source_authority,
+        first_observed_at, last_observed_at, observed_at,
+        created_at, updated_at
+      )
+      SELECT
+        'loop:' || id,
+        'loop',
+        NULL,
+        text,
+        json_object(
+          'loopType', loop_type,
+          'text', text,
+          'priority', priority,
+          'owner', owner,
+          'dueAt', due_at,
+          'waitingOn', waiting_on
+        ),
+        scope_id,
+        branch_id,
+        CASE status
+          WHEN 'open' THEN 'active'
+          WHEN 'blocked' THEN 'active'
+          WHEN 'closed' THEN 'superseded'
+          WHEN 'stale' THEN 'stale'
+          ELSE 'active'
+        END,
+        0.8,
+        0.9,
+        CASE WHEN priority >= 7 THEN 'high' ELSE 'standard' END,
+        COALESCE(source_type, 'user_explicit'),
+        COALESCE(source_id, CAST(id AS TEXT)),
+        source_detail,
+        0.9,
+        opened_at,
+        COALESCE(closed_at, opened_at),
+        opened_at,
+        opened_at,
+        COALESCE(closed_at, opened_at)
+      FROM open_loops
+    `);
+
+    // ── Attempts → memory_objects (kind='attempt') ──
+    db.exec(`
+      INSERT OR IGNORE INTO memory_objects (
+        composite_id, kind, canonical_key, content, structured_json,
+        scope_id, branch_id, status, confidence, trust_score,
+        influence_weight, source_kind, source_id, source_detail, source_authority,
+        first_observed_at, last_observed_at, observed_at,
+        created_at, updated_at
+      )
+      SELECT
+        'attempt:' || id,
+        'attempt',
+        NULL,
+        COALESCE(tool_name, '(unknown)') || ': ' || COALESCE(status, 'unknown') ||
+          CASE WHEN error_text IS NOT NULL THEN ' - ' || error_text ELSE '' END,
+        json_object(
+          'toolName', tool_name,
+          'inputSummary', input_summary,
+          'outputSummary', output_summary,
+          'status', status,
+          'durationMs', duration_ms,
+          'errorText', error_text
+        ),
+        scope_id,
+        branch_id,
+        'active',
+        1.0,
+        1.0,
+        CASE WHEN status = 'failure' THEN 'high' ELSE 'standard' END,
+        'tool_result',
+        CAST(id AS TEXT),
+        NULL,
+        1.0,
+        created_at,
+        created_at,
+        created_at,
+        created_at,
+        created_at
+      FROM attempts
+    `);
+
+    // ── Runbooks → memory_objects (kind='procedure', isNegative=false) ──
+    db.exec(`
+      INSERT OR IGNORE INTO memory_objects (
+        composite_id, kind, canonical_key, content, structured_json,
+        scope_id, branch_id, status, confidence, trust_score,
+        influence_weight, source_kind, source_id, source_detail, source_authority,
+        first_observed_at, last_observed_at, observed_at,
+        created_at, updated_at
+      )
+      SELECT
+        'procedure:rb_' || id,
+        'procedure',
+        'proc::' || LOWER(TRIM(tool_name)) || '::' || LOWER(TRIM(runbook_key)),
+        '[DO] ' || COALESCE(tool_name, '') || ': ' || COALESCE(pattern, ''),
+        json_object(
+          'toolName', tool_name,
+          'key', runbook_key,
+          'pattern', pattern,
+          'description', description,
+          'isNegative', json('false'),
+          'successCount', success_count,
+          'failureCount', failure_count
+        ),
+        scope_id,
+        0,
+        status,
+        confidence,
+        confidence,
+        'standard',
+        'extraction',
+        CAST(id AS TEXT),
+        NULL,
+        confidence,
+        created_at,
+        updated_at,
+        created_at,
+        created_at,
+        updated_at
+      FROM runbooks
+    `);
+
+    // ── Anti-Runbooks → memory_objects (kind='procedure', isNegative=true) ──
+    db.exec(`
+      INSERT OR IGNORE INTO memory_objects (
+        composite_id, kind, canonical_key, content, structured_json,
+        scope_id, branch_id, status, confidence, trust_score,
+        influence_weight, source_kind, source_id, source_detail, source_authority,
+        first_observed_at, last_observed_at, observed_at,
+        created_at, updated_at
+      )
+      SELECT
+        'procedure:arb_' || id,
+        'procedure',
+        'proc::' || LOWER(TRIM(tool_name)) || '::' || LOWER(TRIM(anti_runbook_key)),
+        '[AVOID] ' || COALESCE(tool_name, '') || ': ' || COALESCE(failure_pattern, ''),
+        json_object(
+          'toolName', tool_name,
+          'key', anti_runbook_key,
+          'pattern', failure_pattern,
+          'description', description,
+          'isNegative', json('true'),
+          'failureCount', failure_count
+        ),
+        scope_id,
+        0,
+        status,
+        confidence,
+        confidence,
+        'high',
+        'extraction',
+        CAST(id AS TEXT),
+        NULL,
+        confidence,
+        created_at,
+        updated_at,
+        created_at,
+        created_at,
+        updated_at
+      FROM anti_runbooks
+    `);
+
+    // ── Invariants → memory_objects (kind='invariant') ──
+    db.exec(`
+      INSERT OR IGNORE INTO memory_objects (
+        composite_id, kind, canonical_key, content, structured_json,
+        scope_id, branch_id, status, confidence, trust_score,
+        influence_weight, source_kind, source_id, source_detail, source_authority,
+        first_observed_at, last_observed_at, observed_at,
+        created_at, updated_at
+      )
+      SELECT
+        'invariant:' || id,
+        'invariant',
+        'inv::' || LOWER(TRIM(invariant_key)),
+        '[' || COALESCE(severity, 'warning') || '] ' || COALESCE(description, ''),
+        json_object(
+          'key', invariant_key,
+          'category', category,
+          'severity', severity,
+          'enforcementMode', enforcement_mode
+        ),
+        scope_id,
+        0,
+        status,
+        0.9,
+        0.9,
+        CASE WHEN severity IN ('critical', 'error') THEN 'critical' ELSE 'high' END,
+        COALESCE(source_type, 'extraction'),
+        COALESCE(source_id, CAST(id AS TEXT)),
+        source_detail,
+        0.9,
+        created_at,
+        updated_at,
+        created_at,
+        created_at,
+        updated_at
+      FROM invariants
+    `);
+
+    // ── entity_mentions → provenance_links (predicate='mentioned_in') ──
+    db.exec(`
+      INSERT OR IGNORE INTO provenance_links (
+        subject_id, predicate, object_id, confidence, detail, scope_id, created_at
+      )
+      SELECT
+        'entity:' || em.entity_id,
+        'mentioned_in',
+        COALESCE(em.source_type, 'unknown') || ':' || COALESCE(em.source_id, ''),
+        1.0,
+        em.source_detail,
+        COALESCE(em.scope_id, 1),
+        em.created_at
+      FROM entity_mentions em
+    `);
+
+    // ── entity_relations → provenance_links (predicate='relates_to') ──
+    db.exec(`
+      INSERT INTO provenance_links (
+        subject_id, predicate, object_id, confidence, detail, scope_id, created_at
+      )
+      SELECT
+        'entity:' || er.subject_entity_id,
+        'relates_to',
+        'entity:' || er.object_entity_id,
+        er.confidence,
+        er.predicate,
+        er.scope_id,
+        er.created_at
+      FROM entity_relations er
+      WHERE TRUE
+      ON CONFLICT(subject_id, predicate, object_id) DO UPDATE SET
+        confidence = MAX(excluded.confidence, provenance_links.confidence),
+        detail = excluded.detail
+    `);
+
+    // ── claim_evidence → provenance_links (supports/contradicts) ──
+    db.exec(`
+      INSERT OR IGNORE INTO provenance_links (
+        subject_id, predicate, object_id, confidence, detail, scope_id, created_at
+      )
+      SELECT
+        COALESCE(ce.source_type, 'unknown') || ':' || COALESCE(ce.source_id, ''),
+        CASE WHEN ce.evidence_role = 'contradict' THEN 'contradicts'
+             WHEN ce.evidence_role = 'contradicts' THEN 'contradicts'
+             ELSE 'supports'
+        END,
+        'claim:' || ce.claim_id,
+        ABS(ce.confidence_delta),
+        ce.source_detail,
+        COALESCE((SELECT scope_id FROM claims WHERE id = ce.claim_id), 1),
+        ce.observed_at
+      FROM claim_evidence ce
+    `);
+
+    // ── runbook_evidence → provenance_links (supports) ──
+    db.exec(`
+      INSERT OR IGNORE INTO provenance_links (
+        subject_id, predicate, object_id, confidence, detail, scope_id, created_at
+      )
+      SELECT
+        COALESCE(re.source_type, 'unknown') || ':' || COALESCE(re.source_id, ''),
+        'supports',
+        'procedure:rb_' || re.runbook_id,
+        1.0,
+        CASE WHEN re.attempt_id IS NOT NULL THEN 'attempt:' || re.attempt_id ELSE NULL END,
+        COALESCE((SELECT scope_id FROM runbooks WHERE id = re.runbook_id), 1),
+        re.recorded_at
+      FROM runbook_evidence re
+    `);
+
+    // ── anti_runbook_evidence → provenance_links (supports) ──
+    db.exec(`
+      INSERT OR IGNORE INTO provenance_links (
+        subject_id, predicate, object_id, confidence, detail, scope_id, created_at
+      )
+      SELECT
+        COALESCE(are.source_type, 'unknown') || ':' || COALESCE(are.source_id, ''),
+        'supports',
+        'procedure:arb_' || are.anti_runbook_id,
+        1.0,
+        CASE WHEN are.attempt_id IS NOT NULL THEN 'attempt:' || are.attempt_id ELSE NULL END,
+        COALESCE((SELECT scope_id FROM anti_runbooks WHERE id = are.anti_runbook_id), 1),
+        are.recorded_at
+      FROM anti_runbook_evidence are
+    `);
+
+    // ── Two-pass: backfill superseded_by for claims ──
+    db.exec(`
+      UPDATE memory_objects
+      SET superseded_by = (
+        SELECT mo2.id FROM memory_objects mo2
+        WHERE mo2.composite_id = 'claim:' || (
+          SELECT c.superseded_by FROM claims c
+          WHERE c.id = CAST(SUBSTR(memory_objects.composite_id, 7) AS INTEGER)
+        )
+      )
+      WHERE kind = 'claim'
+        AND superseded_by IS NULL
+        AND EXISTS (
+          SELECT 1 FROM claims c
+          WHERE c.id = CAST(SUBSTR(memory_objects.composite_id, 7) AS INTEGER)
+            AND c.superseded_by IS NOT NULL
+        )
+    `);
+
+    // ── Two-pass: backfill superseded_by for decisions ──
+    db.exec(`
+      UPDATE memory_objects
+      SET superseded_by = (
+        SELECT mo2.id FROM memory_objects mo2
+        WHERE mo2.composite_id = 'decision:' || (
+          SELECT d.superseded_by FROM decisions d
+          WHERE d.id = CAST(SUBSTR(memory_objects.composite_id, 10) AS INTEGER)
+        )
+      )
+      WHERE kind = 'decision'
+        AND superseded_by IS NULL
+        AND EXISTS (
+          SELECT 1 FROM decisions d
+          WHERE d.id = CAST(SUBSTR(memory_objects.composite_id, 10) AS INTEGER)
+            AND d.superseded_by IS NOT NULL
+        )
+    `);
+
+    markMigrationApplied(db, 17);
+  }
+
+  // Migration v18: Rename legacy tables (safety net — will be dropped in v19)
+  if (!isMigrationApplied(db, 18)) {
+    const legacyTables = [
+      "claims", "claim_evidence", "decisions", "open_loops",
+      "runbooks", "runbook_evidence", "anti_runbooks", "anti_runbook_evidence",
+      "invariants", "entity_relations", "entities", "entity_mentions", "attempts",
+    ];
+    for (const table of legacyTables) {
+      try { db.exec(`ALTER TABLE ${table} RENAME TO _legacy_${table}`); } catch { /* already renamed or missing */ }
+    }
+    markMigrationApplied(db, 18);
+  }
+
   // File permissions: chmod 600 on Unix/macOS, skip on Windows
   if (dbPath && process.platform !== "win32") {
     try {

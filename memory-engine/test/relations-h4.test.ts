@@ -31,7 +31,7 @@ describe("H4 Schema", () => {
     const tables = (db.prepare(
       "SELECT name FROM sqlite_master WHERE type='table' ORDER BY name",
     ).all() as Array<{ name: string }>).map((r) => r.name);
-    expect(tables).toContain("runbook_evidence");
+    expect(tables).toContain("_legacy_runbook_evidence");
   });
 
   it("migration v5 is idempotent", () => {
@@ -212,13 +212,14 @@ describe("H4 Snapshots", () => {
 describe("H4 Snapshot historical accuracy", () => {
   it("includes claims that were superseded AFTER the snapshot timestamp", () => {
     const db = createDb();
-    // Create claim with explicit timestamps
+    // Create claim with explicit timestamps in memory_objects
     db.prepare(`
-      INSERT INTO claims (scope_id, branch_id, subject, predicate, object_text, canonical_key,
-        confidence, trust_score, source_authority, value_type, extraction_version,
-        status, created_at, updated_at, first_seen_at, last_seen_at)
-      VALUES (1, 0, 'api', 'status', 'healthy', 'api::status',
-        0.8, 0.5, 0.5, 'text', 1,
+      INSERT INTO memory_objects (composite_id, kind, canonical_key, content, structured_json,
+        scope_id, branch_id, confidence, trust_score, source_authority,
+        status, created_at, updated_at, first_observed_at, last_observed_at)
+      VALUES ('claim:hist:api-status', 'claim', 'api::status', 'api status: healthy',
+        '{"subject":"api","predicate":"status","objectText":"healthy","valueType":"text"}',
+        1, 0, 0.8, 0.5, 0.5,
         'superseded', '2026-01-01T10:00:00.000', '2026-01-01T12:00:00.000',
         '2026-01-01T10:00:00.000', '2026-01-01T10:00:00.000')
     `).run();
@@ -236,9 +237,12 @@ describe("H4 Snapshot historical accuracy", () => {
   it("includes invariants that were retired AFTER the snapshot timestamp", () => {
     const db = createDb();
     db.prepare(`
-      INSERT INTO invariants (scope_id, invariant_key, description, severity, enforcement_mode,
+      INSERT INTO memory_objects (composite_id, kind, canonical_key, content, structured_json,
+        scope_id, branch_id, confidence,
         status, created_at, updated_at)
-      VALUES (1, 'old-rule', 'Old rule', 'warning', 'advisory',
+      VALUES ('invariant:hist:old-rule', 'invariant', 'inv::old-rule', 'Old rule',
+        '{"key":"old-rule","description":"Old rule","severity":"warning","enforcementMode":"advisory"}',
+        1, 0, 0.5,
         'retired', '2026-01-01T10:00:00.000', '2026-01-01T14:00:00.000')
     `).run();
 

@@ -129,9 +129,9 @@ describe("Failure: KG (Knowledge Graph)", () => {
       upsertEntity(g(), { name: "dupe-test", displayName: "D", entityType: "t" });
       upsertEntity(g(), { name: "dupe-test", displayName: "D", entityType: "t" });
     });
-    const count = (db.prepare("SELECT COUNT(*) as cnt FROM entities WHERE name = 'dupe-test'").get() as any).cnt;
+    const count = (db.prepare("SELECT COUNT(*) as cnt FROM memory_objects WHERE composite_id = 'entity:dupe-test'").get() as any).cnt;
     expect(count).toBe(1); // single row, not 3
-    const mc = (db.prepare("SELECT mention_count FROM entities WHERE name = 'dupe-test'").get() as any).mention_count;
+    const mc = (db.prepare("SELECT json_extract(structured_json, '$.mentionCount') as mc FROM memory_objects WHERE composite_id = 'entity:dupe-test'").get() as any).mc;
     expect(mc).toBe(3); // count incremented 3 times
   });
 
@@ -160,7 +160,7 @@ describe("Failure: KG (Knowledge Graph)", () => {
 
     // Old data should still exist (transaction rolled back)
     const mentions = (db.prepare(
-      "SELECT COUNT(*) as cnt FROM entity_mentions WHERE source_id = 'crash-doc'",
+      "SELECT COUNT(*) as cnt FROM provenance_links WHERE predicate = 'mentioned_in' AND object_id = 'doc:crash-doc'",
     ).get() as any).cnt;
     expect(mentions).toBe(1); // original preserved
   });
@@ -276,12 +276,13 @@ describe("Failure: AOM (Attempt Memory)", () => {
     expect(rbs.length).toBe(1); // one row, not three
   });
 
-  it("anti-runbook evidence on nonexistent anti-runbook throws (FK constraint)", () => {
+  it("anti-runbook evidence on nonexistent anti-runbook does not throw (provenance_links has no FK)", () => {
+    // provenance_links uses text IDs, no FK constraint to memory_objects
     expect(() => {
       addAntiRunbookEvidence(g(), 999999, {
         sourceType: "t", sourceId: "s", evidenceRole: "failure",
       });
-    }).toThrow(); // FK violation
+    }).not.toThrow();
   });
 
   it("attempt with null duration and error is accepted", () => {
@@ -438,33 +439,33 @@ describe("Failure: Timeline & Snapshot", () => {
 // ═══════════════════════════════════════════════════════════════════
 
 describe("Failure: Relations", () => {
-  it("relation with nonexistent entity IDs throws FK constraint", () => {
+  it("relation with nonexistent entity IDs does not throw (provenance_links has no FK constraints)", () => {
+    // provenance_links uses text subject_id/object_id, no FK constraint to entities
     expect(() => {
       upsertRelation(g(), {
         scopeId: 1, subjectEntityId: 999999, predicate: "uses",
         objectEntityId: 999998, confidence: 0.5,
         sourceType: "t", sourceId: "s",
       });
-    }).toThrow();
+    }).not.toThrow();
   });
 
   it("getRelationsForEntity on nonexistent entity returns empty", () => {
-    const rels = getRelationsForEntity(g(), 999999);
+    const rels = getRelationsForEntity(g(), 8888888);
     expect(rels).toEqual([]);
   });
 
   it("duplicate relation upserts on conflict, does not create duplicates", () => {
+    let aId: number, bId: number;
     withWriteTransaction(g(), () => {
-      upsertEntity(g(), { name: "rel-dup-a", displayName: "A", entityType: "t" });
-      upsertEntity(g(), { name: "rel-dup-b", displayName: "B", entityType: "t" });
+      aId = upsertEntity(g(), { name: "rel-dup-a", displayName: "A", entityType: "t" }).entityId;
+      bId = upsertEntity(g(), { name: "rel-dup-b", displayName: "B", entityType: "t" }).entityId;
     });
-    const aId = (db.prepare("SELECT id FROM entities WHERE name = 'rel-dup-a'").get() as any).id;
-    const bId = (db.prepare("SELECT id FROM entities WHERE name = 'rel-dup-b'").get() as any).id;
 
-    upsertRelation(g(), { scopeId: 1, subjectEntityId: aId, predicate: "uses", objectEntityId: bId, confidence: 0.5, sourceType: "t", sourceId: "s1" });
-    upsertRelation(g(), { scopeId: 1, subjectEntityId: aId, predicate: "uses", objectEntityId: bId, confidence: 0.9, sourceType: "t", sourceId: "s2" });
+    upsertRelation(g(), { scopeId: 1, subjectEntityId: aId!, predicate: "uses", objectEntityId: bId!, confidence: 0.5, sourceType: "t", sourceId: "s1" });
+    upsertRelation(g(), { scopeId: 1, subjectEntityId: aId!, predicate: "uses", objectEntityId: bId!, confidence: 0.9, sourceType: "t", sourceId: "s2" });
 
-    const rels = getRelationsForEntity(g(), aId);
+    const rels = getRelationsForEntity(g(), aId!);
     const usesRels = rels.filter((r: any) => r.predicate === "uses");
     expect(usesRels.length).toBe(1); // one row, higher confidence
   });

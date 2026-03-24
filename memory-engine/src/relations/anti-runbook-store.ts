@@ -1,47 +1,86 @@
 /**
  * Anti-runbook store — learned failure patterns to avoid repeating mistakes.
+ *
+ * Phase 2: All writes delegate to mo-store.ts (memory_objects table).
+ * Reads query memory_objects directly. Legacy table writes removed.
+ * Anti-runbooks are kind='procedure' with isNegative=true in structured_json.
+ *
+ * Function signatures are UNCHANGED — callers don't need to change.
  */
 
 import type { GraphDb, UpsertAntiRunbookInput } from "./types.js";
 import { logEvidence } from "./evidence-log.js";
+import { upsertMemoryObject } from "../ontology/mo-store.js";
+import type { MemoryObject } from "../ontology/types.js";
 
 export function upsertAntiRunbook(
   db: GraphDb,
   input: UpsertAntiRunbookInput,
 ): { antiRunbookId: number; isNew: boolean } {
-  const existing = db.prepare(
-    "SELECT id FROM anti_runbooks WHERE scope_id = ? AND anti_runbook_key = ?",
-  ).get(input.scopeId, input.antiRunbookKey) as { id: number } | undefined;
+  const compositeId = `antirunbook:${input.scopeId}:${input.antiRunbookKey}`;
 
-  db.prepare(`
-    INSERT INTO anti_runbooks
-      (scope_id, anti_runbook_key, tool_name, failure_pattern, description, failure_count, confidence)
-    VALUES (?, ?, ?, ?, ?, ?, ?)
-    ON CONFLICT(scope_id, anti_runbook_key) DO UPDATE SET
-      failure_count = anti_runbooks.failure_count + COALESCE(excluded.failure_count, 1),
-      confidence = MIN(1.0, 0.3 + 0.7 * (1.0 - 1.0 / (1.0 + (anti_runbooks.failure_count + COALESCE(excluded.failure_count, 1)) * 0.5))),
-      description = COALESCE(excluded.description, anti_runbooks.description),
-      updated_at = strftime('%Y-%m-%dT%H:%M:%f', 'now')
-  `).run(
-    input.scopeId, input.antiRunbookKey, input.toolName, input.failurePattern,
-    input.description ?? null,
-    input.failureCount ?? 1, input.confidence ?? 0.5,
-  );
+  // Check for existing to accumulate failure_count
+  let existingFailureCount = 0;
+  let existingConfidence = 0.5;
+  const existingRow = db.prepare(
+    "SELECT structured_json, confidence FROM memory_objects WHERE composite_id = ?",
+  ).get(compositeId) as { structured_json: string | null; confidence: number } | undefined;
+  if (existingRow) {
+    try {
+      const parsed = existingRow.structured_json ? JSON.parse(existingRow.structured_json) : {};
+      existingFailureCount = Number(parsed.failureCount ?? 0);
+      existingConfidence = existingRow.confidence;
+    } catch { /* empty */ }
+  }
 
-  const row = db.prepare(
-    "SELECT id FROM anti_runbooks WHERE scope_id = ? AND anti_runbook_key = ?",
-  ).get(input.scopeId, input.antiRunbookKey) as { id: number };
+  const newFailureCount = (input.failureCount ?? 1);
+  const totalFailureCount = existingRow ? existingFailureCount + newFailureCount : newFailureCount;
 
-  const isNew = !existing;
+  // Logistic confidence increment: 0.3 + 0.7*(1 - 1/(1 + totalFailureCount * existingConfidence))
+  const confidence = existingRow
+    ? Math.min(1.0, 0.3 + 0.7 * (1 - 1 / (1 + totalFailureCount * existingConfidence)))
+    : (input.confidence ?? 0.5);
+
+  const mo: MemoryObject = {
+    id: compositeId,
+    kind: "procedure",
+    content: input.description ?? `${input.toolName}: ${input.failurePattern}`,
+    structured: {
+      isNegative: true,
+      toolName: input.toolName,
+      key: input.antiRunbookKey,
+      failurePattern: input.failurePattern,
+      description: input.description ?? null,
+      failureCount: totalFailureCount,
+    },
+    canonical_key: `proc::${input.toolName.toLowerCase().trim()}::${input.antiRunbookKey.toLowerCase().trim()}`,
+    provenance: {
+      source_kind: "inference",
+      source_id: compositeId,
+      actor: "system",
+      trust: 0.5,
+    },
+    confidence,
+    freshness: 1.0,
+    provisional: false,
+    status: "active",
+    observed_at: new Date().toISOString(),
+    scope_id: input.scopeId,
+    influence_weight: "standard",
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+  };
+
+  const result = upsertMemoryObject(db, mo);
 
   logEvidence(db, {
     scopeId: input.scopeId,
     objectType: "anti_runbook",
-    objectId: row.id,
-    eventType: isNew ? "create" : "update",
+    objectId: result.moId,
+    eventType: result.isNew ? "create" : "update",
   });
 
-  return { antiRunbookId: row.id, isNew };
+  return { antiRunbookId: result.moId, isNew: result.isNew };
 }
 
 export interface AntiRunbookRow {
@@ -58,28 +97,57 @@ export interface AntiRunbookRow {
   updated_at: string;
 }
 
+function moRowToAntiRunbookRow(row: Record<string, unknown>): AntiRunbookRow {
+  let structured: Record<string, unknown> = {};
+  if (row.structured_json != null && typeof row.structured_json === "string") {
+    try { structured = JSON.parse(row.structured_json); } catch { /* empty */ }
+  }
+  return {
+    id: Number(row.id),
+    scope_id: Number(row.scope_id ?? 1),
+    anti_runbook_key: String(structured.key ?? ""),
+    tool_name: String(structured.toolName ?? ""),
+    failure_pattern: String(structured.failurePattern ?? ""),
+    description: structured.description != null ? String(structured.description) : null,
+    failure_count: Number(structured.failureCount ?? 0),
+    confidence: Number(row.confidence ?? 0.5),
+    status: String(row.status ?? "active"),
+    created_at: String(row.created_at ?? ""),
+    updated_at: String(row.updated_at ?? ""),
+  };
+}
+
 export function getAntiRunbooks(
   db: GraphDb,
   scopeId: number,
   opts?: { toolName?: string; status?: string; limit?: number },
 ): AntiRunbookRow[] {
   const limit = opts?.limit ?? 20;
-  const where = ["scope_id = ?"];
+  const where = ["scope_id = ?", "kind = 'procedure'"];
   const args: unknown[] = [scopeId];
 
   if (opts?.toolName) {
-    where.push("tool_name = ?");
-    args.push(opts.toolName);
+    where.push("structured_json LIKE ?");
+    args.push(`%"toolName":"${opts.toolName}"%`);
   }
-  where.push("status = ?");
-  args.push(opts?.status ?? "active");
+
+  // isNegative=true for anti-runbooks
+  where.push("structured_json LIKE '%\"isNegative\":true%'");
+
+  const status = opts?.status ?? "active";
+  if (status === "under_review") {
+    where.push("status = 'needs_confirmation'");
+  } else {
+    where.push("status = ?");
+    args.push(status);
+  }
 
   args.push(limit);
-  return db.prepare(`
-    SELECT * FROM anti_runbooks
+  return (db.prepare(`
+    SELECT * FROM memory_objects
     WHERE ${where.join(" AND ")}
-    ORDER BY confidence DESC, failure_count DESC LIMIT ?
-  `).all(...args) as AntiRunbookRow[];
+    ORDER BY confidence DESC, updated_at DESC LIMIT ?
+  `).all(...args) as Record<string, unknown>[]).map(moRowToAntiRunbookRow);
 }
 
 export function getAntiRunbooksForTool(db: GraphDb, scopeId: number, toolName: string): AntiRunbookRow[] {
@@ -91,45 +159,41 @@ export function addAntiRunbookEvidence(
   antiRunbookId: number,
   input: { attemptId?: number; sourceType: string; sourceId: string; evidenceRole?: string },
 ): number {
-  const result = db.prepare(`
-    INSERT INTO anti_runbook_evidence
-      (anti_runbook_id, attempt_id, source_type, source_id, evidence_role)
-    VALUES (?, ?, ?, ?, ?)
+  // Write ONLY to provenance_links
+  db.prepare(`
+    INSERT OR IGNORE INTO provenance_links (subject_id, predicate, object_id, confidence, detail, scope_id, metadata)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
   `).run(
-    antiRunbookId, input.attemptId ?? null,
-    input.sourceType, input.sourceId,
+    `antirunbook:${antiRunbookId}`,
+    "supports",
+    input.attemptId ? `attempt:${input.attemptId}` : `${input.sourceType}:${input.sourceId}`,
+    1.0,
     input.evidenceRole ?? "failure",
+    1,
+    JSON.stringify({ source_type: input.sourceType, source_id: input.sourceId, attempt_id: input.attemptId }),
   );
 
+  const evidenceRow = db.prepare(
+    "SELECT id FROM provenance_links WHERE subject_id = ? AND predicate = 'supports' AND object_id = ?",
+  ).get(
+    `antirunbook:${antiRunbookId}`,
+    input.attemptId ? `attempt:${input.attemptId}` : `${input.sourceType}:${input.sourceId}`,
+  ) as { id: number } | undefined;
+  const evidenceId = evidenceRow?.id ?? 0;
+
   const parentRow = db.prepare(
-    "SELECT scope_id FROM anti_runbooks WHERE id = ?",
+    "SELECT scope_id FROM memory_objects WHERE id = ?",
   ).get(antiRunbookId) as { scope_id: number } | undefined;
 
   logEvidence(db, {
     scopeId: parentRow?.scope_id,
     objectType: "anti_runbook_evidence",
-    objectId: Number(result.lastInsertRowid),
+    objectId: evidenceId,
     eventType: "create",
     payload: { antiRunbookId },
   });
 
-  // RSMA: also write to provenance_links
-  try {
-    db.prepare(`
-      INSERT OR IGNORE INTO provenance_links (subject_id, predicate, object_id, confidence, detail, scope_id, metadata)
-      VALUES (?, ?, ?, ?, ?, ?, ?)
-    `).run(
-      `antirunbook:${antiRunbookId}`,
-      "supports",
-      input.attemptId ? `attempt:${input.attemptId}` : `${input.sourceType}:${input.sourceId}`,
-      1.0,
-      input.evidenceRole ?? "failure",
-      parentRow?.scope_id ?? 1,
-      JSON.stringify({ source_type: input.sourceType, source_id: input.sourceId, attempt_id: input.attemptId }),
-    );
-  } catch { /* non-fatal */ }
-
-  return Number(result.lastInsertRowid);
+  return evidenceId;
 }
 
 export interface AntiRunbookEvidenceRow {
@@ -146,7 +210,6 @@ export function getAntiRunbookEvidence(
   db: GraphDb,
   antiRunbookId: number,
 ): AntiRunbookEvidenceRow[] {
-  // Read from provenance_links, fallback to legacy
   try {
     const rows = db.prepare(`
       SELECT id, object_id, detail, metadata, created_at
@@ -154,25 +217,21 @@ export function getAntiRunbookEvidence(
       ORDER BY created_at DESC
     `).all(`antirunbook:${antiRunbookId}`) as Array<Record<string, unknown>>;
 
-    if (rows.length > 0) {
-      return rows.map((r) => {
-        let meta: Record<string, unknown> = {};
-        try { if (r.metadata) meta = JSON.parse(String(r.metadata)); } catch { /* malformed */ }
-        const rawAttemptId = meta.attempt_id;
-        return {
-          id: Number(r.id),
-          anti_runbook_id: antiRunbookId,
-          attempt_id: typeof rawAttemptId === "number" && Number.isFinite(rawAttemptId) ? rawAttemptId : null,
-          source_type: String(meta.source_type ?? ""),
-          source_id: String(meta.source_id ?? ""),
-          evidence_role: String(r.detail ?? "failure"),
-          recorded_at: String(r.created_at),
-        };
-      });
-    }
-  } catch { /* fall through */ }
+    return rows.map((r) => {
+      let meta: Record<string, unknown> = {};
+      try { if (r.metadata) meta = JSON.parse(String(r.metadata)); } catch { /* malformed */ }
+      const rawAttemptId = meta.attempt_id;
+      return {
+        id: Number(r.id),
+        anti_runbook_id: antiRunbookId,
+        attempt_id: typeof rawAttemptId === "number" && Number.isFinite(rawAttemptId) ? rawAttemptId : null,
+        source_type: String(meta.source_type ?? ""),
+        source_id: String(meta.source_id ?? ""),
+        evidence_role: String(r.detail ?? "failure"),
+        recorded_at: String(r.created_at),
+      };
+    });
+  } catch { /* empty */ }
 
-  return db.prepare(
-    "SELECT * FROM anti_runbook_evidence WHERE anti_runbook_id = ? ORDER BY recorded_at DESC",
-  ).all(antiRunbookId) as AntiRunbookEvidenceRow[];
+  return [];
 }

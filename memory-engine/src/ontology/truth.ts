@@ -106,25 +106,41 @@ interface ExistingMatch {
   status: string;
   confidence: number;
   content: string;
+  /** Extracted comparable value from structured_json (objectText for claims, decisionText for decisions, etc.) */
+  value: string | null;
   scopeId: number;
 }
 
-function toMatch(kind: MemoryKind, canonicalKey: string, row: Record<string, unknown>): ExistingMatch {
+function extractValueFromRow(row: Record<string, unknown>): string | null {
+  const kind = String(row.kind ?? "");
+  let structured: Record<string, unknown> = {};
+  if (row.structured_json != null && typeof row.structured_json === "string") {
+    try { structured = JSON.parse(row.structured_json as string); } catch { /* empty */ }
+  }
+  if (kind === "claim" && typeof structured.objectText === "string") return structured.objectText;
+  if (kind === "decision" && typeof structured.decisionText === "string") return structured.decisionText;
+  if (kind === "loop") return String(row.content ?? "");
+  if (kind === "invariant" && typeof structured.description === "string") return structured.description;
+  return String(row.content ?? "");
+}
+
+function toMatch(row: Record<string, unknown>): ExistingMatch {
   return {
-    id: `${kind}:${row.id}`,
+    id: String(row.composite_id ?? `${row.kind}:${row.id}`),
     rawId: Number(row.id),
-    kind,
-    canonicalKey,
+    kind: String(row.kind ?? "claim") as MemoryKind,
+    canonicalKey: String(row.canonical_key ?? ""),
     status: String(row.status ?? "active"),
     confidence: Number(row.confidence ?? 0.5),
     content: String(row.content ?? ""),
+    value: extractValueFromRow(row),
     scopeId: Number(row.scope_id ?? 1),
   };
 }
 
 /**
  * Find existing active objects with the same canonical key.
- * Implements queries for all 4 supersession-eligible kinds.
+ * Queries the unified memory_objects table.
  */
 function findExistingByCanonicalKey(
   db: GraphDb,
@@ -132,59 +148,18 @@ function findExistingByCanonicalKey(
   canonicalKey: string,
   scopeId: number,
 ): ExistingMatch[] {
-  const results: ExistingMatch[] = [];
-
   try {
-    if (kind === "claim") {
-      const rows = db.prepare(`
-        SELECT id, status, confidence, object_text as content, scope_id
-        FROM claims
-        WHERE canonical_key = ? AND scope_id = ? AND status IN ('active', 'needs_confirmation')
-      `).all(canonicalKey, scopeId) as Array<Record<string, unknown>>;
-      for (const row of rows) results.push(toMatch("claim", canonicalKey, row));
-    }
+    const rows = db.prepare(`
+      SELECT * FROM memory_objects
+      WHERE canonical_key = ? AND scope_id = ? AND kind = ?
+        AND status IN ('active', 'needs_confirmation')
+    `).all(canonicalKey, scopeId, kind) as Array<Record<string, unknown>>;
 
-    if (kind === "decision") {
-      // Direct index lookup via canonical_key column (migration v15)
-      const rows = db.prepare(`
-        SELECT id, status, 0.9 as confidence, decision_text as content, scope_id, topic
-        FROM decisions
-        WHERE canonical_key = ? AND scope_id = ? AND status IN ('active', 'needs_confirmation')
-      `).all(canonicalKey, scopeId) as Array<Record<string, unknown>>;
-      for (const row of rows) results.push(toMatch("decision", canonicalKey, row));
-    }
-
-    if (kind === "loop") {
-      // Loops use hash-based canonical keys — match by computing hash of existing text
-      // This requires scanning active loops and computing keys on the fly
-      const rows = db.prepare(`
-        SELECT id, status, 0.8 as confidence, text as content, scope_id
-        FROM open_loops
-        WHERE scope_id = ? AND status IN ('open', 'blocked')
-      `).all(scopeId) as Array<Record<string, unknown>>;
-      for (const row of rows) {
-        const existingKey = buildCanonicalKey("loop", String(row.content ?? ""));
-        if (existingKey === canonicalKey) {
-          results.push(toMatch("loop", canonicalKey, row));
-        }
-      }
-    }
-
-    if (kind === "invariant") {
-      // Invariants match on invariant_key column
-      const keyValue = canonicalKey.replace(/^inv::/, "");
-      const rows = db.prepare(`
-        SELECT id, status, 0.9 as confidence, description as content, scope_id
-        FROM invariants
-        WHERE LOWER(TRIM(invariant_key)) = ? AND scope_id = ? AND status = 'active'
-      `).all(keyValue, scopeId) as Array<Record<string, unknown>>;
-      for (const row of rows) results.push(toMatch("invariant", canonicalKey, row));
-    }
+    return rows.map(toMatch);
   } catch {
     // Non-fatal: if table doesn't exist, return empty
+    return [];
   }
-
-  return results;
 }
 
 // ── Value Comparison ────────────────────────────────────────────────────────
@@ -324,7 +299,7 @@ export function reconcile(
         // Rule 2: Same confidence — only supersede if values actually differ.
         // If values are identical, just add as evidence (avoids pointless churn).
         const candidateVal = extractValueForComparison(candidate);
-        const existingVal = match.content;
+        const existingVal = match.value ?? match.content;
         const sameValue = candidateVal && existingVal
           && candidateVal.toLowerCase().trim() === existingVal.toLowerCase().trim();
         if (sameValue) {
@@ -361,7 +336,7 @@ export function reconcile(
     // a conflict can still be created to flag the value change for user review.
     // Conflict is created when: values differ AND candidate has meaningful confidence.
     const candidateValue = extractValueForComparison(candidate);
-    const existingValue = match.content;
+    const existingValue = match.value ?? match.content;
     if (valuesContradict(candidateValue, existingValue)
         && candidate.confidence >= MIN_SUPERSESSION_CONFIDENCE) {
       // If supersession happened, the conflict is informational (status: "active" not "needs_confirmation")

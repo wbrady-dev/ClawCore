@@ -1,6 +1,7 @@
 /**
  * Branch promotion engine — creates, promotes, and discards speculative branches.
  *
+ * Phase 3: All per-table reads/writes now query the unified memory_objects table.
  * Uses the seeded promotion_policies table from H1 migration to validate
  * whether a branch can be promoted to shared scope.
  */
@@ -79,7 +80,6 @@ export function checkPromotionPolicy(
       policy.auto_promote_above_confidence != null &&
       confidence >= policy.auto_promote_above_confidence
     ) {
-      // Auto-promote: confidence exceeds auto threshold
       return { canPromote: true, reason: `Auto-promoted: confidence ${confidence.toFixed(2)} >= ${policy.auto_promote_above_confidence}` };
     }
     if (!userConfirmed) {
@@ -146,53 +146,59 @@ export function promoteBranch(db: GraphDb, branchId: number, actor?: string): vo
   const scopeId = branch.scope_id;
 
   withWriteTransaction(db, () => {
-    // --- Claims: on conflict, higher confidence wins ---
+    // --- Claims: on conflict (same canonical_key), higher confidence wins ---
     const branchClaims = db.prepare(
-      "SELECT id, canonical_key, confidence FROM claims WHERE scope_id = ? AND branch_id = ?",
+      "SELECT id, canonical_key, confidence FROM memory_objects WHERE scope_id = ? AND branch_id = ? AND kind = 'claim'",
     ).all(scopeId, branchId) as Array<{ id: number; canonical_key: string; confidence: number }>;
 
     for (const bc of branchClaims) {
       const shared = db.prepare(
-        "SELECT id, confidence FROM claims WHERE scope_id = ? AND branch_id = 0 AND canonical_key = ?",
+        "SELECT id, confidence FROM memory_objects WHERE scope_id = ? AND branch_id = 0 AND kind = 'claim' AND canonical_key = ?",
       ).get(scopeId, bc.canonical_key) as { id: number; confidence: number } | undefined;
 
       if (shared) {
         if (bc.confidence > shared.confidence) {
-          // Branch wins: supersede shared (prefix canonical_key to avoid UNIQUE violation),
-          // then move branch claim to shared scope
-          db.prepare("UPDATE claims SET status = 'superseded', superseded_by = ?, canonical_key = 'superseded:' || canonical_key, updated_at = strftime('%Y-%m-%dT%H:%M:%f', 'now') WHERE id = ?").run(bc.id, shared.id);
-          db.prepare("UPDATE claims SET branch_id = 0 WHERE id = ?").run(bc.id);
+          // Branch wins: supersede shared, then move branch claim to shared scope
+          db.prepare("UPDATE memory_objects SET status = 'superseded', superseded_by = ?, canonical_key = 'superseded:' || canonical_key, updated_at = strftime('%Y-%m-%dT%H:%M:%f', 'now') WHERE id = ?").run(bc.id, shared.id);
+          db.prepare("UPDATE memory_objects SET branch_id = 0 WHERE id = ?").run(bc.id);
         } else {
           // Shared wins: mark branch claim as superseded
-          db.prepare("UPDATE claims SET status = 'superseded', superseded_by = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%f', 'now') WHERE id = ?").run(shared.id, bc.id);
+          db.prepare("UPDATE memory_objects SET status = 'superseded', superseded_by = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%f', 'now') WHERE id = ?").run(shared.id, bc.id);
         }
       } else {
         // No conflict: move to shared scope
-        db.prepare("UPDATE claims SET branch_id = 0 WHERE id = ?").run(bc.id);
+        db.prepare("UPDATE memory_objects SET branch_id = 0 WHERE id = ?").run(bc.id);
       }
     }
 
-    // --- Decisions: on conflict (same topic), supersede shared one ---
+    // --- Decisions: on conflict (same canonical_key/topic), supersede shared one ---
     const branchDecisions = db.prepare(
-      "SELECT id, topic FROM decisions WHERE scope_id = ? AND branch_id = ? AND status = 'active'",
-    ).all(scopeId, branchId) as Array<{ id: number; topic: string }>;
+      "SELECT id, canonical_key FROM memory_objects WHERE scope_id = ? AND branch_id = ? AND kind = 'decision' AND status = 'active'",
+    ).all(scopeId, branchId) as Array<{ id: number; canonical_key: string }>;
 
     for (const bd of branchDecisions) {
-      const shared = db.prepare(
-        "SELECT id FROM decisions WHERE scope_id = ? AND branch_id = 0 AND topic = ? AND status = 'active' ORDER BY decided_at DESC LIMIT 1",
-      ).get(scopeId, bd.topic) as { id: number } | undefined;
+      if (bd.canonical_key) {
+        const shared = db.prepare(
+          "SELECT id FROM memory_objects WHERE scope_id = ? AND branch_id = 0 AND kind = 'decision' AND canonical_key = ? AND status = 'active' ORDER BY created_at DESC LIMIT 1",
+        ).get(scopeId, bd.canonical_key) as { id: number } | undefined;
 
-      if (shared) {
-        db.prepare("UPDATE decisions SET status = 'superseded', superseded_by = ? WHERE id = ?").run(bd.id, shared.id);
+        if (shared) {
+          db.prepare("UPDATE memory_objects SET status = 'superseded', superseded_by = ? WHERE id = ?").run(bd.id, shared.id);
+        }
       }
-      db.prepare("UPDATE decisions SET branch_id = 0 WHERE id = ?").run(bd.id);
+      db.prepare("UPDATE memory_objects SET branch_id = 0 WHERE id = ?").run(bd.id);
     }
 
-    // --- Simple tables: move all to shared scope ---
-    // Only tables with branch_id columns: open_loops, attempts, state_deltas
-    for (const table of ["open_loops", "attempts", "state_deltas"]) {
-      db.prepare(`UPDATE ${table} SET branch_id = 0 WHERE scope_id = ? AND branch_id = ?`).run(scopeId, branchId);
-    }
+    // --- All other kinds: move branch-scoped objects to shared scope ---
+    db.prepare(`
+      UPDATE memory_objects SET branch_id = 0
+      WHERE scope_id = ? AND branch_id = ? AND kind NOT IN ('claim', 'decision')
+    `).run(scopeId, branchId);
+
+    // --- Also move state_deltas (not in memory_objects) ---
+    try {
+      db.prepare("UPDATE state_deltas SET branch_id = 0 WHERE scope_id = ? AND branch_id = ?").run(scopeId, branchId);
+    } catch { /* table may not exist */ }
 
     // --- Flip branch status ---
     db.prepare(`

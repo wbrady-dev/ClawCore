@@ -44,8 +44,8 @@ describe("RSMA Migration: isMigrationNeeded", () => {
 describe("RSMA Migration: entity_mentions", () => {
   it("migrates entity mentions to mentioned_in links", () => {
     // Seed an entity and mention
-    db.prepare("INSERT INTO entities (name, display_name, mention_count, first_seen_at, last_seen_at) VALUES (?, ?, ?, ?, ?)").run("postgres", "PostgreSQL", 3, NOW, NOW);
-    db.prepare("INSERT INTO entity_mentions (entity_id, scope_id, source_type, source_id, source_detail, actor, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)").run(1, 1, "message", "42", "user said it", "system", NOW);
+    db.prepare("INSERT INTO _legacy_entities (name, display_name, mention_count, first_seen_at, last_seen_at) VALUES (?, ?, ?, ?, ?)").run("postgres", "PostgreSQL", 3, NOW, NOW);
+    db.prepare("INSERT INTO _legacy_entity_mentions (entity_id, scope_id, source_type, source_id, source_detail, actor, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)").run(1, 1, "message", "42", "user said it", "system", NOW);
 
     const stats = migrateToProvenanceLinks(db);
     expect(stats.entityMentions).toBe(1);
@@ -60,8 +60,8 @@ describe("RSMA Migration: entity_mentions", () => {
 describe("RSMA Migration: claim_evidence", () => {
   it("migrates supporting evidence to supports links", () => {
     // Seed a claim and evidence
-    db.prepare(`INSERT INTO claims (scope_id, branch_id, subject, predicate, object_text, status, confidence, trust_score, source_authority, canonical_key, first_seen_at, last_seen_at, created_at, updated_at) VALUES (1, 0, 'test', 'is', 'true', 'active', 0.8, 0.7, 0.7, 'claim::test::is', ?, ?, ?, ?)`).run(NOW, NOW, NOW, NOW);
-    db.prepare(`INSERT INTO claim_evidence (claim_id, source_type, source_id, source_detail, evidence_role, confidence_delta) VALUES (1, 'message', '10', 'user said', 'support', 0.1)`).run();
+    db.prepare(`INSERT INTO _legacy_claims (scope_id, branch_id, subject, predicate, object_text, status, confidence, trust_score, source_authority, canonical_key, first_seen_at, last_seen_at, created_at, updated_at) VALUES (1, 0, 'test', 'is', 'true', 'active', 0.8, 0.7, 0.7, 'claim::test::is', ?, ?, ?, ?)`).run(NOW, NOW, NOW, NOW);
+    db.prepare(`INSERT INTO _legacy_claim_evidence (claim_id, source_type, source_id, source_detail, evidence_role, confidence_delta) VALUES (1, 'message', '10', 'user said', 'support', 0.1)`).run();
 
     const stats = migrateToProvenanceLinks(db);
     expect(stats.claimEvidence).toBe(1);
@@ -72,8 +72,8 @@ describe("RSMA Migration: claim_evidence", () => {
   });
 
   it("migrates contradicting evidence to contradicts links", () => {
-    db.prepare(`INSERT INTO claims (scope_id, branch_id, subject, predicate, object_text, status, confidence, trust_score, source_authority, canonical_key, first_seen_at, last_seen_at, created_at, updated_at) VALUES (1, 0, 'x', 'y', 'z', 'active', 0.8, 0.7, 0.7, 'claim::x::y', ?, ?, ?, ?)`).run(NOW, NOW, NOW, NOW);
-    db.prepare(`INSERT INTO claim_evidence (claim_id, source_type, source_id, evidence_role) VALUES (1, 'message', '11', 'contradict')`).run();
+    db.prepare(`INSERT INTO _legacy_claims (scope_id, branch_id, subject, predicate, object_text, status, confidence, trust_score, source_authority, canonical_key, first_seen_at, last_seen_at, created_at, updated_at) VALUES (1, 0, 'x', 'y', 'z', 'active', 0.8, 0.7, 0.7, 'claim::x::y', ?, ?, ?, ?)`).run(NOW, NOW, NOW, NOW);
+    db.prepare(`INSERT INTO _legacy_claim_evidence (claim_id, source_type, source_id, evidence_role) VALUES (1, 'message', '11', 'contradict')`).run();
 
     const stats = migrateToProvenanceLinks(db);
     const link = db.prepare("SELECT * FROM provenance_links WHERE subject_id = 'claim:1'").get() as Record<string, unknown>;
@@ -83,9 +83,9 @@ describe("RSMA Migration: claim_evidence", () => {
 
 describe("RSMA Migration: entity_relations", () => {
   it("migrates entity relations to relates_to links", () => {
-    db.prepare("INSERT INTO entities (name, display_name, mention_count, first_seen_at, last_seen_at) VALUES (?, ?, ?, ?, ?)").run("alice", "Alice", 1, NOW, NOW);
-    db.prepare("INSERT INTO entities (name, display_name, mention_count, first_seen_at, last_seen_at) VALUES (?, ?, ?, ?, ?)").run("bob", "Bob", 1, NOW, NOW);
-    db.prepare("INSERT INTO entity_relations (scope_id, subject_entity_id, predicate, object_entity_id, confidence, source_type, source_id, created_at) VALUES (1, 1, 'manages', 2, 0.9, 'message', '5', ?)").run(NOW);
+    db.prepare("INSERT INTO _legacy_entities (name, display_name, mention_count, first_seen_at, last_seen_at) VALUES (?, ?, ?, ?, ?)").run("alice", "Alice", 1, NOW, NOW);
+    db.prepare("INSERT INTO _legacy_entities (name, display_name, mention_count, first_seen_at, last_seen_at) VALUES (?, ?, ?, ?, ?)").run("bob", "Bob", 1, NOW, NOW);
+    db.prepare("INSERT INTO _legacy_entity_relations (scope_id, subject_entity_id, predicate, object_entity_id, confidence, source_type, source_id, created_at) VALUES (1, 1, 'manages', 2, 0.9, 'message', '5', ?)").run(NOW);
 
     const stats = migrateToProvenanceLinks(db);
     expect(stats.entityRelations).toBe(1);
@@ -99,9 +99,9 @@ describe("RSMA Migration: entity_relations", () => {
 
 describe("RSMA Migration: runbook_evidence", () => {
   it("migrates runbook evidence to supports links", () => {
-    db.prepare("INSERT INTO runbooks (scope_id, runbook_key, tool_name, pattern, success_count, failure_count, confidence, status, created_at, updated_at) VALUES (1, 'test', 'git_push', 'retry', 3, 0, 0.9, 'active', ?, ?)").run(NOW, NOW);
-    db.prepare("INSERT INTO attempts (scope_id, branch_id, tool_name, status, created_at) VALUES (1, 0, 'git_push', 'success', ?)").run(NOW);
-    db.prepare("INSERT INTO runbook_evidence (runbook_id, attempt_id, source_type, source_id, evidence_role, recorded_at) VALUES (1, 1, 'attempt', '1', 'success', ?)").run(NOW);
+    db.prepare("INSERT INTO _legacy_runbooks (scope_id, runbook_key, tool_name, pattern, success_count, failure_count, confidence, status, created_at, updated_at) VALUES (1, 'test', 'git_push', 'retry', 3, 0, 0.9, 'active', ?, ?)").run(NOW, NOW);
+    db.prepare("INSERT INTO _legacy_attempts (scope_id, branch_id, tool_name, status, created_at) VALUES (1, 0, 'git_push', 'success', ?)").run(NOW);
+    db.prepare("INSERT INTO _legacy_runbook_evidence (runbook_id, attempt_id, source_type, source_id, evidence_role, recorded_at) VALUES (1, 1, 'attempt', '1', 'success', ?)").run(NOW);
 
     const stats = migrateToProvenanceLinks(db);
     expect(stats.runbookEvidence).toBe(1);
@@ -114,8 +114,8 @@ describe("RSMA Migration: runbook_evidence", () => {
 
 describe("RSMA Migration: idempotency", () => {
   it("running migration twice produces no duplicates", () => {
-    db.prepare("INSERT INTO entities (name, display_name, mention_count, first_seen_at, last_seen_at) VALUES (?, ?, ?, ?, ?)").run("test", "Test", 1, NOW, NOW);
-    db.prepare("INSERT INTO entity_mentions (entity_id, scope_id, source_type, source_id, actor, created_at) VALUES (1, 1, 'message', '1', 'system', ?)").run(NOW);
+    db.prepare("INSERT INTO _legacy_entities (name, display_name, mention_count, first_seen_at, last_seen_at) VALUES (?, ?, ?, ?, ?)").run("test", "Test", 1, NOW, NOW);
+    db.prepare("INSERT INTO _legacy_entity_mentions (entity_id, scope_id, source_type, source_id, actor, created_at) VALUES (1, 1, 'message', '1', 'system', ?)").run(NOW);
 
     const stats1 = migrateToProvenanceLinks(db);
     expect(stats1.entityMentions).toBe(1);

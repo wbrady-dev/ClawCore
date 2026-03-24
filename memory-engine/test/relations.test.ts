@@ -50,8 +50,8 @@ describe("Relations: Schema", () => {
     expect(tables).toContain("state_scopes");
     expect(tables).toContain("branch_scopes");
     expect(tables).toContain("promotion_policies");
-    expect(tables).toContain("entities");
-    expect(tables).toContain("entity_mentions");
+    expect(tables).toContain("_legacy_entities");
+    expect(tables).toContain("_legacy_entity_mentions");
     expect(tables).toContain("_evidence_migrations");
   });
 
@@ -202,20 +202,20 @@ describe("Relations: Evidence Log", () => {
 
   it("withWriteTransaction commits on success", () => {
     withWriteTransaction(db, () => {
-      db.prepare("INSERT INTO entities (name, display_name, first_seen_at, last_seen_at) VALUES (?, ?, datetime('now'), datetime('now'))").run("test", "Test");
+      db.prepare("INSERT INTO memory_objects (composite_id, kind, content, scope_id, branch_id, status, confidence, created_at, updated_at) VALUES ('entity:test', 'entity', 'test', 1, 0, 'active', 0.5, datetime('now'), datetime('now'))").run();
     });
-    const row = db.prepare("SELECT name FROM entities WHERE name = 'test'").get();
+    const row = db.prepare("SELECT content FROM memory_objects WHERE composite_id = 'entity:test'").get();
     expect(row).toBeDefined();
   });
 
   it("withWriteTransaction rolls back on error", () => {
     expect(() => {
       withWriteTransaction(db, () => {
-        db.prepare("INSERT INTO entities (name, display_name, first_seen_at, last_seen_at) VALUES (?, ?, datetime('now'), datetime('now'))").run("rollback_test", "Rollback");
+        db.prepare("INSERT INTO memory_objects (composite_id, kind, content, scope_id, branch_id, status, confidence, created_at, updated_at) VALUES ('entity:rollback_test', 'entity', 'rollback_test', 1, 0, 'active', 0.5, datetime('now'), datetime('now'))").run();
         throw new Error("deliberate failure");
       });
     }).toThrow("deliberate failure");
-    const row = db.prepare("SELECT name FROM entities WHERE name = 'rollback_test'").get();
+    const row = db.prepare("SELECT content FROM memory_objects WHERE composite_id = 'entity:rollback_test'").get();
     expect(row).toBeUndefined();
   });
 
@@ -251,19 +251,17 @@ describe("Relations: Graph Store", () => {
     const result = upsertEntity(db, { name: "OpenClaw" });
     expect(result.entityId).toBeGreaterThan(0);
     expect(result.isNew).toBe(true);
-    const row = db.prepare("SELECT name, mention_count FROM entities WHERE id = ?").get(result.entityId) as { name: string; mention_count: number };
-    expect(row.name).toBe("openclaw");
-    expect(row.mention_count).toBe(1);
+    const row = db.prepare("SELECT content, kind FROM memory_objects WHERE id = ?").get(result.entityId) as { content: string; kind: string };
+    expect(row.content).toBe("OpenClaw");
+    expect(row.kind).toBe("entity");
   });
 
-  it("upsertEntity returns isNew=false on conflict and increments mention_count", () => {
+  it("upsertEntity returns isNew=false on conflict and reuses same id", () => {
     const first = upsertEntity(db, { name: "OpenClaw" });
     expect(first.isNew).toBe(true);
     const second = upsertEntity(db, { name: "openclaw" }); // same name, different casing
     expect(second.isNew).toBe(false);
     expect(second.entityId).toBe(first.entityId);
-    const row = db.prepare("SELECT mention_count FROM entities WHERE name = 'openclaw'").get() as { mention_count: number };
-    expect(row.mention_count).toBe(2);
   });
 
   it("insertMention returns true on first insert", () => {
@@ -280,14 +278,16 @@ describe("Relations: Graph Store", () => {
     const { entityId } = upsertEntity(db, { name: "MultiMention" });
     insertMention(db, { entityId, sourceType: "document", sourceId: "doc-1" });
     insertMention(db, { entityId, sourceType: "document", sourceId: "doc-1" });
+    // Look up composite_id for the entity
+    const entityMo = db.prepare("SELECT composite_id FROM memory_objects WHERE id = ?").get(entityId) as { composite_id: string };
     const count = db.prepare(
-      "SELECT COUNT(*) as cnt FROM entity_mentions WHERE entity_id = ?",
-    ).get(entityId) as { cnt: number };
-    // UNIQUE index on (entity_id, source_type, source_id) prevents duplicates
+      "SELECT COUNT(*) as cnt FROM provenance_links WHERE subject_id = ? AND predicate = 'mentioned_in'",
+    ).get(entityMo.composite_id) as { cnt: number };
+    // UNIQUE index on (subject_id, predicate, object_id) prevents duplicates
     expect(count.cnt).toBe(1);
   });
 
-  it("insertMention stores context_terms as JSON", () => {
+  it("insertMention stores context_terms as JSON in metadata", () => {
     const { entityId } = upsertEntity(db, { name: "TestEntity" });
     insertMention(db, {
       entityId,
@@ -295,35 +295,46 @@ describe("Relations: Graph Store", () => {
       sourceId: "doc-1",
       contextTerms: ["OpenClaw", "ClawCore"],
     });
+    const entityMo = db.prepare("SELECT composite_id FROM memory_objects WHERE id = ?").get(entityId) as { composite_id: string };
     const row = db.prepare(
-      "SELECT context_terms FROM entity_mentions WHERE entity_id = ?",
-    ).get(entityId) as { context_terms: string };
-    expect(JSON.parse(row.context_terms)).toEqual(["OpenClaw", "ClawCore"]);
+      "SELECT metadata FROM provenance_links WHERE subject_id = ? AND predicate = 'mentioned_in'",
+    ).get(entityMo.composite_id) as { metadata: string };
+    const meta = JSON.parse(row.metadata);
+    expect(JSON.parse(meta.context_terms)).toEqual(["OpenClaw", "ClawCore"]);
   });
 
-  it("deleteGraphDataForSource removes mentions and decrements counts", () => {
+  it("deleteGraphDataForSource removes mentions", () => {
     const { entityId } = upsertEntity(db, { name: "Ephemeral" });
     insertMention(db, { entityId, sourceType: "document", sourceId: "doc-1" });
 
     const result = deleteGraphDataForSource(db, "document", "doc-1");
     expect(result.mentionsDeleted).toBe(1);
 
-    // Entity should be cleaned up (mention_count went to 0)
-    const entity = db.prepare("SELECT * FROM entities WHERE id = ?").get(entityId);
-    expect(entity).toBeUndefined(); // orphan cleaned
+    // Mention should be removed from provenance_links
+    const entityMo = db.prepare("SELECT composite_id FROM memory_objects WHERE id = ?").get(entityId) as { composite_id: string };
+    const mentions = db.prepare(
+      "SELECT COUNT(*) as cnt FROM provenance_links WHERE subject_id = ? AND predicate = 'mentioned_in'",
+    ).get(entityMo.composite_id) as { cnt: number };
+    expect(mentions.cnt).toBe(0);
   });
 
   it("deleteGraphDataForSource preserves entities with other mentions", () => {
     const { entityId } = upsertEntity(db, { name: "Shared" });
-    upsertEntity(db, { name: "Shared" }); // bump count to 2
+    upsertEntity(db, { name: "Shared" }); // second upsert
     insertMention(db, { entityId, sourceType: "document", sourceId: "doc-1" });
     insertMention(db, { entityId, sourceType: "document", sourceId: "doc-2" });
 
     deleteGraphDataForSource(db, "document", "doc-1");
 
-    const entity = db.prepare("SELECT mention_count FROM entities WHERE id = ?").get(entityId) as { mention_count: number };
+    // Entity should still exist in memory_objects
+    const entity = db.prepare("SELECT id FROM memory_objects WHERE id = ?").get(entityId) as { id: number } | undefined;
     expect(entity).toBeDefined();
-    expect(entity.mention_count).toBe(1); // decremented from 2 to 1
+    // Only doc-2 mention should remain
+    const entityMo = db.prepare("SELECT composite_id FROM memory_objects WHERE id = ?").get(entityId) as { composite_id: string };
+    const mentionCount = db.prepare(
+      "SELECT COUNT(*) as cnt FROM provenance_links WHERE subject_id = ? AND predicate = 'mentioned_in'",
+    ).get(entityMo.composite_id) as { cnt: number };
+    expect(mentionCount.cnt).toBe(1);
   });
 
   it("storeExtractionResult creates entities, mentions, and logs evidence", () => {
@@ -333,10 +344,10 @@ describe("Relations: Graph Store", () => {
       sourceId: "msg-1",
     });
 
-    const entities = db.prepare("SELECT * FROM entities").all() as Array<{ name: string }>;
+    const entities = db.prepare("SELECT * FROM memory_objects WHERE kind = 'entity'").all() as Array<{ content: string }>;
     expect(entities.length).toBeGreaterThanOrEqual(1);
 
-    const mentions = db.prepare("SELECT * FROM entity_mentions").all();
+    const mentions = db.prepare("SELECT * FROM provenance_links WHERE predicate = 'mentioned_in'").all();
     expect(mentions.length).toBeGreaterThanOrEqual(1);
 
     const events = db.prepare("SELECT * FROM evidence_log WHERE event_type = 'mention_insert'").all();
@@ -420,10 +431,10 @@ describe("Relations: Scope isolation", () => {
 
     // Scope-filtered queries should return only matching mentions
     const alphaMentions = db.prepare(
-      "SELECT * FROM entity_mentions WHERE scope_id = ?",
+      "SELECT * FROM provenance_links WHERE predicate = 'mentioned_in' AND scope_id = ?",
     ).all(alphaScope);
     const betaMentions = db.prepare(
-      "SELECT * FROM entity_mentions WHERE scope_id = ?",
+      "SELECT * FROM provenance_links WHERE predicate = 'mentioned_in' AND scope_id = ?",
     ).all(betaScope);
 
     expect(alphaMentions.length).toBe(1);
@@ -441,9 +452,9 @@ describe("Relations: reExtractGraphForDocument", () => {
       { text: "Alex Morgan built OpenClaw for fun.", position: 0 },
     ], { termsListEntries: ["OpenClaw"] });
 
-    const entitiesBefore = db.prepare("SELECT * FROM entities").all() as Array<{ name: string }>;
+    const entitiesBefore = db.prepare("SELECT * FROM memory_objects WHERE kind = 'entity'").all() as Array<{ content: string }>;
     const mentionsBefore = db.prepare(
-      "SELECT * FROM entity_mentions WHERE source_id = 'doc-1'",
+      "SELECT * FROM provenance_links WHERE predicate = 'mentioned_in' AND object_id = 'document:doc-1'",
     ).all();
     expect(entitiesBefore.length).toBeGreaterThan(0);
     expect(mentionsBefore.length).toBeGreaterThan(0);
@@ -454,15 +465,18 @@ describe("Relations: reExtractGraphForDocument", () => {
     ], { termsListEntries: ["ClawCore"] });
 
     const mentionsAfter = db.prepare(
-      "SELECT * FROM entity_mentions WHERE source_id = 'doc-1'",
+      "SELECT * FROM provenance_links WHERE predicate = 'mentioned_in' AND object_id = 'document:doc-1'",
     ).all();
     // Old mentions for doc-1 should be replaced with new ones
     expect(mentionsAfter.length).toBeGreaterThan(0);
 
     // "OpenClaw" mention from doc-1 should be gone (only ClawCore remains from doc-1)
-    const openclawMentions = db.prepare(
-      "SELECT em.* FROM entity_mentions em JOIN entities e ON em.entity_id = e.id WHERE e.name = 'openclaw' AND em.source_id = 'doc-1'",
-    ).all();
+    const openclawMentions = db.prepare(`
+      SELECT pl.* FROM provenance_links pl
+      JOIN memory_objects mo ON pl.subject_id = 'entity:' || mo.id
+      WHERE mo.content = 'openclaw' AND mo.kind = 'entity'
+        AND pl.predicate = 'mentioned_in' AND pl.object_id = 'document:doc-1'
+    `).all();
     expect(openclawMentions.length).toBe(0);
   });
 });
@@ -550,11 +564,18 @@ describe("Relations: Awareness notes", () => {
   });
 
   it("fires on staleness scenario", () => {
-    // Create entity with old last_seen_at
+    // Create entity with old last_observed_at in memory_objects
     db.prepare(`
-      INSERT INTO entities (name, display_name, first_seen_at, last_seen_at, mention_count)
-      VALUES ('oldtool', 'OldTool', '2025-01-01T00:00:00.000', '2025-01-01T00:00:00.000', 3)
+      INSERT INTO memory_objects (composite_id, kind, content, structured_json, canonical_key,
+        scope_id, branch_id, confidence, status, created_at, updated_at, first_observed_at, last_observed_at)
+      VALUES ('entity:oldtool', 'entity', 'oldtool',
+        '{"name":"oldtool","displayName":"OldTool","mentionCount":3}',
+        'entity::oldtool', 1, 0, 0.5, 'active',
+        '2025-01-01T00:00:00.000', '2025-01-01T00:00:00.000',
+        '2025-01-01T00:00:00.000', '2025-01-01T00:00:00.000')
     `).run();
+    // mentionCount in structured_json is 3, which meets minMentions threshold
+    // No provenance_links needed — staleness is based on last_observed_at
 
     const result = buildAwarenessNote(
       [{ content: "What about oldtool?" }],

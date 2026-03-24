@@ -5,13 +5,8 @@
  * into the unified provenance_links table. Safe to run multiple times
  * (INSERT OR IGNORE handles duplicates).
  *
- * Legacy tables migrated:
- * - entity_mentions → provenance_links (mentioned_in)
- * - claim_evidence → provenance_links (supports/contradicts)
- * - summary_messages → provenance_links (derived_from) [memory.db — future]
- * - entity_relations → provenance_links (relates_to)
- * - runbook_evidence → provenance_links (supported_by → supports)
- * - anti_runbook_evidence → provenance_links (supported_by → supports)
+ * Legacy tables may be renamed to _legacy_* (v18 migration).
+ * Tries both renamed and original table names.
  */
 
 import type { GraphDb } from "../relations/types.js";
@@ -24,6 +19,18 @@ interface MigrationStats {
   antiRunbookEvidence: number;
   total: number;
   errors: number;
+}
+
+/** Try a SQL statement with both _legacy_* and original table names. */
+function tryLegacy(db: GraphDb, sql: string, legacyTable: string): number {
+  // Try _legacy_ prefixed name first, then original
+  for (const table of [`_legacy_${legacyTable}`, legacyTable]) {
+    try {
+      const result = db.prepare(sql.replace(`__TABLE__`, table)).run();
+      return Number(result.changes);
+    } catch { /* try next */ }
+  }
+  return 0;
 }
 
 /**
@@ -42,98 +49,73 @@ export function migrateToProvenanceLinks(db: GraphDb): MigrationStats {
   };
 
   // entity_mentions → mentioned_in
-  try {
-    const result = db.prepare(`
-      INSERT OR IGNORE INTO provenance_links (subject_id, predicate, object_id, confidence, detail)
-      SELECT
-        'entity:' || entity_id,
-        'mentioned_in',
-        source_type || ':' || source_id,
-        1.0,
-        source_detail
-      FROM entity_mentions
-      WHERE entity_id IS NOT NULL AND source_id IS NOT NULL
-    `).run();
-    stats.entityMentions = Number(result.changes);
-  } catch (e) {
-    stats.errors++;
-  }
+  stats.entityMentions = tryLegacy(db, `
+    INSERT OR IGNORE INTO provenance_links (subject_id, predicate, object_id, confidence, detail)
+    SELECT
+      'entity:' || entity_id,
+      'mentioned_in',
+      source_type || ':' || source_id,
+      1.0,
+      source_detail
+    FROM __TABLE__
+    WHERE entity_id IS NOT NULL AND source_id IS NOT NULL
+  `, "entity_mentions");
 
   // claim_evidence → supports/contradicts
-  try {
-    const result = db.prepare(`
-      INSERT OR IGNORE INTO provenance_links (subject_id, predicate, object_id, confidence, detail)
-      SELECT
-        'claim:' || claim_id,
-        CASE
-          WHEN evidence_role = 'contradict' THEN 'contradicts'
-          WHEN evidence_role = 'update' THEN 'supports'
-          ELSE 'supports'
-        END,
-        source_type || ':' || source_id,
-        MAX(0.0, MIN(1.0, COALESCE(confidence_delta, 1.0))),
-        source_detail
-      FROM claim_evidence
-      WHERE claim_id IS NOT NULL AND source_id IS NOT NULL
-    `).run();
-    stats.claimEvidence = Number(result.changes);
-  } catch (e) {
-    stats.errors++;
-  }
+  stats.claimEvidence = tryLegacy(db, `
+    INSERT OR IGNORE INTO provenance_links (subject_id, predicate, object_id, confidence, detail)
+    SELECT
+      'claim:' || claim_id,
+      CASE
+        WHEN evidence_role = 'contradict' THEN 'contradicts'
+        WHEN evidence_role = 'update' THEN 'supports'
+        ELSE 'supports'
+      END,
+      source_type || ':' || source_id,
+      MAX(0.0, MIN(1.0, COALESCE(confidence_delta, 1.0))),
+      source_detail
+    FROM __TABLE__
+    WHERE claim_id IS NOT NULL AND source_id IS NOT NULL
+  `, "claim_evidence");
 
   // entity_relations → relates_to
-  try {
-    const result = db.prepare(`
-      INSERT OR IGNORE INTO provenance_links (subject_id, predicate, object_id, confidence, detail)
-      SELECT
-        'entity:' || subject_entity_id,
-        'relates_to',
-        'entity:' || object_entity_id,
-        COALESCE(confidence, 1.0),
-        predicate
-      FROM entity_relations
-      WHERE subject_entity_id IS NOT NULL AND object_entity_id IS NOT NULL
-    `).run();
-    stats.entityRelations = Number(result.changes);
-  } catch (e) {
-    stats.errors++;
-  }
+  stats.entityRelations = tryLegacy(db, `
+    INSERT OR IGNORE INTO provenance_links (subject_id, predicate, object_id, confidence, detail)
+    SELECT
+      'entity:' || subject_entity_id,
+      'relates_to',
+      'entity:' || object_entity_id,
+      COALESCE(confidence, 1.0),
+      predicate
+    FROM __TABLE__
+    WHERE subject_entity_id IS NOT NULL AND object_entity_id IS NOT NULL
+  `, "entity_relations");
 
   // runbook_evidence → supports
-  try {
-    const result = db.prepare(`
-      INSERT OR IGNORE INTO provenance_links (subject_id, predicate, object_id, confidence, detail)
-      SELECT
-        'procedure:' || runbook_id,
-        'supports',
-        'attempt:' || attempt_id,
-        1.0,
-        evidence_role
-      FROM runbook_evidence
-      WHERE runbook_id IS NOT NULL AND attempt_id IS NOT NULL
-    `).run();
-    stats.runbookEvidence = Number(result.changes);
-  } catch (e) {
-    stats.errors++;
-  }
+  stats.runbookEvidence = tryLegacy(db, `
+    INSERT OR IGNORE INTO provenance_links (subject_id, predicate, object_id, confidence, detail)
+    SELECT
+      'procedure:' || runbook_id,
+      'supports',
+      'attempt:' || attempt_id,
+      1.0,
+      evidence_role
+    FROM __TABLE__
+    WHERE runbook_id IS NOT NULL AND attempt_id IS NOT NULL
+  `, "runbook_evidence");
 
   // anti_runbook_evidence → supports
-  try {
-    const result = db.prepare(`
-      INSERT OR IGNORE INTO provenance_links (subject_id, predicate, object_id, confidence, detail)
-      SELECT
-        'procedure:' || anti_runbook_id,
-        'supports',
-        'attempt:' || attempt_id,
-        1.0,
-        evidence_role
-      FROM anti_runbook_evidence
-      WHERE anti_runbook_id IS NOT NULL AND attempt_id IS NOT NULL
-    `).run();
-    stats.antiRunbookEvidence = Number(result.changes);
-  } catch (e) {
-    stats.errors++;
-  }
+  stats.antiRunbookEvidence = tryLegacy(db, `
+    INSERT OR IGNORE INTO provenance_links (subject_id, predicate, object_id, confidence, detail)
+    SELECT
+      'procedure:' || anti_runbook_id,
+      'supports',
+      'attempt:' || attempt_id,
+      1.0,
+      evidence_role
+    FROM __TABLE__
+    WHERE anti_runbook_id IS NOT NULL AND attempt_id IS NOT NULL
+  `, "anti_runbook_evidence");
 
   stats.total = stats.entityMentions + stats.claimEvidence + stats.entityRelations
     + stats.runbookEvidence + stats.antiRunbookEvidence;

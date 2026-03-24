@@ -58,12 +58,21 @@ function seedClaimInDb(db: GraphDb, overrides: Record<string, unknown> = {}): nu
     first_seen_at: NOW, last_seen_at: NOW, created_at: NOW, updated_at: NOW,
   };
   const v = { ...d, ...overrides };
+  const compositeId = `claim:seed:${Date.now()}:${Math.random().toString(36).slice(2, 8)}`;
+  const content = `${v.subject} ${v.predicate}: ${v.object_text}`;
+  const structuredJson = JSON.stringify({
+    subject: v.subject, predicate: v.predicate,
+    objectText: v.object_text, valueType: "text",
+  });
   return Number(db.prepare(`
-    INSERT INTO claims (scope_id, branch_id, subject, predicate, object_text, status, confidence,
-      trust_score, source_authority, canonical_key, first_seen_at, last_seen_at, created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `).run(v.scope_id, v.branch_id, v.subject, v.predicate, v.object_text, v.status, v.confidence,
-    v.trust_score, v.source_authority, v.canonical_key, v.first_seen_at, v.last_seen_at, v.created_at, v.updated_at,
+    INSERT INTO memory_objects (composite_id, kind, canonical_key, content, structured_json,
+      scope_id, branch_id, status, confidence, trust_score, source_authority,
+      first_observed_at, last_observed_at, created_at, updated_at)
+    VALUES (?, 'claim', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(compositeId, v.canonical_key, content, structuredJson,
+    v.scope_id, v.branch_id, v.status, v.confidence,
+    v.trust_score, v.source_authority,
+    v.first_seen_at, v.last_seen_at, v.created_at, v.updated_at,
   ).lastInsertRowid);
 }
 
@@ -72,28 +81,49 @@ function seedDecisionInDb(db: GraphDb, overrides: Record<string, unknown> = {}):
   const v = { ...d, ...overrides };
   const topic = String(v.topic).toLowerCase().trim().replace(/\s+/g, " ");
   const canonicalKey = `decision::${topic}`;
+  const compositeId = `decision:seed:${Date.now()}:${Math.random().toString(36).slice(2, 8)}`;
+  const content = `${v.topic}: ${v.decision_text}`;
+  const structuredJson = JSON.stringify({ topic: v.topic, decisionText: v.decision_text });
   return Number(db.prepare(`
-    INSERT INTO decisions (scope_id, branch_id, topic, decision_text, canonical_key, status, decided_at, created_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-  `).run(v.scope_id, v.branch_id, v.topic, v.decision_text, canonicalKey, v.status, v.decided_at, v.created_at).lastInsertRowid);
+    INSERT INTO memory_objects (composite_id, kind, canonical_key, content, structured_json,
+      scope_id, branch_id, status, confidence, created_at, updated_at)
+    VALUES (?, 'decision', ?, ?, ?, ?, ?, ?, 0.5, ?, ?)
+  `).run(compositeId, canonicalKey, content, structuredJson,
+    v.scope_id, v.branch_id, v.status, v.decided_at, v.created_at,
+  ).lastInsertRowid);
 }
 
 function seedLoopInDb(db: GraphDb, overrides: Record<string, unknown> = {}): number {
   const d = { scope_id: 1, branch_id: 0, loop_type: "task", text: "Rotate the API key", status: "open", priority: 5, opened_at: NOW };
   const v = { ...d, ...overrides };
+  const compositeId = `loop:seed:${Date.now()}:${Math.random().toString(36).slice(2, 8)}`;
+  const loopCanonicalKey = buildCanonicalKey("loop", String(v.text));
+  const structuredJson = JSON.stringify({ loopType: v.loop_type, text: v.text, priority: v.priority });
   return Number(db.prepare(`
-    INSERT INTO open_loops (scope_id, branch_id, loop_type, text, status, priority, opened_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?)
-  `).run(v.scope_id, v.branch_id, v.loop_type, v.text, v.status, v.priority, v.opened_at).lastInsertRowid);
+    INSERT INTO memory_objects (composite_id, kind, canonical_key, content, structured_json,
+      scope_id, branch_id, status, confidence, created_at, updated_at)
+    VALUES (?, 'loop', ?, ?, ?, ?, ?, 'active', 0.5, ?, ?)
+  `).run(compositeId, loopCanonicalKey, v.text, structuredJson,
+    v.scope_id, v.branch_id, v.opened_at, v.opened_at,
+  ).lastInsertRowid);
 }
 
 function seedInvariantInDb(db: GraphDb, overrides: Record<string, unknown> = {}): number {
   const d = { scope_id: 1, invariant_key: "no_friday_deploys", category: "ops", description: "Never deploy on Fridays", severity: "critical", enforcement_mode: "warn", status: "active", created_at: NOW, updated_at: NOW };
   const v = { ...d, ...overrides };
+  const compositeId = `invariant:seed:${Date.now()}:${Math.random().toString(36).slice(2, 8)}`;
+  const structuredJson = JSON.stringify({
+    key: v.invariant_key, category: v.category, description: v.description,
+    severity: v.severity, enforcementMode: v.enforcement_mode,
+  });
   return Number(db.prepare(`
-    INSERT INTO invariants (scope_id, invariant_key, category, description, severity, enforcement_mode, status, created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `).run(v.scope_id, v.invariant_key, v.category, v.description, v.severity, v.enforcement_mode, v.status, v.created_at, v.updated_at).lastInsertRowid);
+    INSERT INTO memory_objects (composite_id, kind, canonical_key, content, structured_json,
+      scope_id, branch_id, status, confidence, created_at, updated_at)
+    VALUES (?, 'invariant', ?, ?, ?, ?, 0, ?, 0.5, ?, ?)
+  `).run(compositeId, `inv::${String(v.invariant_key).toLowerCase().trim()}`,
+    v.description, structuredJson,
+    v.scope_id, v.status, v.created_at, v.updated_at,
+  ).lastInsertRowid);
 }
 
 beforeEach(() => { db = createDb(); runGraphMigrations(db); });
@@ -288,9 +318,9 @@ describe("RSMA Truth: loop supersession", () => {
       content: "Rotate the API key",
       structured: { loopType: "task" },
       canonical_key: undefined, // will be computed
+      confidence: 0.5, // match the seed's confidence so Rule 2 (same confidence) applies
     };
     // Compute canonical key (same as what reader would)
-    // buildCanonicalKey imported at top
     candidate.canonical_key = buildCanonicalKey("loop", "Rotate the API key");
     expect(candidate.canonical_key).toBeDefined();
 
