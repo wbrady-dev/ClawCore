@@ -729,6 +729,9 @@ export async function performInstallPlan(plan: InstallPlan): Promise<void> {
   console.log("");
   console.log(t.highlight("  Type `threadclaw` anywhere to launch the management console."));
   console.log("");
+
+  // Write completion marker so first-run detection knows install finished successfully
+  writeFileSync(resolve(root, ".install-complete"), new Date().toISOString());
 }
 
 async function selectTier(): Promise<string | null> {

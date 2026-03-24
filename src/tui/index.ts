@@ -11,7 +11,8 @@ async function launchTui(): Promise<void> {
   setTerminalCapabilities(capabilities);
   const hasConfig = Boolean(readConfig());
   const hasEnv = existsSync(resolve(getRootDir(), ".env"));
-  const installed = hasConfig && hasEnv;
+  const hasComplete = existsSync(resolve(getRootDir(), ".install-complete"));
+  const installed = hasConfig && hasEnv && hasComplete;
 
   if (!installed && capabilities.rich) {
     const { runInkInstall } = await import("./ink/install-actions.js");
@@ -19,10 +20,10 @@ async function launchTui(): Promise<void> {
     if (!completed) return;
   }
 
-  if (!readConfig() || !existsSync(resolve(getRootDir(), ".env"))) {
+  if (!readConfig() || !existsSync(resolve(getRootDir(), ".env")) || !existsSync(resolve(getRootDir(), ".install-complete"))) {
     const { runInstall } = await import("./screens/install.js");
     await runInstall();
-    if (!readConfig() || !existsSync(resolve(getRootDir(), ".env"))) {
+    if (!readConfig() || !existsSync(resolve(getRootDir(), ".env")) || !existsSync(resolve(getRootDir(), ".install-complete"))) {
       return;
     }
   }

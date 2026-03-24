@@ -197,48 +197,74 @@ export interface ServiceStatus {
 const TASK_MODELS = "ThreadClaw_Models";
 const TASK_RAG = "ThreadClaw_RAG";
 
-/** Run schtasks.exe and return stdout. */
-function schtasks(...args: string[]): string {
-  return execFileSync("schtasks", args, { stdio: "pipe", timeout: 10000 }).toString().trim();
+/** Run schtasks.exe and return result with captured stderr. */
+function schtasks(...args: string[]): { success: boolean; stdout: string; error?: string } {
+  try {
+    const out = execFileSync("schtasks", args, { stdio: "pipe", timeout: 10000 }).toString().trim();
+    return { success: true, stdout: out };
+  } catch (e: any) {
+    const stderr = e.stderr?.toString?.() ?? "";
+    const msg = stderr || e.message || String(e);
+    return { success: false, stdout: "", error: msg.slice(0, 500) };
+  }
 }
 
 /** Check if a Windows scheduled task is currently running. */
 function isTaskRunning(taskName: string): boolean {
-  try {
-    const out = schtasks("/query", "/tn", taskName, "/fo", "csv", "/nh");
-    // CSV format: "TaskName","Next Run Time","Status"
-    return out.includes('"Running"');
-  } catch {
-    return false;
-  }
+  const result = schtasks("/query", "/tn", taskName, "/fo", "csv", "/nh");
+  if (!result.success) return false;
+  // CSV format: "TaskName","Next Run Time","Status"
+  return result.stdout.includes('"Running"');
 }
 
 /** Start a Windows scheduled task (no admin required). */
 function startTask(taskName: string): { success: boolean; error?: string } {
-  try {
-    schtasks("/run", "/tn", taskName);
-    return { success: true };
-  } catch (e) {
-    return { success: false, error: String(e) };
-  }
+  const result = schtasks("/run", "/tn", taskName);
+  if (result.success) return { success: true };
+  return { success: false, error: result.error };
 }
 
 /** Stop a Windows scheduled task (no admin required). */
 function endTask(taskName: string): { success: boolean; error?: string } {
-  try {
-    schtasks("/end", "/tn", taskName);
-    return { success: true };
-  } catch (e) {
-    return { success: false, error: String(e) };
-  }
+  const result = schtasks("/end", "/tn", taskName);
+  if (result.success) return { success: true };
+  return { success: false, error: result.error };
 }
 
 /** Delete a Windows scheduled task. */
 function deleteTask(taskName: string): { success: boolean } {
-  try {
-    schtasks("/delete", "/tn", taskName, "/f");
-  } catch {}
+  schtasks("/delete", "/tn", taskName, "/f");
   return { success: true };
+}
+
+/**
+ * Spawn a detached background process with output redirected to a log file.
+ * Used as fallback when Task Scheduler is unavailable.
+ */
+function startDirectProcess(
+  cmd: string,
+  args: string[],
+  opts: { cwd: string; logFile: string; pidFile?: string; root?: string },
+): { success: boolean; error?: string } {
+  try {
+    const logsDir = dirname(opts.logFile);
+    mkdirSync(logsDir, { recursive: true });
+    const logFd = openSync(opts.logFile, "a");
+    const child = spawn(cmd, args, {
+      cwd: opts.cwd,
+      detached: true,
+      stdio: ["ignore", logFd, logFd],
+      windowsHide: true,
+    });
+    child.unref();
+    try { closeSync(logFd); } catch {}
+    if (child.pid && opts.pidFile && opts.root) {
+      writeFileSync(resolve(opts.root, opts.pidFile), String(child.pid));
+    }
+    return { success: true };
+  } catch (e) {
+    return { success: false, error: String(e) };
+  }
 }
 
 /** Escape XML special characters for safe interpolation into XML/plist documents. */
@@ -324,13 +350,11 @@ function ensureWindowsTasks(root: string): { success: boolean; error?: string } 
 </Task>
 `);
 
-  try {
-    schtasks("/create", "/tn", TASK_MODELS, "/xml", modelsXml, "/f");
-    schtasks("/create", "/tn", TASK_RAG, "/xml", ragXml, "/f");
-    return { success: true };
-  } catch (e) {
-    return { success: false, error: String(e) };
-  }
+  const r1 = schtasks("/create", "/tn", TASK_MODELS, "/xml", modelsXml, "/f");
+  if (!r1.success) return { success: false, error: r1.error };
+  const r2 = schtasks("/create", "/tn", TASK_RAG, "/xml", ragXml, "/f");
+  if (!r2.success) return { success: false, error: r2.error };
+  return { success: true };
 }
 
 // ── End Windows Task Scheduler helpers ──
@@ -445,11 +469,24 @@ export function startModelServer(): { success: boolean; error?: string } {
   const root = getRootDir();
   const plat = getPlatform();
 
-  // Windows: Task Scheduler — no admin, no EPERM, no visible window
+  // Windows: Task Scheduler first, then direct-spawn fallback
   if (plat === "windows") {
+    const pythonCmd = getPythonCmd();
+    const modelsScript = findModelsScript(root);
+    const logsDir = resolve(root, "logs");
+
     const tasks = ensureWindowsTasks(root);
-    if (!tasks.success) return { success: false, error: tasks.error };
-    return startTask(TASK_MODELS);
+    if (tasks.success) {
+      const startResult = startTask(TASK_MODELS);
+      if (startResult.success) return startResult;
+    }
+    // Fallback: direct spawn (detached, same as Unix path)
+    return startDirectProcess(pythonCmd, [modelsScript], {
+      cwd: dirname(modelsScript),
+      logFile: resolve(logsDir, "models.log"),
+      pidFile: ".models.pid",
+      root,
+    });
   }
 
   // Unix: detached spawn
