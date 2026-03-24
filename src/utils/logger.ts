@@ -2,7 +2,7 @@ import pino from "pino";
 
 // Suppress logs in CLI mode (when not running as HTTP server)
 const isCli = process.argv.some(
-  (a) => a.includes("clawcore.ts") || a.includes("clawcore.js"),
+  (a) => a.includes("threadclaw.ts") || a.includes("threadclaw.js"),
 );
 
 export const logger = pino({

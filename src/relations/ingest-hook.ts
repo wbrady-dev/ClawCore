@@ -4,7 +4,7 @@
  * Self-contained module that performs entity extraction from ingested
  * document chunks and stores results in the evidence graph DB.
  *
- * Uses better-sqlite3 (the main ClawCore DB driver) for the graph DB.
+ * Uses better-sqlite3 (the main ThreadClaw DB driver) for the graph DB.
  *
  * All entity data is stored in the unified ontology tables:
  *   - memory_objects (kind='entity')
@@ -121,7 +121,7 @@ let cachedAt = 0;
 function loadTerms(): string[] {
   if (cachedTerms !== null && Date.now() - cachedAt < 60_000) return cachedTerms;
   try {
-    const raw = readFileSync(join(homedir(), ".clawcore", "relations-terms.json"), "utf-8");
+    const raw = readFileSync(join(homedir(), ".threadclaw", "relations-terms.json"), "utf-8");
     const parsed = JSON.parse(raw);
     if (parsed && Array.isArray(parsed.terms)) {
       cachedTerms = parsed.terms

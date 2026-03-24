@@ -1,5 +1,5 @@
 @echo off
-title ClawCore - Update
+title ThreadClaw - Update
 cd /d "%~dp0\.."
 set "ROOT=%cd%"
 
@@ -20,8 +20,8 @@ echo [update] %NEW_COMMITS% new commit(s) available.
 echo [update] Stopping services...
 curl -s -X POST http://127.0.0.1:18800/shutdown >nul 2>&1
 curl -s -X POST http://127.0.0.1:8012/shutdown >nul 2>&1
-schtasks /end /tn ClawCore_RAG >nul 2>&1
-schtasks /end /tn ClawCore_Models >nul 2>&1
+schtasks /end /tn ThreadClaw_RAG >nul 2>&1
+schtasks /end /tn ThreadClaw_Models >nul 2>&1
 
 :: Wait for ports to close (15s max)
 set /a WAIT=0
@@ -75,14 +75,14 @@ if %errorlevel% neq 0 (
 
 :: ── Run migrations ──
 echo [update] Running migrations...
-node "%ROOT%\bin\clawcore.mjs" upgrade >nul 2>&1
+node "%ROOT%\bin\threadclaw.mjs" upgrade >nul 2>&1
 if %errorlevel% neq 0 (
-    echo [WARN] Upgrade had issues. Run 'clawcore doctor' for details.
+    echo [WARN] Upgrade had issues. Run 'threadclaw doctor' for details.
 )
 
 :: ── Restart services ──
 echo [update] Restarting services...
-schtasks /run /tn ClawCore_Models >nul 2>&1
+schtasks /run /tn ThreadClaw_Models >nul 2>&1
 
 :: Wait for model server health (60s max)
 set /a WAIT=0
@@ -95,16 +95,16 @@ set /a WAIT+=2
 goto :health_loop
 :health_done
 
-schtasks /run /tn ClawCore_RAG >nul 2>&1
+schtasks /run /tn ThreadClaw_RAG >nul 2>&1
 
 :: ── Smoke test ──
 echo [update] Running smoke test...
-node "%ROOT%\bin\clawcore.mjs" doctor >nul 2>&1
+node "%ROOT%\bin\threadclaw.mjs" doctor >nul 2>&1
 if %errorlevel% equ 0 (
     echo [OK] Smoke test passed.
 ) else (
-    echo [WARN] Smoke test had issues. Run 'clawcore doctor' for details.
+    echo [WARN] Smoke test had issues. Run 'threadclaw doctor' for details.
 )
 
 echo.
-echo [OK] ClawCore updated successfully.
+echo [OK] ThreadClaw updated successfully.

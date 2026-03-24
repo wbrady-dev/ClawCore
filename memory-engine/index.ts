@@ -1,10 +1,10 @@
 /**
- * ClawCore Memory Engine — DAG-based lossless conversation memory
+ * ThreadClaw Memory Engine — DAG-based lossless conversation memory
  *
  * Based on lossless-claw by Martian Engineering (MIT License).
- * Surface-rebranded for ClawCore integration.
+ * Surface-rebranded for ThreadClaw integration.
  */
-console.log("[cc-mem] ████ ClawCore Memory Engine v0.3.2-unified loaded ████");
+console.log("[cc-mem] ████ ThreadClaw Memory Engine v0.3.2-unified loaded ████");
 import { readFileSync, writeFileSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
@@ -115,8 +115,8 @@ const MODEL_AUTH_REQUIRED_RELEASE = "the first OpenClaw release after 2026.3.8";
 /** Capture plugin env values once during initialization. */
 function snapshotPluginEnv(env: NodeJS.ProcessEnv = process.env): PluginEnvSnapshot {
   return {
-    lcmSummaryModel: env.CLAWCORE_MEMORY_SUMMARY_MODEL?.trim() ?? env.LCM_SUMMARY_MODEL?.trim() ?? "",
-    lcmSummaryProvider: env.CLAWCORE_MEMORY_SUMMARY_PROVIDER?.trim() ?? env.LCM_SUMMARY_PROVIDER?.trim() ?? "",
+    lcmSummaryModel: env.THREADCLAW_MEMORY_SUMMARY_MODEL?.trim() ?? env.LCM_SUMMARY_MODEL?.trim() ?? "",
+    lcmSummaryProvider: env.THREADCLAW_MEMORY_SUMMARY_PROVIDER?.trim() ?? env.LCM_SUMMARY_PROVIDER?.trim() ?? "",
     pluginSummaryModel: "",
     pluginSummaryProvider: "",
     openclawProvider: env.OPENCLAW_PROVIDER?.trim() ?? "",
@@ -796,9 +796,9 @@ function buildSubagentSystemPrompt(params: {
   maxDepth: number;
   taskSummary?: string;
 }): string {
-  const task = params.taskSummary?.trim() || "Perform delegated ClawCore Memory expansion work.";
+  const task = params.taskSummary?.trim() || "Perform delegated ThreadClaw Memory expansion work.";
   return [
-    "You are a delegated sub-agent for ClawCore Memory expansion.",
+    "You are a delegated sub-agent for ThreadClaw Memory expansion.",
     `Depth: ${params.depth}/${params.maxDepth}`,
     "Return concise, factual results only.",
     task,
@@ -848,9 +848,9 @@ function readLatestAssistantReply(messages: unknown[]): string | undefined {
 
 /** Construct LCM dependencies from plugin API/runtime surfaces. */
 function createLcmDependencies(api: OpenClawPluginApi): LcmDependencies {
-  // Load ClawCore .env into process.env so RSMA extraction config is visible.
+  // Load ThreadClaw .env into process.env so RSMA extraction config is visible.
   // The memory-engine runs inside the OpenClaw gateway process, which doesn't
-  // load ClawCore's .env by default.
+  // load ThreadClaw's .env by default.
   try {
     const { resolve, dirname } = require("path");
     const { readFileSync } = require("fs");
@@ -1276,8 +1276,8 @@ function createLcmDependencies(api: OpenClawPluginApi): LcmDependencies {
 const _engineCache = new Map<string, { deps: LcmDependencies; lcm: LcmContextEngine }>();
 
 const lcmPlugin = {
-  id: "clawcore-memory",
-  name: "ClawCore Memory Engine",
+  id: "threadclaw-memory",
+  name: "ThreadClaw Memory Engine",
   description:
     "DAG-based lossless conversation memory with incremental compaction, full-text search, and sub-agent expansion",
 
@@ -1310,7 +1310,7 @@ const lcmPlugin = {
       _engineCache.set(cacheKey, { deps, lcm });
     }
 
-    api.registerContextEngine("clawcore-memory", () => lcm);
+    api.registerContextEngine("threadclaw-memory", () => lcm);
 
     /** Derive agent_id from a session key for agent-scoped tool isolation. */
     const resolveAgentId = (sessionKey?: string): string => {

@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # ═══════════════════════════════════════════════════════════════
-# ClawCore Clean-Machine Install Test
+# ThreadClaw Clean-Machine Install Test
 # Verifies the full install pipeline works from a fresh state.
 #
 # Prerequisites: Node.js 22+, Python 3.10+
-# Usage: bash test/clean-install-test.sh [path-to-clawcore-dir]
+# Usage: bash test/clean-install-test.sh [path-to-threadclaw-dir]
 # ═══════════════════════════════════════════════════════════════
 
 set -e
@@ -44,7 +44,7 @@ check_warn() {
 }
 
 echo ""
-echo "═══ ClawCore Clean-Machine Install Test ═══"
+echo "═══ ThreadClaw Clean-Machine Install Test ═══"
 echo ""
 
 # ── Prerequisites ──
@@ -56,16 +56,16 @@ check "pip available" bash -c "python3 -m pip --version 2>/dev/null || python -m
 
 # ── Source Structure ──
 echo "── Source Structure ──"
-CLAWCORE_DIR="${1:-$(pwd)}"
-cd "$CLAWCORE_DIR"
+THREADCLAW_DIR="${1:-$(pwd)}"
+cd "$THREADCLAW_DIR"
 check "package.json exists" test -f package.json
 check "memory-engine/package.json exists" test -f memory-engine/package.json
 check "server/server.py exists" test -f server/server.py
-check "bin/clawcore.mjs exists" test -f bin/clawcore.mjs
+check "bin/threadclaw.mjs exists" test -f bin/threadclaw.mjs
 check "install.bat exists" test -f install.bat
 check "install.sh exists" test -f install.sh
-check "skills/clawcore-evidence/SKILL.md" test -f skills/clawcore-evidence/SKILL.md
-check "skills/clawcore-knowledge/SKILL.md" test -f skills/clawcore-knowledge/SKILL.md
+check "skills/threadclaw-evidence/SKILL.md" test -f skills/threadclaw-evidence/SKILL.md
+check "skills/threadclaw-knowledge/SKILL.md" test -f skills/threadclaw-knowledge/SKILL.md
 
 # ── Node.js Install ──
 echo "── Node.js Dependencies ──"
@@ -92,15 +92,15 @@ echo "── TypeScript ──"
 check "tsc --noEmit passes" npx tsc --noEmit
 
 # ── Unit Tests ──
-echo "── Unit Tests (ClawCore) ──"
-check "ClawCore vitest passes" bash -c "npx vitest run 2>&1 | tail -1 | grep -q 'passed'"
+echo "── Unit Tests (ThreadClaw) ──"
+check "ThreadClaw vitest passes" bash -c "npx vitest run 2>&1 | tail -1 | grep -q 'passed'"
 
 echo "── Unit Tests (Memory-Engine) ──"
 check "Memory-engine vitest passes" bash -c "cd memory-engine && npx vitest run 2>&1 | tail -1 | grep -q 'passed'"
 
 # ── Smoke Tests ──
 echo "── Smoke Tests ──"
-check "bin/clawcore.mjs runs" node bin/clawcore.mjs --version
+check "bin/threadclaw.mjs runs" node bin/threadclaw.mjs --version
 check "TUI entry loads" npx tsx src/tui/index.ts --help || true
 
 # ── Python Dependencies ──

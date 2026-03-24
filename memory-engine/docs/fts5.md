@@ -1,6 +1,6 @@
 # Optional: enable FTS5 for fast full-text search
 
-ClawCore Memory works without FTS5 as of the current release. When FTS5 is unavailable in the
+ThreadClaw Memory works without FTS5 as of the current release. When FTS5 is unavailable in the
 Node runtime that runs the OpenClaw gateway, the plugin:
 
 - keeps persisting messages and summaries
@@ -10,7 +10,7 @@ Node runtime that runs the OpenClaw gateway, the plugin:
 If you want native FTS5 search performance and ranking, the **exact Node runtime that runs the
 gateway** must have SQLite FTS5 compiled in.
 
-## How FTS5 works in ClawCore
+## How FTS5 works in ThreadClaw
 
 When FTS5 is available, the migration creates two standalone virtual tables:
 
@@ -152,7 +152,7 @@ You should see:
 program = /Users/youruser/Projects/node-fts5/bin/node-22.15.0
 ```
 
-## Verify ClawCore Memory
+## Verify ThreadClaw Memory
 
 Check the logs:
 

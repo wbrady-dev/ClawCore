@@ -102,7 +102,7 @@ function buildDelegatedExpandQueryTask(params: {
 }) {
   const seedSummaryIds = params.summaryIds.length > 0 ? params.summaryIds.join(", ") : "(none)";
   return [
-    "You are an autonomous ClawCore Memory retrieval navigator. Plan and execute retrieval before answering.",
+    "You are an autonomous ThreadClaw Memory retrieval navigator. Plan and execute retrieval before answering.",
     "",
     "Available tools: cc_describe, cc_expand, cc_grep",
     `Conversation scope: ${params.conversationId}`,
@@ -445,9 +445,9 @@ export function createLcmExpandQueryTool(input: {
 }): AnyAgentTool {
   return {
     name: "cc_recall",
-    label: "ClawCore Recall",
+    label: "ThreadClaw Recall",
     description:
-      "Answer a focused question using delegated ClawCore Memory expansion. " +
+      "Answer a focused question using delegated ThreadClaw Memory expansion. " +
       "Find candidate summaries (by IDs or query), expand them in a delegated sub-agent, " +
       "and return a compact prompt-focused answer with cited summary IDs.",
     parameters: LcmExpandQuerySchema,

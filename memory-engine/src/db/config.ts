@@ -71,7 +71,7 @@ export type LcmConfig = {
   relationsDeepExtractionProvider: string;
   /**
    * Direct API key for the extraction model provider.
-   * When set, ClawCore calls the provider API directly instead of going
+   * When set, ThreadClaw calls the provider API directly instead of going
    * through OpenClaw's OAuth. Keeps extraction isolated from agent tokens.
    * Supports: Anthropic, OpenAI, Google (Gemini).
    */
@@ -130,8 +130,8 @@ function clampFloat(value: number | undefined, min: number, max: number, fallbac
 
 /**
  * Resolve configuration with three-tier precedence:
- *   1. Environment variables (CLAWCORE_MEMORY_* primary, LCM_* fallback)
- *   2. Plugin config object (from plugins.entries.clawcore-memory.config)
+ *   1. Environment variables (THREADCLAW_MEMORY_* primary, LCM_* fallback)
+ *   2. Plugin config object (from plugins.entries.threadclaw-memory.config)
  *   3. Hardcoded defaults (lowest)
  */
 export function resolveLcmConfig(
@@ -140,8 +140,8 @@ export function resolveLcmConfig(
 ): LcmConfig {
   const pc = pluginConfig ?? {};
 
-  // Helper: read CLAWCORE_MEMORY_* first, fall back to LCM_* for upstream compat
-  const e = (suffix: string) => env[`CLAWCORE_MEMORY_${suffix}`] ?? env[`LCM_${suffix}`];
+  // Helper: read THREADCLAW_MEMORY_* first, fall back to LCM_* for upstream compat
+  const e = (suffix: string) => env[`THREADCLAW_MEMORY_${suffix}`] ?? env[`LCM_${suffix}`];
 
   return {
     enabled:
@@ -152,7 +152,7 @@ export function resolveLcmConfig(
       e("DATABASE_PATH")
       ?? toStr(pc.dbPath)
       ?? toStr(pc.databasePath)
-      ?? join(homedir(), ".clawcore", "data", "memory.db"),
+      ?? join(homedir(), ".threadclaw", "data", "memory.db"),
     contextThreshold: clampFloat(
       (e("CONTEXT_THRESHOLD") !== undefined ? parseFloat(e("CONTEXT_THRESHOLD")!) : undefined)
         ?? toNumber(pc.contextThreshold),
@@ -234,7 +234,7 @@ export function resolveLcmConfig(
     relationsGraphDbPath:
       e("RELATIONS_GRAPH_DB_PATH")?.trim()
       ?? toStr(pc.relationsGraphDbPath)
-      ?? join(homedir(), ".clawcore", "data", "graph.db"),
+      ?? join(homedir(), ".threadclaw", "data", "graph.db"),
     relationsMinMentions: clampInt(
       (e("RELATIONS_MIN_MENTIONS") !== undefined ? parseInt(e("RELATIONS_MIN_MENTIONS")!, 10) : undefined)
         ?? toNumber(pc.relationsMinMentions),

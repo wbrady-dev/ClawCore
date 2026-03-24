@@ -1,17 +1,17 @@
 ---
-name: clawcore-evidence
-description: ClawCore Evidence OS — structured memory for agents. Use cc_memory to search for anything, cc_diagnostics for health.
+name: threadclaw-evidence
+description: ThreadClaw Evidence OS — structured memory for agents. Use cc_memory to search for anything, cc_diagnostics for health.
 ---
 
-# ClawCore Evidence OS
+# ThreadClaw Evidence OS
 
-ClawCore automatically extracts and tracks structured knowledge from conversations. All knowledge is stored as `MemoryObject` instances in the unified `memory_objects` table with 8 agent-facing kinds (claim, decision, entity, loop, attempt, procedure, invariant, conflict). Cross-object evidence relationships are stored in `provenance_links` with typed predicates (supports, contradicts, supersedes, mentioned_in, relates_to, resolved_by, derived_from).
+ThreadClaw automatically extracts and tracks structured knowledge from conversations. All knowledge is stored as `MemoryObject` instances in the unified `memory_objects` table with 8 agent-facing kinds (claim, decision, entity, loop, attempt, procedure, invariant, conflict). Cross-object evidence relationships are stored in `provenance_links` with typed predicates (supports, contradicts, supersedes, mentioned_in, relates_to, resolved_by, derived_from).
 
 **Most of RSMA is automatic. You do not need to call tools for it to work.**
 
 ## Extraction Modes
 
-ClawCore uses one of two extraction modes (configured via `CLAWCORE_MEMORY_RELATIONS_EXTRACTION_MODE`):
+ThreadClaw uses one of two extraction modes (configured via `THREADCLAW_MEMORY_RELATIONS_EXTRACTION_MODE`):
 
 - **Smart** (default when deep extraction model is configured): LLM-based semantic extraction. A single structured LLM call understands natural language without magic prefixes — "We're going with Postgres" is understood as a decision, "Actually no" as a correction. Uses the same model as deep extraction.
 - **Fast** (default when no model is configured): Regex-only extraction, no LLM calls, <5ms. Detects structured patterns like "Remember:", "We decided...", YAML frontmatter, tool results.
@@ -130,7 +130,7 @@ You do not need to call any tool for awareness — it runs every turn automatica
 
 ## Tool Availability
 
-All RSMA tools require Evidence OS to be enabled (`CLAWCORE_MEMORY_RELATIONS_ENABLED=true`).
+All RSMA tools require Evidence OS to be enabled (`THREADCLAW_MEMORY_RELATIONS_ENABLED=true`).
 
 The 4 core tools (`cc_grep`, `cc_describe`, `cc_expand`, `cc_recall`) are always available regardless of Evidence OS settings. `cc_memory` requires Evidence OS.
 
@@ -138,6 +138,6 @@ The extraction mode is transparent to tools — the same tools work regardless o
 
 ## Setup
 
-This skill is installed automatically during ClawCore installation.
+This skill is installed automatically during ThreadClaw installation.
 
-Evidence OS is configured in the ClawCore TUI under **Configure > Evidence OS**, or in `.env`.
+Evidence OS is configured in the ThreadClaw TUI under **Configure > Evidence OS**, or in `.env`.

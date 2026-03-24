@@ -188,7 +188,7 @@ function buildDelegatedExpansionTask(params: {
     payload.tokenCap = params.tokenCap;
   }
   return [
-    "Run ClawCore memory expansion and report distilled findings.",
+    "Run ThreadClaw memory expansion and report distilled findings.",
     params.query ? `Original query: ${params.query}` : undefined,
     `Pass ${params.pass}`,
     "",

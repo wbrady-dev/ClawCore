@@ -1,7 +1,7 @@
 /**
- * Graph database connection for the main ClawCore process (better-sqlite3).
+ * Graph database connection for the main ThreadClaw process (better-sqlite3).
  *
- * Opens `clawcore-graph.db` with WAL mode and the same pragmas
+ * Opens `threadclaw-graph.db` with WAL mode and the same pragmas
  * as the memory-engine's node:sqlite opener.
  */
 

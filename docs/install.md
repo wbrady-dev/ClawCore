@@ -12,16 +12,16 @@
 ### Windows
 
 ```bash
-git clone https://github.com/openclaw/clawcore.git
-cd clawcore
+git clone https://github.com/openclaw/threadclaw.git
+cd threadclaw
 install.bat
 ```
 
 ### Linux / macOS
 
 ```bash
-git clone https://github.com/openclaw/clawcore.git
-cd clawcore
+git clone https://github.com/openclaw/threadclaw.git
+cd threadclaw
 chmod +x install.sh
 ./install.sh
 ```
@@ -43,11 +43,11 @@ The installer will:
 
 | Path | Purpose |
 |------|---------|
-| `~/.clawcore/data/memory.db` | Conversation memory (memory engine) |
-| `~/.clawcore/data/graph.db` | Evidence graph (entity awareness, claims, etc.) |
-| `~/.clawcore/data/clawcore.db` | Document store (RAG) |
-| `~/.clawcore/relations-terms.json` | User-defined entity terms |
-| `~/.clawcore/manifest.json` | Version tracking |
+| `~/.threadclaw/data/memory.db` | Conversation memory (memory engine) |
+| `~/.threadclaw/data/graph.db` | Evidence graph (entity awareness, claims, etc.) |
+| `~/.threadclaw/data/threadclaw.db` | Document store (RAG) |
+| `~/.threadclaw/relations-terms.json` | User-defined entity terms |
+| `~/.threadclaw/manifest.json` | Version tracking |
 
 ## Database Initialization
 
@@ -58,7 +58,7 @@ All databases are created automatically on first run. Schema migrations run idem
 
 ## Cross-Platform Services
 
-ClawCore services can be managed as background processes:
+ThreadClaw services can be managed as background processes:
 
 - **Windows**: Task Scheduler XML tasks (no admin required)
 - **Linux**: systemd --user units (no sudo required)
@@ -77,31 +77,31 @@ Copy `.env.example` to `.env` and customize. See [Configuration Guide](configura
 ## Verification
 
 ```bash
-clawcore status    # Check system health
-clawcore doctor    # Full diagnostic: versions, data, integration, services, skills
-clawcore query "test" --collection default   # Verify search works
+threadclaw status    # Check system health
+threadclaw doctor    # Full diagnostic: versions, data, integration, services, skills
+threadclaw query "test" --collection default   # Verify search works
 ```
 
 ## Post-Install Commands
 
 | Command | When to Use |
 |---------|-------------|
-| `clawcore doctor` | Diagnose installation health — checks versions, data paths, OpenClaw integration, DB integrity |
-| `clawcore upgrade` | Run after updating ClawCore code — safely migrates data, schemas, and skills |
-| `clawcore integrate --check` | Verify OpenClaw integration is correct (read-only) |
-| `clawcore integrate --apply` | Re-apply integration if `clawcore doctor` reports drift |
+| `threadclaw doctor` | Diagnose installation health — checks versions, data paths, OpenClaw integration, DB integrity |
+| `threadclaw upgrade` | Run after updating ThreadClaw code — safely migrates data, schemas, and skills |
+| `threadclaw integrate --check` | Verify OpenClaw integration is correct (read-only) |
+| `threadclaw integrate --apply` | Re-apply integration if `threadclaw doctor` reports drift |
 
 ## Data Locations
 
-All ClawCore data is stored under `~/.clawcore/`:
+All ThreadClaw data is stored under `~/.threadclaw/`:
 
 | Path | Contents |
 |------|----------|
-| `~/.clawcore/data/clawcore.db` | Document store (RAG) |
-| `~/.clawcore/data/memory.db` | Conversation memory |
-| `~/.clawcore/data/graph.db` | Evidence graph |
-| `~/.clawcore/manifest.json` | Version tracking |
-| `~/.clawcore/backups/` | Upgrade backups |
+| `~/.threadclaw/data/threadclaw.db` | Document store (RAG) |
+| `~/.threadclaw/data/memory.db` | Conversation memory |
+| `~/.threadclaw/data/graph.db` | Evidence graph |
+| `~/.threadclaw/manifest.json` | Version tracking |
+| `~/.threadclaw/backups/` | Upgrade backups |
 
 ## Troubleshooting
 

@@ -6,7 +6,7 @@ Runbooks and anti-runbooks are now stored as **procedures** (kind='procedure') i
 
 ## Runbooks (Success Patterns)
 
-Runbooks capture learned success patterns from tool execution history. When a tool succeeds N consecutive times with similar input, ClawCore auto-infers a runbook.
+Runbooks capture learned success patterns from tool execution history. When a tool succeeds N consecutive times with similar input, ThreadClaw auto-infers a runbook.
 
 ### Lifecycle
 1. **Observe**: Tool attempts are recorded as MemoryObjects (kind='attempt')

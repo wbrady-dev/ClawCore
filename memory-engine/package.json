@@ -1,7 +1,7 @@
 {
-  "name": "clawcore-memory",
+  "name": "threadclaw-memory",
   "version": "0.3.0",
-  "description": "ClawCore Memory Engine — DAG-based lossless conversation memory with incremental compaction (based on lossless-claw by Martian Engineering)",
+  "description": "ThreadClaw Memory Engine — DAG-based lossless conversation memory with incremental compaction (based on lossless-claw by Martian Engineering)",
   "type": "module",
   "main": "index.ts",
   "license": "MIT",
@@ -53,11 +53,11 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/openclaw/clawcore.git",
+    "url": "git+https://github.com/openclaw/threadclaw.git",
     "directory": "memory-engine"
   },
-  "homepage": "https://github.com/openclaw/clawcore#memory-engine",
+  "homepage": "https://github.com/openclaw/threadclaw#memory-engine",
   "bugs": {
-    "url": "https://github.com/openclaw/clawcore/issues"
+    "url": "https://github.com/openclaw/threadclaw/issues"
   }
 }

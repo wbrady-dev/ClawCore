@@ -6,7 +6,7 @@ cd "$SCRIPT_DIR"
 
 echo ""
 echo "  ========================================"
-echo "   ClawCore - One-Click Installer"
+echo "   ThreadClaw - One-Click Installer"
 echo "  ========================================"
 echo ""
 
@@ -19,7 +19,7 @@ fi
 
 NODE_MAJOR="$(node -e "console.log(process.versions.node.split('.')[0])")"
 if [ "$NODE_MAJOR" -lt 22 ]; then
-  echo "[ERROR] Node.js $NODE_MAJOR detected. ClawCore requires Node.js 22+."
+  echo "[ERROR] Node.js $NODE_MAJOR detected. ThreadClaw requires Node.js 22+."
   exit 1
 fi
 echo "[OK] Node.js $(node --version)"
@@ -54,7 +54,7 @@ if [ ! -d "$SCRIPT_DIR/node_modules" ]; then
 else
   echo "[OK] Node.js dependencies already present"
 fi
-export CLAWCORE_SKIP_NODE_INSTALL=1
+export THREADCLAW_SKIP_NODE_INSTALL=1
 
 # ── Step 4: Python virtual environment ──
 VENV_PYTHON="$SCRIPT_DIR/.venv/bin/python3"
@@ -127,35 +127,35 @@ else
 fi
 
 echo ""
-echo "[launch] Starting ClawCore setup..."
+echo "[launch] Starting ThreadClaw setup..."
 echo ""
 
 # ── Step 8: Launch the Node.js installer ──
-node "$SCRIPT_DIR/bin/clawcore.mjs" install "$@"
+node "$SCRIPT_DIR/bin/threadclaw.mjs" install "$@"
 EXIT_CODE=$?
 
 # ── Step 9: Register global command ──
 if [ $EXIT_CODE -eq 0 ]; then
   echo ""
-  echo "[install] Registering clawcore command..."
+  echo "[install] Registering threadclaw command..."
   mkdir -p "$HOME/.local/bin"
-  ln -sf "$SCRIPT_DIR/bin/clawcore.mjs" "$HOME/.local/bin/clawcore"
-  chmod +x "$HOME/.local/bin/clawcore"
+  ln -sf "$SCRIPT_DIR/bin/threadclaw.mjs" "$HOME/.local/bin/threadclaw"
+  chmod +x "$HOME/.local/bin/threadclaw"
 
   if echo "$PATH" | grep -q ".local/bin"; then
-    echo "[OK] clawcore command registered"
+    echo "[OK] threadclaw command registered"
   else
-    echo "[OK] clawcore command registered at ~/.local/bin/clawcore"
+    echo "[OK] threadclaw command registered at ~/.local/bin/threadclaw"
     echo "     Add to PATH: export PATH=\"\$HOME/.local/bin:\$PATH\""
   fi
 
   # ── Smoke test ──
   echo ""
   echo "[install] Running smoke test..."
-  if node "$SCRIPT_DIR/bin/clawcore.mjs" doctor >/dev/null 2>&1; then
+  if node "$SCRIPT_DIR/bin/threadclaw.mjs" doctor >/dev/null 2>&1; then
     echo "[OK] Smoke test passed"
   else
-    echo "[WARN] Smoke test had issues. Run 'clawcore doctor' for details."
+    echo "[WARN] Smoke test had issues. Run 'threadclaw doctor' for details."
   fi
 fi
 

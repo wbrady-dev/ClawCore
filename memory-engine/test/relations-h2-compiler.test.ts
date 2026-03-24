@@ -40,7 +40,7 @@ describe("H2 Context Compiler", () => {
     });
     const result = compileContextCapsules(db, { tier: "standard", scopeId: 1 });
     expect(result).not.toBeNull();
-    expect(result!.text).toContain("[ClawCore Evidence]");
+    expect(result!.text).toContain("[ThreadClaw Evidence]");
     expect(result!.text).toContain("[claim]");
     expect(result!.text).toContain("api");
     expect(result!.capsuleTypes.claim).toBe(1);
@@ -141,7 +141,7 @@ describe("H2 Context Compiler", () => {
     const result = compileContextCapsules(db, { tier: "premium", scopeId: 1 });
     expect(result).not.toBeNull();
     const lines = result!.text.split("\n").filter((l) => l.startsWith("["));
-    // Extract capsule types from lines (skip [ClawCore Evidence] header)
+    // Extract capsule types from lines (skip [ThreadClaw Evidence] header)
     const types = lines
       .map((l) => {
         if (l.startsWith("[invariant")) return "invariant";

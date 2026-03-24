@@ -267,7 +267,7 @@ async function runResetKnowledgeBase(): Promise<void> {
         const { getDb } = await import("../../storage/index.js");
         const { resetKnowledgeBase } = await import("../../storage/collections.js");
         const { config: appConfig } = await import("../../config.js");
-        const dbPath = resolve(appConfig.dataDir, "clawcore.db");
+        const dbPath = resolve(appConfig.dataDir, "threadclaw.db");
         const db = getDb(dbPath);
         const stats = resetKnowledgeBase(db);
         data = { ...stats, graphCleared: false };
@@ -496,7 +496,7 @@ async function runServicesScreenAction(action: string): Promise<void> {
 
 // Module-level cache so re-mounts don't flash or lose data
 let cachedModelsUp = false;
-let cachedClawcoreUp = false;
+let cachedThreadclawUp = false;
 let cachedOcrInstalled: boolean | null = null;
 let cachedStats: any = null;
 let cachedSources: any[] = [];
@@ -524,7 +524,7 @@ function HomeScreen({ onAction }: { onAction: (action: string) => void }) {
   const config = readConfig();
 
   const [modelsUp, setModelsUp] = useState(cachedModelsUp);
-  const [clawcoreUp, setClawcoreUp] = useState(cachedClawcoreUp);
+  const [threadclawUp, setThreadclawUp] = useState(cachedThreadclawUp);
   const [gpu, setGpu] = useState(cachedGpu);
   const [stats, setStats] = useState<any>(cachedStats);
   const [sources, setSources] = useState<any[]>(cachedSources);
@@ -590,11 +590,11 @@ function HomeScreen({ onAction }: { onAction: (action: string) => void }) {
     if (ec.includes("NOTION_ENABLED=true")) sourceIcons.push(`${t.ok("●")} Notion`);
     if (ec.includes("APPLE_NOTES_ENABLED=true")) sourceIcons.push(`${t.ok("●")} Apple Notes`);
     cachedParsedEnv = {
-      deepEnabled: ec.match(/CLAWCORE_MEMORY_RELATIONS_DEEP_EXTRACTION_ENABLED=(\w+)/)?.[1] === "true",
-      relationsEnabled: ec.match(/CLAWCORE_RELATIONS_ENABLED=(\w+)/)?.[1] === "true" || ec.match(/CLAWCORE_MEMORY_RELATIONS_ENABLED=(\w+)/)?.[1] === "true",
-      awarenessEnabled: ec.match(/CLAWCORE_MEMORY_RELATIONS_AWARENESS_ENABLED=(\w+)/)?.[1] === "true",
-      claimsEnabled: ec.match(/CLAWCORE_MEMORY_RELATIONS_CLAIM_EXTRACTION_ENABLED=(\w+)/)?.[1] === "true",
-      attemptEnabled: ec.match(/CLAWCORE_MEMORY_RELATIONS_ATTEMPT_TRACKING_ENABLED=(\w+)/)?.[1] === "true",
+      deepEnabled: ec.match(/THREADCLAW_MEMORY_RELATIONS_DEEP_EXTRACTION_ENABLED=(\w+)/)?.[1] === "true",
+      relationsEnabled: ec.match(/THREADCLAW_RELATIONS_ENABLED=(\w+)/)?.[1] === "true" || ec.match(/THREADCLAW_MEMORY_RELATIONS_ENABLED=(\w+)/)?.[1] === "true",
+      awarenessEnabled: ec.match(/THREADCLAW_MEMORY_RELATIONS_AWARENESS_ENABLED=(\w+)/)?.[1] === "true",
+      claimsEnabled: ec.match(/THREADCLAW_MEMORY_RELATIONS_CLAIM_EXTRACTION_ENABLED=(\w+)/)?.[1] === "true",
+      attemptEnabled: ec.match(/THREADCLAW_MEMORY_RELATIONS_ATTEMPT_TRACKING_ENABLED=(\w+)/)?.[1] === "true",
       qeEnabled: ec.match(/QUERY_EXPANSION_ENABLED=(\w+)/)?.[1] ?? "",
       qeModel: ec.match(/QUERY_EXPANSION_MODEL=(.+)/)?.[1]?.trim() ?? "",
       watchCount: watchPaths ? watchPaths.split(",").filter(Boolean).length : 0,
@@ -606,9 +606,9 @@ function HomeScreen({ onAction }: { onAction: (action: string) => void }) {
 
     // Service status: always update (port unreachable = service is down)
     cachedModelsUp = mUp as boolean;
-    cachedClawcoreUp = cUp as boolean;
+    cachedThreadclawUp = cUp as boolean;
     setModelsUp(cachedModelsUp);
-    setClawcoreUp(cachedClawcoreUp);
+    setThreadclawUp(cachedThreadclawUp);
 
     // GPU and auto-start: only update on success, keep old data on failure
     if (gpuState.detected) {
@@ -623,7 +623,7 @@ function HomeScreen({ onAction }: { onAction: (action: string) => void }) {
     // Update on success; clear when service is confirmed down (not just a timeout)
     try {
       if (statsRes?.ok) { cachedStats = await statsRes.json(); setStats(cachedStats); }
-      else if (!cachedClawcoreUp) { cachedStats = null; setStats(null); }
+      else if (!cachedThreadclawUp) { cachedStats = null; setStats(null); }
     } catch {}
 
     try {
@@ -653,7 +653,7 @@ function HomeScreen({ onAction }: { onAction: (action: string) => void }) {
     return unsub; // cleanup on unmount
   }, []);
 
-  useInterval(refresh, modelsUp || clawcoreUp ? 3000 : 5000);
+  useInterval(refresh, modelsUp || threadclawUp ? 3000 : 5000);
 
   // ── Derive display values (no sync I/O in render) ──
 
@@ -666,8 +666,8 @@ function HomeScreen({ onAction }: { onAction: (action: string) => void }) {
 
   let deepExtractLabel = t.dim("off");
   if (deepEnabled) {
-    const explicitModel = envContent.match(/CLAWCORE_MEMORY_RELATIONS_DEEP_EXTRACTION_MODEL=(.+)/)?.[1]?.trim();
-    const explicitProvider = envContent.match(/CLAWCORE_MEMORY_RELATIONS_DEEP_EXTRACTION_PROVIDER=(.+)/)?.[1]?.trim();
+    const explicitModel = envContent.match(/THREADCLAW_MEMORY_RELATIONS_DEEP_EXTRACTION_MODEL=(.+)/)?.[1]?.trim();
+    const explicitProvider = envContent.match(/THREADCLAW_MEMORY_RELATIONS_DEEP_EXTRACTION_PROVIDER=(.+)/)?.[1]?.trim();
     if (explicitModel) {
       deepExtractLabel = t.value(`${explicitProvider ? explicitProvider + "/" : ""}${explicitModel}`);
     } else {
@@ -712,7 +712,7 @@ function HomeScreen({ onAction }: { onAction: (action: string) => void }) {
   const collCount = stats?.collections ?? 0;
   const dbSize = ((stats?.dbSizeMB ?? 0) as number).toFixed(1);
 
-  const anyRunning = modelsUp || clawcoreUp;
+  const anyRunning = modelsUp || threadclawUp;
   const items: MenuItem[] = [
     { label: "Status & Health", value: "status" },
     { label: "Sources", value: "sources" },
@@ -734,7 +734,7 @@ function HomeScreen({ onAction }: { onAction: (action: string) => void }) {
   return (
     <Box flexDirection="column">
       <Banner />
-      <Text>{"  " + (modelsUp ? t.ok("●") : t.err("○")) + " Models " + t.dim("|") + " " + (clawcoreUp ? t.ok("●") : t.err("○")) + " ClawCore" + (autoStart ? t.dim("  (auto-start on)") : "")}</Text>
+      <Text>{"  " + (modelsUp ? t.ok("●") : t.err("○")) + " Models " + t.dim("|") + " " + (threadclawUp ? t.ok("●") : t.err("○")) + " ThreadClaw" + (autoStart ? t.dim("  (auto-start on)") : "")}</Text>
 
       {/* ── Models ── */}
       <Text>{" "}</Text>
@@ -761,7 +761,7 @@ function HomeScreen({ onAction }: { onAction: (action: string) => void }) {
           <Text>{"  " + t.dim("Collections: ") + t.value(String(collCount).padEnd(8)) + t.dim("Size: ") + t.value(dbSize + " MB")}</Text>
         </>
       ) : (
-        <Text>{"  " + t.dim(clawcoreUp ? "Loading..." : "Start services to see stats")}</Text>
+        <Text>{"  " + t.dim(threadclawUp ? "Loading..." : "Start services to see stats")}</Text>
       )}
 
       {/* ── Evidence OS ── */}

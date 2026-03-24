@@ -1,5 +1,5 @@
 /**
- * clawcore integrate — manage OpenClaw integration.
+ * threadclaw integrate — manage OpenClaw integration.
  *
  * --check: read-only check for drift (default)
  * --apply: re-apply the managed integration block
@@ -27,7 +27,7 @@ export const integrateCommand = new Command("integrate")
 
     if (opts.apply) {
       console.log("");
-      console.log(chalk.bold("ClawCore Integration — Apply"));
+      console.log(chalk.bold("ThreadClaw Integration — Apply"));
       console.log("");
 
       const { applied, changes } = applyOpenClawIntegration(memoryEnginePath);
@@ -58,7 +58,7 @@ export const integrateCommand = new Command("integrate")
     } else {
       // Default: check
       console.log("");
-      console.log(chalk.bold("ClawCore Integration — Check"));
+      console.log(chalk.bold("ThreadClaw Integration — Check"));
       console.log("");
 
       const status = checkOpenClawIntegration(memoryEnginePath);
@@ -74,7 +74,7 @@ export const integrateCommand = new Command("integrate")
           console.log(`    ${icon} ${drift.field}: expected ${JSON.stringify(drift.expected)}, got ${JSON.stringify(drift.actual)}`);
         }
         console.log("");
-        console.log(chalk.dim("  Run 'clawcore integrate --apply' to fix."));
+        console.log(chalk.dim("  Run 'threadclaw integrate --apply' to fix."));
       }
       console.log("");
     }

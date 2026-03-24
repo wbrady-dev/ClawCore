@@ -8,9 +8,9 @@ import { getGraphDb, closeGraphDb } from "../../storage/graph-sqlite.js";
 
 
 export const statusCommand = new Command("status")
-  .description("Show ClawCore system status")
+  .description("Show ThreadClaw system status")
   .action(async () => {
-    console.log("ClawCore RAG System Status\n");
+    console.log("ThreadClaw RAG System Status\n");
 
     // Check embedding/rerank server
     try {
@@ -28,7 +28,7 @@ export const statusCommand = new Command("status")
     }
 
     // Database
-    const dbPath = resolve(config.dataDir, "clawcore.db");
+    const dbPath = resolve(config.dataDir, "threadclaw.db");
     try {
       const size = statSync(dbPath).size;
       console.log(`  Database:   OK  ${(size / 1024 / 1024).toFixed(2)} MB`);
@@ -76,6 +76,6 @@ export const statusCommand = new Command("status")
     }
 
     console.log(`\nEndpoints:`);
-    console.log(`  CLI:  clawcore query / clawcore ingest`);
+    console.log(`  CLI:  threadclaw query / threadclaw ingest`);
     console.log(`  HTTP: http://localhost:${config.port}/query`);
   });

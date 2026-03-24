@@ -1,6 +1,6 @@
-# ClawCore Memory Engine
+# ThreadClaw Memory Engine
 
-DAG-based lossless conversation memory for [OpenClaw](https://openclaw.ai), part of the [ClawCore](https://github.com/openclaw/clawcore) RSMA system. Replaces OpenClaw's built-in sliding-window compaction with a DAG-based summarization system that preserves every message while keeping active context within model token limits.
+DAG-based lossless conversation memory for [OpenClaw](https://openclaw.ai), part of the [ThreadClaw](https://github.com/openclaw/threadclaw) RSMA system. Replaces OpenClaw's built-in sliding-window compaction with a DAG-based summarization system that preserves every message while keeping active context within model token limits.
 
 Based on the [LCM paper](https://papers.voltropy.com/LCM) from [Voltropy](https://x.com/Voltropy).
 
@@ -15,7 +15,7 @@ Based on the [LCM paper](https://papers.voltropy.com/LCM) from [Voltropy](https:
 
 ## What it does
 
-When a conversation grows beyond the model's context window, OpenClaw normally truncates older messages. ClawCore Memory instead:
+When a conversation grows beyond the model's context window, OpenClaw normally truncates older messages. ThreadClaw Memory instead:
 
 1. **Persists every message** in a SQLite database, organized by conversation
 2. **Summarizes chunks** of older messages into summaries using your configured LLM
@@ -44,19 +44,19 @@ Nothing is lost. Raw messages stay in the database. Summaries link back to their
 Use OpenClaw's plugin installer (recommended):
 
 ```bash
-openclaw plugins install clawcore-memory
+openclaw plugins install threadclaw-memory
 ```
 
 If you're running from a local OpenClaw checkout, use:
 
 ```bash
-pnpm openclaw plugins install clawcore-memory
+pnpm openclaw plugins install threadclaw-memory
 ```
 
 For local plugin development, link your working copy instead of copying files:
 
 ```bash
-openclaw plugins install --link /path/to/clawcore/memory-engine
+openclaw plugins install --link /path/to/threadclaw/memory-engine
 ```
 
 The install command records the plugin, enables it, and applies compatible slot selection (including `contextEngine` when applicable).
@@ -65,13 +65,13 @@ The install command records the plugin, enables it, and applies compatible slot 
 
 In most cases, no manual JSON edits are needed after `openclaw plugins install`.
 
-If you need to set it manually, ensure the context engine slot points at clawcore-memory:
+If you need to set it manually, ensure the context engine slot points at threadclaw-memory:
 
 ```json
 {
   "plugins": {
     "slots": {
-      "contextEngine": "clawcore-memory"
+      "contextEngine": "threadclaw-memory"
     }
   }
 }
@@ -81,17 +81,17 @@ Restart OpenClaw after configuration changes.
 
 ## Configuration
 
-ClawCore Memory is configured through a combination of plugin config and environment variables. Environment variables take precedence for backward compatibility.
+ThreadClaw Memory is configured through a combination of plugin config and environment variables. Environment variables take precedence for backward compatibility.
 
 ### Plugin config
 
-Add a `clawcore-memory` entry under `plugins.entries` in your OpenClaw config:
+Add a `threadclaw-memory` entry under `plugins.entries` in your OpenClaw config:
 
 ```json
 {
   "plugins": {
     "entries": {
-      "clawcore-memory": {
+      "threadclaw-memory": {
         "enabled": true,
         "config": {
           "freshTailCount": 32,
@@ -109,7 +109,7 @@ Add a `clawcore-memory` entry under `plugins.entries` in your OpenClaw config:
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `LCM_ENABLED` | `true` | Enable/disable the plugin |
-| `LCM_DATABASE_PATH` | `~/.clawcore/data/memory.db` | Path to the SQLite database |
+| `LCM_DATABASE_PATH` | `~/.threadclaw/data/memory.db` | Path to the SQLite database |
 | `LCM_CONTEXT_THRESHOLD` | `0.75` | Fraction of context window that triggers compaction (0.0-1.0) |
 | `LCM_FRESH_TAIL_COUNT` | `32` | Number of recent messages protected from compaction |
 | `LCM_LEAF_MIN_FANOUT` | `8` | Minimum raw messages per leaf summary |
@@ -130,15 +130,15 @@ Add a `clawcore-memory` entry under `plugins.entries` in your OpenClaw config:
 
 ### Summary model priority
 
-When choosing which model to use for summarization, ClawCore Memory follows this priority order (highest to lowest):
+When choosing which model to use for summarization, ThreadClaw Memory follows this priority order (highest to lowest):
 
-1. Plugin config `summaryModel` (from `plugins.entries.clawcore-memory.config.summaryModel`)
+1. Plugin config `summaryModel` (from `plugins.entries.threadclaw-memory.config.summaryModel`)
 2. Environment variable `LCM_SUMMARY_MODEL`
 3. OpenClaw's `agents.defaults.compaction.model` (if configured)
 4. Current session model (inherited from the active conversation)
 5. OpenClaw's `agents.defaults.model.primary` (system default)
 
-`summaryProvider` is not an independent selector. It is only used when the chosen `summaryModel` is a bare model name without a provider prefix. If no explicit `summaryProvider` is configured for that level, ClawCore Memory falls back to the active session provider hint and emits a warning.
+`summaryProvider` is not an independent selector. It is only used when the chosen `summaryModel` is a bare model name without a provider prefix. If no explicit `summaryProvider` is configured for that level, ThreadClaw Memory falls back to the active session provider hint and emits a warning.
 
 ### Recommended starting configuration
 
@@ -154,7 +154,7 @@ LCM_CONTEXT_THRESHOLD=0.75
 
 ### OpenClaw session reset settings
 
-ClawCore Memory preserves history through compaction, but it does **not** change OpenClaw's core session reset policy. If sessions are resetting sooner than you want, increase OpenClaw's `session.reset.idleMinutes` or use a channel/type-specific override.
+ThreadClaw Memory preserves history through compaction, but it does **not** change OpenClaw's core session reset policy. If sessions are resetting sooner than you want, increase OpenClaw's `session.reset.idleMinutes` or use a channel/type-specific override.
 
 ```json
 {
@@ -212,7 +212,7 @@ For most long-lived setups, a good starting point is:
 | `cc_procedures` | All agents | Learned success/failure patterns |
 | `cc_diagnostics` | All agents | Internal RSMA health and observability |
 
-Evidence tools require Evidence OS (`CLAWCORE_MEMORY_RELATIONS_ENABLED=true`).
+Evidence tools require Evidence OS (`THREADCLAW_MEMORY_RELATIONS_ENABLED=true`).
 
 ## Documentation
 
@@ -241,7 +241,7 @@ npx vitest test/engine.test.ts
 ```
 index.ts                    # Plugin entry point and registration
 src/
-  engine.ts                 # ClawCore Memory Engine — implements ContextEngine interface
+  engine.ts                 # ThreadClaw Memory Engine — implements ContextEngine interface
   assembler.ts              # Context assembly (summaries + messages -> model context)
   compaction.ts             # CompactionEngine — leaf passes, condensation, sweeps
   summarize.ts              # Depth-aware prompt generation and LLM summarization

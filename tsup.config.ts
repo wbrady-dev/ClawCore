@@ -10,7 +10,7 @@ export default defineConfig([
     target: "node22",
   },
   {
-    entry: ["src/cli/clawcore.ts"],
+    entry: ["src/cli/threadclaw.ts"],
     format: ["esm"],
     outDir: "dist/cli",
     sourcemap: true,

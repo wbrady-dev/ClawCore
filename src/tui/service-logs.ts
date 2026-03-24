@@ -3,16 +3,16 @@ import { resolve } from "path";
 import { getRootDir } from "./platform.js";
 import { sanitizeCommandLine } from "./process.js";
 
-export type ServiceLogName = "models" | "clawcore";
+export type ServiceLogName = "models" | "threadclaw";
 
 export function getServiceLogPath(name: ServiceLogName, root = getRootDir()): string {
-  return resolve(root, "logs", name === "models" ? "models.log" : "clawcore.log");
+  return resolve(root, "logs", name === "models" ? "models.log" : "threadclaw.log");
 }
 
 export function clearServiceLogs(root = getRootDir()): void {
   mkdirSync(resolve(root, "logs"), { recursive: true });
   writeFileSync(getServiceLogPath("models", root), "");
-  writeFileSync(getServiceLogPath("clawcore", root), "");
+  writeFileSync(getServiceLogPath("threadclaw", root), "");
 }
 
 export function readLatestServiceLogLine(name: ServiceLogName, root = getRootDir()): string {

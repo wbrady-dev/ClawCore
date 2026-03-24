@@ -1,7 +1,7 @@
 /**
  * OpenClaw integration — check/apply pattern.
  *
- * ClawCore manages a small, well-defined block in openclaw.json.
+ * ThreadClaw manages a small, well-defined block in openclaw.json.
  * This module provides:
  *   - checkOpenClawIntegration() — read-only check, returns drifts
  *   - applyOpenClawIntegration() — writes managed block (CLI-only, never startup)
@@ -34,10 +34,10 @@ export interface IntegrationStatus {
 
 function getExpectedBlock(memoryEnginePath: string): Record<string, unknown> {
   return {
-    "plugins.slots.contextEngine": "clawcore-memory",
+    "plugins.slots.contextEngine": "threadclaw-memory",
     "plugins.slots.memory": "none",
     "plugins.entries.memory-core.enabled": false,
-    "plugins.entries.clawcore-memory.enabled": true,
+    "plugins.entries.threadclaw-memory.enabled": true,
     "agents.defaults.memorySearch": "__ABSENT__",
   };
 }
@@ -115,12 +115,12 @@ export function checkOpenClawIntegration(memoryEnginePath?: string): Integration
       });
     }
 
-    // Check plugins.allow includes clawcore-memory
+    // Check plugins.allow includes threadclaw-memory
     const allowList: string[] = oc?.plugins?.allow ?? [];
-    if (!allowList.includes("clawcore-memory")) {
+    if (!allowList.includes("threadclaw-memory")) {
       drifts.push({
         field: "plugins.allow",
-        expected: "(includes clawcore-memory)",
+        expected: "(includes threadclaw-memory)",
         actual: allowList.length === 0 ? "(empty/missing)" : allowList.join(", "),
         severity: "error",
       });
@@ -163,9 +163,9 @@ export function applyOpenClawIntegration(memoryEnginePath: string): { applied: b
     }
 
     // Set slots
-    if (oc.plugins.slots.contextEngine !== "clawcore-memory") {
-      oc.plugins.slots.contextEngine = "clawcore-memory";
-      changes.push("set plugins.slots.contextEngine = clawcore-memory");
+    if (oc.plugins.slots.contextEngine !== "threadclaw-memory") {
+      oc.plugins.slots.contextEngine = "threadclaw-memory";
+      changes.push("set plugins.slots.contextEngine = threadclaw-memory");
     }
     if (oc.plugins.slots.memory !== "none") {
       oc.plugins.slots.memory = "none";
@@ -179,19 +179,19 @@ export function applyOpenClawIntegration(memoryEnginePath: string): { applied: b
       changes.push("disabled memory-core plugin");
     }
 
-    // Enable clawcore-memory with Evidence OS config
-    if (!oc.plugins.entries["clawcore-memory"]) oc.plugins.entries["clawcore-memory"] = {};
-    if (oc.plugins.entries["clawcore-memory"].enabled !== true) {
-      oc.plugins.entries["clawcore-memory"].enabled = true;
-      changes.push("enabled clawcore-memory plugin");
+    // Enable threadclaw-memory with Evidence OS config
+    if (!oc.plugins.entries["threadclaw-memory"]) oc.plugins.entries["threadclaw-memory"] = {};
+    if (oc.plugins.entries["threadclaw-memory"].enabled !== true) {
+      oc.plugins.entries["threadclaw-memory"].enabled = true;
+      changes.push("enabled threadclaw-memory plugin");
     }
 
     // Ensure Evidence OS features are in plugin config (memory engine runs in OpenClaw's process,
-    // so it reads from plugin config, not ClawCore's .env)
-    if (!oc.plugins.entries["clawcore-memory"].config) {
-      oc.plugins.entries["clawcore-memory"].config = {};
+    // so it reads from plugin config, not ThreadClaw's .env)
+    if (!oc.plugins.entries["threadclaw-memory"].config) {
+      oc.plugins.entries["threadclaw-memory"].config = {};
     }
-    const memConfig = oc.plugins.entries["clawcore-memory"].config;
+    const memConfig = oc.plugins.entries["threadclaw-memory"].config;
     if (memConfig.relationsEnabled !== true) {
       memConfig.relationsEnabled = true;
       changes.push("enabled relationsEnabled in plugin config");
@@ -216,11 +216,11 @@ export function applyOpenClawIntegration(memoryEnginePath: string): { applied: b
       changes.push("added memory-engine to plugins.load.paths");
     }
 
-    // Ensure plugins.allow includes clawcore-memory
+    // Ensure plugins.allow includes threadclaw-memory
     if (!Array.isArray(oc.plugins.allow)) oc.plugins.allow = [];
-    if (!oc.plugins.allow.includes("clawcore-memory")) {
-      oc.plugins.allow.push("clawcore-memory");
-      changes.push("added clawcore-memory to plugins.allow");
+    if (!oc.plugins.allow.includes("threadclaw-memory")) {
+      oc.plugins.allow.push("threadclaw-memory");
+      changes.push("added threadclaw-memory to plugins.allow");
     }
 
     if (changes.length > 0) {
@@ -240,7 +240,7 @@ export function computeIntegrationHash(oc: any): string {
     contextEngine: oc?.plugins?.slots?.contextEngine,
     memory: oc?.plugins?.slots?.memory,
     memoryCoreEnabled: oc?.plugins?.entries?.["memory-core"]?.enabled,
-    clawcoreMemoryEnabled: oc?.plugins?.entries?.["clawcore-memory"]?.enabled,
+    threadclawMemoryEnabled: oc?.plugins?.entries?.["threadclaw-memory"]?.enabled,
     hasMemorySearch: oc?.agents?.defaults?.memorySearch !== undefined,
     loadPaths: oc?.plugins?.load?.paths ?? [],
     allowList: oc?.plugins?.allow ?? [],

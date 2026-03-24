@@ -1,6 +1,6 @@
 @echo off
 setlocal enabledelayedexpansion
-title ClawCore - Installer
+title ThreadClaw - Installer
 
 set "SCRIPT_DIR=%~dp0"
 if "%SCRIPT_DIR:~-1%"=="\" set "SCRIPT_DIR=%SCRIPT_DIR:~0,-1%"
@@ -9,7 +9,7 @@ cd /d "%SCRIPT_DIR%"
 
 echo.
 echo  ========================================
-echo   ClawCore - One-Click Installer
+echo   ThreadClaw - One-Click Installer
 echo  ========================================
 echo.
 
@@ -23,7 +23,7 @@ if %errorlevel% neq 0 (
 )
 for /f %%m in ('node -e "console.log(process.versions.node.split('.')[0])"') do set NODE_MAJOR=%%m
 if %NODE_MAJOR% LSS 22 (
-    echo [ERROR] Node.js %NODE_MAJOR% detected. ClawCore requires Node.js 22+.
+    echo [ERROR] Node.js %NODE_MAJOR% detected. ThreadClaw requires Node.js 22+.
     pause
     exit /b 1
 )
@@ -63,7 +63,7 @@ if not exist "%SCRIPT_DIR%\node_modules" (
 ) else (
     echo [OK] Node.js dependencies already present
 )
-set "CLAWCORE_SKIP_NODE_INSTALL=1"
+set "THREADCLAW_SKIP_NODE_INSTALL=1"
 
 :: ── Step 4: Python virtual environment ──
 if not exist "%SCRIPT_DIR%\.venv\Scripts\python.exe" (
@@ -151,31 +151,31 @@ if not exist "%SCRIPT_DIR%\memory-engine\node_modules\@sinclair\typebox" (
 )
 
 echo.
-echo [launch] Starting ClawCore setup...
+echo [launch] Starting ThreadClaw setup...
 echo.
 
 :: ── Step 8: Launch the Node.js installer (handles config, models, OpenClaw) ──
-node "%SCRIPT_DIR%\bin\clawcore.mjs" install %*
+node "%SCRIPT_DIR%\bin\threadclaw.mjs" install %*
 set "EXIT_CODE=%ERRORLEVEL%"
 
 :: ── Step 9: Register global command ──
 if %EXIT_CODE% equ 0 (
     echo.
-    echo [install] Registering clawcore command...
-    if not exist "%LOCALAPPDATA%\ClawCore" mkdir "%LOCALAPPDATA%\ClawCore"
+    echo [install] Registering threadclaw command...
+    if not exist "%LOCALAPPDATA%\ThreadClaw" mkdir "%LOCALAPPDATA%\ThreadClaw"
     (
         echo @echo off
-        echo node "%SCRIPT_DIR%\bin\clawcore.mjs" %%*
-    ) > "%LOCALAPPDATA%\ClawCore\clawcore.cmd"
+        echo node "%SCRIPT_DIR%\bin\threadclaw.mjs" %%*
+    ) > "%LOCALAPPDATA%\ThreadClaw\threadclaw.cmd"
 
     :: Add to user PATH if not already there
-    echo %PATH% | findstr /i "ClawCore" >nul 2>&1
+    echo %PATH% | findstr /i "ThreadClaw" >nul 2>&1
     if %errorlevel% neq 0 (
-        setx PATH "%PATH%;%LOCALAPPDATA%\ClawCore" >nul 2>&1
-        set "PATH=%PATH%;%LOCALAPPDATA%\ClawCore"
-        echo [OK] clawcore command registered. Restart your terminal to use it.
+        setx PATH "%PATH%;%LOCALAPPDATA%\ThreadClaw" >nul 2>&1
+        set "PATH=%PATH%;%LOCALAPPDATA%\ThreadClaw"
+        echo [OK] threadclaw command registered. Restart your terminal to use it.
     ) else (
-        echo [OK] clawcore command already on PATH
+        echo [OK] threadclaw command already on PATH
     )
 )
 
@@ -199,7 +199,7 @@ if %EXIT_CODE% equ 0 (
         echo @echo off
         echo cd /d "%SCRIPT_DIR%"
         echo "!PYTHON!" "!MODELS_SCRIPT!" ^>^> "%SCRIPT_DIR%\logs\models.log" 2^>^&1
-    ) > "%SCRIPT_DIR%\bin\ClawCore_Models.cmd"
+    ) > "%SCRIPT_DIR%\bin\ThreadClaw_Models.cmd"
 
     if exist "%SCRIPT_DIR%\dist\index.js" (
         set "API_ENTRY=%SCRIPT_DIR%\dist\index.js"
@@ -210,30 +210,30 @@ if %EXIT_CODE% equ 0 (
     (
         echo @echo off
         echo cd /d "%SCRIPT_DIR%"
-        echo node "!API_ENTRY!" ^>^> "%SCRIPT_DIR%\logs\clawcore.log" 2^>^&1
-    ) > "%SCRIPT_DIR%\bin\ClawCore_RAG.cmd"
+        echo node "!API_ENTRY!" ^>^> "%SCRIPT_DIR%\logs\threadclaw.log" 2^>^&1
+    ) > "%SCRIPT_DIR%\bin\ThreadClaw_RAG.cmd"
 
     :: Remove old tasks if they exist (clean reinstall)
-    schtasks /delete /tn ClawCore_Models /f >nul 2>&1
-    schtasks /delete /tn ClawCore_RAG /f >nul 2>&1
+    schtasks /delete /tn ThreadClaw_Models /f >nul 2>&1
+    schtasks /delete /tn ThreadClaw_RAG /f >nul 2>&1
 
     :: Register tasks (onlogon auto-start, no admin required)
-    schtasks /create /tn ClawCore_Models /tr "\"%SCRIPT_DIR%\bin\ClawCore_Models.cmd\"" /sc onlogon /rl limited /f >nul 2>&1
+    schtasks /create /tn ThreadClaw_Models /tr "\"%SCRIPT_DIR%\bin\ThreadClaw_Models.cmd\"" /sc onlogon /rl limited /f >nul 2>&1
     if %errorlevel% equ 0 (
-        echo [OK] ClawCore_Models task registered
+        echo [OK] ThreadClaw_Models task registered
     ) else (
-        echo [WARN] ClawCore_Models task registration failed
+        echo [WARN] ThreadClaw_Models task registration failed
     )
 
-    schtasks /create /tn ClawCore_RAG /tr "\"%SCRIPT_DIR%\bin\ClawCore_RAG.cmd\"" /sc onlogon /rl limited /f >nul 2>&1
+    schtasks /create /tn ThreadClaw_RAG /tr "\"%SCRIPT_DIR%\bin\ThreadClaw_RAG.cmd\"" /sc onlogon /rl limited /f >nul 2>&1
     if %errorlevel% equ 0 (
-        echo [OK] ClawCore_RAG task registered
+        echo [OK] ThreadClaw_RAG task registered
     ) else (
-        echo [WARN] ClawCore_RAG task registration failed
+        echo [WARN] ThreadClaw_RAG task registration failed
     )
 
     echo [OK] Services will start automatically on login
-    echo      Use 'clawcore' TUI to start/stop/restart services
+    echo      Use 'threadclaw' TUI to start/stop/restart services
 )
 
 if %EXIT_CODE% neq 0 (
@@ -246,11 +246,11 @@ if %EXIT_CODE% neq 0 (
 :: ── Smoke test ──
 echo.
 echo [install] Running smoke test...
-node "%SCRIPT_DIR%\bin\clawcore.mjs" doctor >nul 2>&1
+node "%SCRIPT_DIR%\bin\threadclaw.mjs" doctor >nul 2>&1
 if %errorlevel% equ 0 (
     echo [OK] Smoke test passed
 ) else (
-    echo [WARN] Smoke test had issues. Run 'clawcore doctor' for details.
+    echo [WARN] Smoke test had issues. Run 'threadclaw doctor' for details.
 )
 
 exit /b 0

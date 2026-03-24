@@ -2,7 +2,7 @@
 
 ## Upgrading from RSMA-Only Setup
 
-If you were using ClawCore before the Evidence OS, upgrading is automatic:
+If you were using ThreadClaw before the Evidence OS, upgrading is automatic:
 
 1. Update to the latest version
 2. Evidence graph DB is created on first startup (new file, doesn't affect existing data)
@@ -43,36 +43,36 @@ Evidence OS features are **all opt-in**. Enable progressively:
 
 ### Phase 1: Entity Awareness
 ```bash
-CLAWCORE_MEMORY_RELATIONS_ENABLED=true
-CLAWCORE_MEMORY_RELATIONS_AWARENESS_ENABLED=true
+THREADCLAW_MEMORY_RELATIONS_ENABLED=true
+THREADCLAW_MEMORY_RELATIONS_AWARENESS_ENABLED=true
 ```
 
 ### Phase 2: Claims & Context Compilation
 ```bash
-CLAWCORE_MEMORY_RELATIONS_CLAIM_EXTRACTION_ENABLED=true
-CLAWCORE_MEMORY_RELATIONS_CONTEXT_TIER=standard
+THREADCLAW_MEMORY_RELATIONS_CLAIM_EXTRACTION_ENABLED=true
+THREADCLAW_MEMORY_RELATIONS_CONTEXT_TIER=standard
 ```
 
 ### Phase 3: Attempt Tracking
 ```bash
-CLAWCORE_MEMORY_RELATIONS_ATTEMPT_TRACKING_ENABLED=true
+THREADCLAW_MEMORY_RELATIONS_ATTEMPT_TRACKING_ENABLED=true
 ```
 
 ### Phase 4: Deep Extraction (Optional)
 ```bash
-CLAWCORE_MEMORY_RELATIONS_DEEP_EXTRACTION_ENABLED=true
-CLAWCORE_MEMORY_RELATIONS_DEEP_EXTRACTION_MODEL=claude-sonnet-4-20250514
-CLAWCORE_MEMORY_RELATIONS_DEEP_EXTRACTION_PROVIDER=anthropic
+THREADCLAW_MEMORY_RELATIONS_DEEP_EXTRACTION_ENABLED=true
+THREADCLAW_MEMORY_RELATIONS_DEEP_EXTRACTION_MODEL=claude-sonnet-4-20250514
+THREADCLAW_MEMORY_RELATIONS_DEEP_EXTRACTION_PROVIDER=anthropic
 ```
 
 ### Phase 5: Extraction Mode (Optional)
 ```bash
 # Smart: LLM-based semantic extraction (default when deep extraction is enabled)
 # Understands natural language without magic prefixes.
-CLAWCORE_MEMORY_RELATIONS_EXTRACTION_MODE=smart
+THREADCLAW_MEMORY_RELATIONS_EXTRACTION_MODE=smart
 
 # Fast: Regex-only, no LLM calls, <5ms (default when no model configured)
-CLAWCORE_MEMORY_RELATIONS_EXTRACTION_MODE=fast
+THREADCLAW_MEMORY_RELATIONS_EXTRACTION_MODE=fast
 ```
 
 Smart mode uses the same model as deep extraction -- no extra model to configure. If deep extraction is enabled and extraction mode is not explicitly set, smart mode is used automatically.
@@ -110,9 +110,9 @@ The `ontology/migration.ts` module provides `migrateToProvenanceLinks()` for bac
 
 | Old Name | New Name |
 |----------|----------|
-| lossless-claw | clawcore-memory |
-| LCM | ClawCore Memory Engine |
-| RSMA | ClawCore (broader scope) |
+| lossless-claw | threadclaw-memory |
+| LCM | ThreadClaw Memory Engine |
+| RSMA | ThreadClaw (broader scope) |
 | runbooks + anti_runbooks | procedures (kind='procedure' in memory_objects) |
 | entity_mentions | provenance_links (predicate='mentioned_in') |
 | entity_relations | provenance_links (predicate='relates_to') |
@@ -122,10 +122,10 @@ The `ontology/migration.ts` module provides `migrateToProvenanceLinks()` for bac
 
 ```bash
 # Disable all evidence features (keeps RSMA working)
-CLAWCORE_MEMORY_RELATIONS_ENABLED=false
+THREADCLAW_MEMORY_RELATIONS_ENABLED=false
 
 # Remove evidence data entirely
-rm ~/.clawcore/data/graph.db
+rm ~/.threadclaw/data/graph.db
 ```
 
 No schema downgrade is needed -- disabling the feature flag stops all evidence operations.

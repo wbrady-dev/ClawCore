@@ -1,7 +1,7 @@
 #!/bin/bash
-# ClawCore Distribution Builder
+# ThreadClaw Distribution Builder
 # Creates a self-contained distribution archive.
-# Run from the clawcore root directory.
+# Run from the threadclaw root directory.
 
 set -e
 
@@ -12,7 +12,7 @@ VERSION=$(node -e "console.log(require('./package.json').version)")
 
 echo ""
 echo "  ========================================"
-echo "   ClawCore Distribution Builder"
+echo "   ThreadClaw Distribution Builder"
 echo "  ========================================"
 echo "  Version: $VERSION"
 echo ""
@@ -46,7 +46,7 @@ case "$(uname)" in
   *)      PLATFORM="unknown-$ARCH" ;;
 esac
 
-DIST_NAME="ClawCore-${VERSION}-${PLATFORM}"
+DIST_NAME="ThreadClaw-${VERSION}-${PLATFORM}"
 DIST_DIR="$ROOT/build/$DIST_NAME"
 rm -rf "$ROOT/build"
 mkdir -p "$DIST_DIR"

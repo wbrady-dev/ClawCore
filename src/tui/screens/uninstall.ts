@@ -19,8 +19,8 @@ import {
 
 export async function runUninstall(): Promise<void> {
   clearScreen();
-  console.log(section("Uninstall ClawCore"));
-  console.log(t.warn("  This will completely remove ClawCore and revert all changes"));
+  console.log(section("Uninstall ThreadClaw"));
+  console.log(t.warn("  This will completely remove ThreadClaw and revert all changes"));
   console.log(t.warn("  made to OpenClaw. Source files preserved for reinstall.\n"));
   console.log(t.warn("  Will remove: dependencies, Python venv, config, evidence graph DB,"));
   console.log(t.warn("  credentials, global command, model cache, OpenClaw integration.\n"));
@@ -31,7 +31,7 @@ export async function runUninstall(): Promise<void> {
   const { confirm } = await prompts({
     type: "confirm",
     name: "confirm",
-    message: t.err("Are you sure you want to uninstall ClawCore?"),
+    message: t.err("Are you sure you want to uninstall ThreadClaw?"),
     initial: false,
   }, { onCancel });
 
@@ -89,7 +89,7 @@ export async function performUninstall(options: { deleteData: boolean }): Promis
     const revertLog: string[] = [];
 
     // Remove all shipped skill directories (current + legacy names)
-    for (const skillName of ["knowledge", "clawcore-knowledge", "clawcore-evidence"]) {
+    for (const skillName of ["knowledge", "threadclaw-knowledge", "threadclaw-evidence"]) {
       const dir = resolve(openclawDir, "workspace", "skills", skillName);
       if (existsSync(dir)) {
         rmSync(dir, { recursive: true, force: true });
@@ -103,17 +103,17 @@ export async function performUninstall(options: { deleteData: boolean }): Promis
       try {
         const oc = JSON.parse(readFileSync(configPath, "utf-8"));
 
-        // Remove clawcore-memory from plugin load paths
+        // Remove threadclaw-memory from plugin load paths
         if (oc.plugins?.load?.paths) {
           oc.plugins.load.paths = oc.plugins.load.paths.filter(
-            (p: string) => !p.includes("clawcore")
+            (p: string) => !p.includes("threadclaw")
           );
           if (oc.plugins.load.paths.length === 0) delete oc.plugins.load.paths;
-          revertLog.push("Removed clawcore from plugin load paths");
+          revertLog.push("Removed threadclaw from plugin load paths");
         }
 
-        // Reset context engine slot — remove clawcore-memory
-        if (oc.plugins?.slots?.contextEngine === "clawcore-memory") {
+        // Reset context engine slot — remove threadclaw-memory
+        if (oc.plugins?.slots?.contextEngine === "threadclaw-memory") {
           delete oc.plugins.slots.contextEngine;
           revertLog.push("Cleared contextEngine slot");
         }
@@ -135,16 +135,16 @@ export async function performUninstall(options: { deleteData: boolean }): Promis
           revertLog.push("Re-enabled memory-core plugin");
         }
 
-        // Remove clawcore-memory plugin entry
-        if (oc.plugins?.entries?.["clawcore-memory"]) {
-          delete oc.plugins.entries["clawcore-memory"];
-          revertLog.push("Removed clawcore-memory plugin entry");
+        // Remove threadclaw-memory plugin entry
+        if (oc.plugins?.entries?.["threadclaw-memory"]) {
+          delete oc.plugins.entries["threadclaw-memory"];
+          revertLog.push("Removed threadclaw-memory plugin entry");
         }
 
-        // Remove clawcore-memory install record
-        if (oc.plugins?.installs?.["clawcore-memory"]) {
-          delete oc.plugins.installs["clawcore-memory"];
-          revertLog.push("Removed clawcore-memory install record");
+        // Remove threadclaw-memory install record
+        if (oc.plugins?.installs?.["threadclaw-memory"]) {
+          delete oc.plugins.installs["threadclaw-memory"];
+          revertLog.push("Removed threadclaw-memory install record");
         }
 
         // Clean up empty installs object
@@ -152,11 +152,11 @@ export async function performUninstall(options: { deleteData: boolean }): Promis
           delete oc.plugins.installs;
         }
 
-        // Remove clawcore-memory from plugins.allow
+        // Remove threadclaw-memory from plugins.allow
         if (Array.isArray(oc.plugins?.allow)) {
-          oc.plugins.allow = oc.plugins.allow.filter((id: string) => id !== "clawcore-memory");
+          oc.plugins.allow = oc.plugins.allow.filter((id: string) => id !== "threadclaw-memory");
           if (oc.plugins.allow.length === 0) delete oc.plugins.allow;
-          revertLog.push("Removed clawcore-memory from plugins.allow");
+          revertLog.push("Removed threadclaw-memory from plugins.allow");
         }
 
         // Remove memorySearch if present (belt & suspenders)
@@ -196,8 +196,8 @@ export async function performUninstall(options: { deleteData: boolean }): Promis
     }
   } catch {}
 
-  // ── 5. Remove ClawCore runtime files ──
-  sp = ora("Removing ClawCore files...").start();
+  // ── 5. Remove ThreadClaw runtime files ──
+  sp = ora("Removing ThreadClaw files...").start();
   const toDelete = [
     resolve(root, "node_modules"),
     resolve(root, ".venv"),
@@ -207,7 +207,7 @@ export async function performUninstall(options: { deleteData: boolean }): Promis
     resolve(root, "server", "config.json"),
     resolve(root, "logs"),
     resolve(root, ".models.pid"),
-    resolve(root, ".clawcore.pid"),
+    resolve(root, ".threadclaw.pid"),
   ];
   for (const p of toDelete) {
     if (existsSync(p)) {
@@ -218,8 +218,8 @@ export async function performUninstall(options: { deleteData: boolean }): Promis
   if (deleteData) {
     // Remove evidence graph database (check both old and new locations)
     for (const graphDbPath of [
-      resolve(homedir(), ".clawcore", "data", "graph.db"),
-      resolve(homedir(), ".openclaw", "clawcore-graph.db"),
+      resolve(homedir(), ".threadclaw", "data", "graph.db"),
+      resolve(homedir(), ".openclaw", "threadclaw-graph.db"),
     ]) {
       for (const ext of ["", "-wal", "-shm"]) {
         const p = graphDbPath + ext;
@@ -231,8 +231,8 @@ export async function performUninstall(options: { deleteData: boolean }): Promis
 
     // Remove memory engine database
     for (const memDbPath of [
-      resolve(homedir(), ".clawcore", "data", "memory.db"),
-      resolve(homedir(), ".openclaw", "clawcore-memory.db"),
+      resolve(homedir(), ".threadclaw", "data", "memory.db"),
+      resolve(homedir(), ".openclaw", "threadclaw-memory.db"),
     ]) {
       for (const ext of ["", "-wal", "-shm"]) {
         const p = memDbPath + ext;
@@ -242,15 +242,15 @@ export async function performUninstall(options: { deleteData: boolean }): Promis
       }
     }
 
-    // Remove ~/.clawcore directory (includes DBs, manifest, backups, credentials)
-    const clawcoreHome = resolve(homedir(), ".clawcore");
-    if (existsSync(clawcoreHome)) {
-      try { rmSync(clawcoreHome, { recursive: true, force: true }); } catch {}
+    // Remove ~/.threadclaw directory (includes DBs, manifest, backups, credentials)
+    const threadclawHome = resolve(homedir(), ".threadclaw");
+    if (existsSync(threadclawHome)) {
+      try { rmSync(threadclawHome, { recursive: true, force: true }); } catch {}
     }
   } else {
     // Data preserved — only remove runtime config, not DBs or manifest
     const runtimeFiles = [
-      resolve(homedir(), ".clawcore", "relations-terms.json"),
+      resolve(homedir(), ".threadclaw", "relations-terms.json"),
     ];
     for (const p of runtimeFiles) {
       if (existsSync(p)) {
@@ -261,20 +261,20 @@ export async function performUninstall(options: { deleteData: boolean }): Promis
 
   // Remove global command
   if (plat === "windows") {
-    const cmdDir = resolve(process.env.LOCALAPPDATA ?? resolve(homedir(), "AppData", "Local"), "ClawCore");
+    const cmdDir = resolve(process.env.LOCALAPPDATA ?? resolve(homedir(), "AppData", "Local"), "ThreadClaw");
     if (existsSync(cmdDir)) {
       try { rmSync(cmdDir, { recursive: true, force: true }); } catch {}
     }
   } else {
-    const symlink = resolve(homedir(), ".local", "bin", "clawcore");
+    const symlink = resolve(homedir(), ".local", "bin", "threadclaw");
     if (existsSync(symlink)) {
       try { rmSync(symlink, { force: true }); } catch {}
     }
   }
 
-  sp.succeed("ClawCore files removed");
+  sp.succeed("ThreadClaw files removed");
 
-  // ── 6. Clean up model cache (ClawCore-specific models only) ──
+  // ── 6. Clean up model cache (ThreadClaw-specific models only) ──
   if (deleteData && (modelIds.embed || modelIds.rerank)) {
     const hfHub = resolve(homedir(), ".cache", "huggingface", "hub");
     if (existsSync(hfHub)) {
@@ -299,11 +299,11 @@ export async function performUninstall(options: { deleteData: boolean }): Promis
   console.log(section("Uninstall Complete"));
 
   console.log(t.ok("  OpenClaw has been restored to its original state."));
-  console.log(t.ok("  All ClawCore dependencies and configuration removed."));
+  console.log(t.ok("  All ThreadClaw dependencies and configuration removed."));
   console.log("");
 
   // Check if distribution package exists
-  const distDir = resolve(homedir(), "Documents", "clawcore");
+  const distDir = resolve(homedir(), "Documents", "threadclaw");
   if (existsSync(distDir)) {
     console.log(t.dim("  Installation package preserved at:"));
     console.log(t.path(`  ${distDir}`));

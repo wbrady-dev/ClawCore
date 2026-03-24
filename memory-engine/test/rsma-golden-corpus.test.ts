@@ -53,9 +53,9 @@ describe("RSMA Golden Corpus: Entity Extraction", () => {
   });
 
   it("extracts quoted terms", () => {
-    const results = extractFast('The tool is called "ClawCore" and it handles memory.');
+    const results = extractFast('The tool is called "ThreadClaw" and it handles memory.');
     const names = results.map((r) => r.name.toLowerCase());
-    expect(names).toContain("clawcore");
+    expect(names).toContain("threadclaw");
   });
 });
 

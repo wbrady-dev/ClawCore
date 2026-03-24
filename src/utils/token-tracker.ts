@@ -17,7 +17,7 @@ interface TokenCounts {
   queryExpansion: number;
 }
 
-const TRACKER_FILE = resolve(homedir(), ".clawcore", "token-counts.json");
+const TRACKER_FILE = resolve(homedir(), ".threadclaw", "token-counts.json");
 const FLUSH_INTERVAL_MS = 5000;
 
 // In-memory buffer for pending increments
@@ -26,7 +26,7 @@ let flushTimer: ReturnType<typeof setTimeout> | null = null;
 
 function ensureDir(): void {
   try {
-    mkdirSync(resolve(homedir(), ".clawcore"), { recursive: true });
+    mkdirSync(resolve(homedir(), ".threadclaw"), { recursive: true });
   } catch {}
 }
 

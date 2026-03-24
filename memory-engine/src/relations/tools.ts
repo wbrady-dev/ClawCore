@@ -48,7 +48,7 @@ export function createCcClaimsTool(input: {
 }): AnyAgentTool {
   return {
     name: "cc_claims",
-    label: "ClawCore Claims",
+    label: "ThreadClaw Claims",
     description:
       "List claims with their supporting evidence. Claims are structured facts " +
       "extracted from tool results, user statements, and documents. " +
@@ -113,7 +113,7 @@ export function createCcDecisionsTool(input: {
 }): AnyAgentTool {
   return {
     name: "cc_decisions",
-    label: "ClawCore Decisions",
+    label: "ThreadClaw Decisions",
     description:
       "List active decisions. When a topic is specified, shows the full decision " +
       "history including superseded decisions. Decisions are automatically superseded " +
@@ -181,7 +181,7 @@ const CcLoopsSchema = Type.Object({
 export function createCcLoopsTool(input: { deps: LcmDependencies; graphDb: GraphDb }): AnyAgentTool {
   return {
     name: "cc_loops",
-    label: "ClawCore Loops",
+    label: "ThreadClaw Loops",
     description: "List open loops — tasks, questions, and dependencies being tracked.",
     parameters: CcLoopsSchema,
     async execute(_toolCallId, params) {
@@ -219,7 +219,7 @@ const CcAttemptsSchema = Type.Object({
 export function createCcAttemptsTool(input: { deps: LcmDependencies; graphDb: GraphDb }): AnyAgentTool {
   return {
     name: "cc_attempts",
-    label: "ClawCore Attempts",
+    label: "ThreadClaw Attempts",
     description: "Show tool outcome history with success rates.",
     parameters: CcAttemptsSchema,
     async execute(_toolCallId, params) {
@@ -270,7 +270,7 @@ const CcBranchSchema = Type.Object({
 export function createCcBranchTool(input: { deps: LcmDependencies; graphDb: GraphDb }): AnyAgentTool {
   return {
     name: "cc_branch",
-    label: "ClawCore Branches",
+    label: "ThreadClaw Branches",
     description: "Manage speculative branches — create, list, discard, or promote branches for speculative memory.",
     parameters: CcBranchSchema,
     async execute(_toolCallId, params) {
@@ -346,7 +346,7 @@ const CcProceduresSchema = Type.Object({
 export function createCcProceduresTool(input: { deps: LcmDependencies; graphDb: GraphDb }): AnyAgentTool {
   return {
     name: "cc_procedures",
-    label: "ClawCore Procedures",
+    label: "ThreadClaw Procedures",
     description: "Show learned success patterns (runbooks) and failure patterns (anti-runbooks) from tool outcomes.",
     parameters: CcProceduresSchema,
     async execute(_toolCallId, params) {
@@ -434,7 +434,7 @@ export function createCcDiagnosticsTool(input: {
 }): AnyAgentTool {
   return {
     name: "cc_diagnostics",
-    label: "ClawCore Diagnostics",
+    label: "ThreadClaw Diagnostics",
     description:
       "Show internal RSMA health: summary counts, claim counts, awareness stats, " +
       "context compiler output, recent evidence events, and compaction state. " +
@@ -535,7 +535,7 @@ export function createCcDiagnosticsTool(input: {
           const { getArchiveStats } = await import("./archive.js");
           const { resolve } = await import("path");
           const { homedir } = await import("os");
-          const archivePath = resolve(homedir(), ".clawcore", "data", "archive.db");
+          const archivePath = resolve(homedir(), ".threadclaw", "data", "archive.db");
           const archiveStats = getArchiveStats(archivePath);
           if (archiveStats) {
             sections.push(`[Cold Archive]
@@ -596,9 +596,9 @@ export function createCcMemoryTool(input: {
 }): AnyAgentTool {
   return {
     name: "cc_memory",
-    label: "ClawCore Memory",
+    label: "ThreadClaw Memory",
     description:
-      "Search ClawCore's memory for any fact, decision, relationship, or past conversation. " +
+      "Search ThreadClaw's memory for any fact, decision, relationship, or past conversation. " +
       "Automatically searches claims, decisions, relationships, and conversation history. " +
       "Just describe what you're looking for — the system routes to the right source.",
     parameters: CcMemorySchema,
@@ -780,7 +780,7 @@ export function createCcMemoryTool(input: {
         // ── 5. If nothing found anywhere, try RAG document search as final fallback ──
         if (sections.length === 0 && tokenBudget > 100) {
           try {
-            const ragPort = process.env.CLAWCORE_PORT ?? "18800";
+            const ragPort = process.env.THREADCLAW_PORT ?? "18800";
             const ragResult = await fetch(`http://127.0.0.1:${ragPort}/query`, {
               method: "POST",
               headers: { "Content-Type": "application/json" },

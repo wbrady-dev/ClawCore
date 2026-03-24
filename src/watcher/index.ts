@@ -39,9 +39,9 @@ function logError(msg: string): void {
 
 /**
  * File watcher service.
- * Monitors directories for new/changed files and auto-ingests them into ClawCore.
+ * Monitors directories for new/changed files and auto-ingests them into ThreadClaw.
  */
-export class ClawCoreWatcher {
+export class ThreadClawWatcher {
   private watchers: ReturnType<typeof watch>[] = [];
   private configs: WatchConfig[];
   private processing = new Set<string>();
@@ -126,7 +126,7 @@ export class ClawCoreWatcher {
     if (this.processing.has(filePath)) return; // Don't remove mid-ingest
 
     try {
-      const db = getDb(resolve(config.dataDir, "clawcore.db"));
+      const db = getDb(resolve(config.dataDir, "threadclaw.db"));
       const collectionName = wc.collection ?? config.defaults.collection;
       const collection = getCollectionByName(db, collectionName);
       if (!collection) return;

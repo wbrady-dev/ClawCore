@@ -1,6 +1,6 @@
 # Architecture
 
-This document describes how ClawCore Memory works internally -- the data model, compaction lifecycle, context assembly, expansion system, and the unified RSMA ontology.
+This document describes how ThreadClaw Memory works internally -- the data model, compaction lifecycle, context assembly, expansion system, and the unified RSMA ontology.
 
 ## Data model
 
@@ -202,7 +202,7 @@ This prevents a single large file paste from consuming the entire context window
 
 ### One True Schema
 
-All structured knowledge in ClawCore is stored in two tables in `graph.db`:
+All structured knowledge in ThreadClaw is stored in two tables in `graph.db`:
 
 1. **`memory_objects`** -- unified storage for all knowledge kinds
 2. **`provenance_links`** -- typed relationships between any two MemoryObjects

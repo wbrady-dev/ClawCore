@@ -10,7 +10,7 @@ export function getEnvPath(root: string): string {
 export function ensureEnvFile(root: string): string {
   const envPath = getEnvPath(root);
   if (!existsSync(envPath)) {
-    writeFileSync(envPath, "# ClawCore Configuration\n");
+    writeFileSync(envPath, "# ThreadClaw Configuration\n");
   }
   return envPath;
 }
@@ -39,7 +39,7 @@ export function readEnvValue(root: string, key: string, fallback = ""): string {
 
 export function writeEnvMap(root: string, values: EnvMap): void {
   const envPath = ensureEnvFile(root);
-  const lines = ["# ClawCore Configuration"];
+  const lines = ["# ThreadClaw Configuration"];
   const entries = Object.entries(values).sort(([left], [right]) => left.localeCompare(right));
   for (const [key, value] of entries) {
     lines.push(`${key}=${value}`);

@@ -128,7 +128,7 @@ export function SourcesScreen({ onBack, onLegacy }: { onBack: () => void; onLega
     <Box flexDirection="column">
       <Section title="Knowledge Sources" />
       <Text>{t.dim("  All indexing runs locally - zero cloud tokens.")}</Text>
-      {!apiReachable && <Text>{"  " + t.warn("ClawCore API is offline. Showing last known source state.")}</Text>}
+      {!apiReachable && <Text>{"  " + t.warn("ThreadClaw API is offline. Showing last known source state.")}</Text>}
       <Text> </Text>
 
       {sources.map((source) => (

@@ -86,7 +86,7 @@ async function ingestFileInner(
   start: number,
 ): Promise<IngestResult> {
   // Get DB (migrations run once at server startup)
-  const dbPath = resolve(config.dataDir, "clawcore.db");
+  const dbPath = resolve(config.dataDir, "threadclaw.db");
   const db = getDb(dbPath);
 
   // Ensure collection exists

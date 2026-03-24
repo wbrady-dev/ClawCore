@@ -54,6 +54,6 @@ jobs:
       - name: Verify dist output exists
         run: |
           test -f dist/index.js || (echo "dist/index.js missing" && exit 1)
-          test -f dist/cli/clawcore.js || (echo "dist/cli/clawcore.js missing" && exit 1)
+          test -f dist/cli/threadclaw.js || (echo "dist/cli/threadclaw.js missing" && exit 1)
       - name: Smoke test (binary runs)
-        run: node bin/clawcore.mjs --version
+        run: node bin/threadclaw.mjs --version

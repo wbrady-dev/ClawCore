@@ -9,7 +9,7 @@ import { logger } from "../utils/logger.js";
 import { isLocalRequest } from "./guards.js";
 import { escapeLike } from "../utils/sql.js";
 
-const TERMS_PATH = join(homedir(), ".clawcore", "relations-terms.json");
+const TERMS_PATH = join(homedir(), ".threadclaw", "relations-terms.json");
 const VALID_TERM_RE = /^[\p{L}\p{N}\s\-_.'"]+$/u;
 
 export function registerGraphRoutes(server: FastifyInstance) {

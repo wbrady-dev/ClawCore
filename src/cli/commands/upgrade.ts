@@ -1,5 +1,5 @@
 /**
- * clawcore upgrade — safe transactional upgrade.
+ * threadclaw upgrade — safe transactional upgrade.
  *
  * Invariants:
  *   - Lock file prevents concurrent upgrades
@@ -20,8 +20,8 @@ import chalk from "chalk";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 import {
-  readManifest, writeManifest, getAppVersion, ensureClawCoreHome,
-  CLAWCORE_DATA_DIR, CLAWCORE_BACKUPS_DIR, CLAWCORE_HOME,
+  readManifest, writeManifest, getAppVersion, ensureThreadClawHome,
+  THREADCLAW_DATA_DIR, THREADCLAW_BACKUPS_DIR, THREADCLAW_HOME,
   detectLegacyDbLocations, sha256,
 } from "../../version.js";
 import { applyOpenClawIntegration, computeIntegrationHash, findOpenClawConfigPath } from "../../integration.js";
@@ -34,7 +34,7 @@ const info = (msg: string) => console.log(`  ${chalk.dim("·")} ${msg}`);
 
 // ── Lock file ──
 
-const LOCK_PATH = resolve(CLAWCORE_HOME, "upgrade.lock");
+const LOCK_PATH = resolve(THREADCLAW_HOME, "upgrade.lock");
 
 /** Check if a PID is still running. */
 function isPidAlive(pid: number): boolean {
@@ -70,7 +70,7 @@ function acquireLock(): boolean {
       unlinkSync(LOCK_PATH);
     }
   }
-  mkdirSync(CLAWCORE_HOME, { recursive: true });
+  mkdirSync(THREADCLAW_HOME, { recursive: true });
   writeFileSync(LOCK_PATH, JSON.stringify({
     pid: process.pid,
     timestamp: new Date().toISOString(),
@@ -100,7 +100,7 @@ async function postUpgradeSmoke(): Promise<{ ok: boolean; checks: string[] }> {
   let allOk = true;
 
   // Check data dir exists
-  if (existsSync(CLAWCORE_DATA_DIR)) {
+  if (existsSync(THREADCLAW_DATA_DIR)) {
     checks.push("data directory exists");
   } else {
     checks.push("FAIL: data directory missing");
@@ -108,7 +108,7 @@ async function postUpgradeSmoke(): Promise<{ ok: boolean; checks: string[] }> {
   }
 
   // Check manifest — on first upgrade it won't exist yet (written in Step 7)
-  if (existsSync(resolve(CLAWCORE_HOME, "manifest.json"))) {
+  if (existsSync(resolve(THREADCLAW_HOME, "manifest.json"))) {
     checks.push("manifest.json exists");
   } else {
     checks.push("WARN: manifest.json not yet created (will be written after validation)");
@@ -116,9 +116,9 @@ async function postUpgradeSmoke(): Promise<{ ok: boolean; checks: string[] }> {
 
   // Check at least one DB is accessible
   const dbPaths = [
-    resolve(CLAWCORE_DATA_DIR, "clawcore.db"),
-    resolve(CLAWCORE_DATA_DIR, "memory.db"),
-    resolve(CLAWCORE_DATA_DIR, "graph.db"),
+    resolve(THREADCLAW_DATA_DIR, "threadclaw.db"),
+    resolve(THREADCLAW_DATA_DIR, "memory.db"),
+    resolve(THREADCLAW_DATA_DIR, "graph.db"),
   ];
   for (const dbPath of dbPaths) {
     if (existsSync(dbPath)) {
@@ -156,7 +156,7 @@ async function postUpgradeSmoke(): Promise<{ ok: boolean; checks: string[] }> {
   }
 
   // End-to-end query path: open graph DB, read entities, confirm schema works
-  const graphPath = resolve(CLAWCORE_DATA_DIR, "graph.db");
+  const graphPath = resolve(THREADCLAW_DATA_DIR, "graph.db");
   if (existsSync(graphPath)) {
     try {
       const { DatabaseSync } = await import("node:sqlite");
@@ -181,9 +181,9 @@ const MAX_BACKUPS = 10;
 
 function cleanOldBackups(): number {
   try {
-    if (!existsSync(CLAWCORE_BACKUPS_DIR)) return 0;
+    if (!existsSync(THREADCLAW_BACKUPS_DIR)) return 0;
 
-    const dirs = readdirSync(CLAWCORE_BACKUPS_DIR)
+    const dirs = readdirSync(THREADCLAW_BACKUPS_DIR)
       .filter((d) => /^\d{4}-\d{2}-\d{2}T/.test(d))
       .sort()
       .reverse();
@@ -192,7 +192,7 @@ function cleanOldBackups(): number {
     if (dirs.length > MAX_BACKUPS) {
       for (const old of dirs.slice(MAX_BACKUPS)) {
         try {
-          rmSync(resolve(CLAWCORE_BACKUPS_DIR, old), { recursive: true, force: true });
+          rmSync(resolve(THREADCLAW_BACKUPS_DIR, old), { recursive: true, force: true });
           removed++;
         } catch {}
       }
@@ -206,7 +206,7 @@ function cleanOldBackups(): number {
 // ── Main command ──
 
 export const upgradeCommand = new Command("upgrade")
-  .description("Safely upgrade ClawCore — backup, migrate, validate")
+  .description("Safely upgrade ThreadClaw — backup, migrate, validate")
   .option("--dry-run", "Show what would change without applying")
   .action(async (opts: { dryRun?: boolean }) => {
     const manifest = readManifest();
@@ -215,10 +215,10 @@ export const upgradeCommand = new Command("upgrade")
     const isDryRun = opts.dryRun ?? false;
     const now = new Date();
     const backupDirName = now.toISOString().replace(/[:.]/g, "-").slice(0, 19);
-    const backupDir = resolve(CLAWCORE_BACKUPS_DIR, backupDirName);
+    const backupDir = resolve(THREADCLAW_BACKUPS_DIR, backupDirName);
 
     console.log("");
-    console.log(chalk.bold("ClawCore Upgrade"));
+    console.log(chalk.bold("ThreadClaw Upgrade"));
     if (isDryRun) console.log(chalk.yellow("  (dry run — no changes will be made)"));
     console.log("");
 
@@ -239,13 +239,13 @@ export const upgradeCommand = new Command("upgrade")
     if (!isDryRun) {
       if (!acquireLock()) {
         console.log("");
-        err("Another upgrade is in progress. If this is stale, delete ~/.clawcore/upgrade.lock");
+        err("Another upgrade is in progress. If this is stale, delete ~/.threadclaw/upgrade.lock");
         process.exit(1);
       }
     }
 
     try {
-      ensureClawCoreHome();
+      ensureThreadClawHome();
 
       // ── Step 1: Backup ──
       console.log("");
@@ -260,16 +260,16 @@ export const upgradeCommand = new Command("upgrade")
         if (l.exists) backupTargets.push({ label: `Legacy ${l.name} DB`, src: l.legacyPath });
       }
 
-      for (const name of ["clawcore.db", "memory.db", "graph.db"]) {
-        const src = resolve(CLAWCORE_DATA_DIR, name);
+      for (const name of ["threadclaw.db", "memory.db", "graph.db"]) {
+        const src = resolve(THREADCLAW_DATA_DIR, name);
         if (existsSync(src)) backupTargets.push({ label: name, src });
       }
 
-      const oldRagPath = resolve(rootDir, "data", "clawcore.db");
+      const oldRagPath = resolve(rootDir, "data", "threadclaw.db");
       if (existsSync(oldRagPath)) backupTargets.push({ label: "RAG DB (legacy)", src: oldRagPath });
 
       // Archive DB
-      const archiveDbPath = resolve(CLAWCORE_DATA_DIR, "archive.db");
+      const archiveDbPath = resolve(THREADCLAW_DATA_DIR, "archive.db");
       if (existsSync(archiveDbPath)) backupTargets.push({ label: "Archive DB", src: archiveDbPath });
 
       const envPath = resolve(rootDir, ".env");
@@ -279,7 +279,7 @@ export const upgradeCommand = new Command("upgrade")
       if (ocConfigPath) backupTargets.push({ label: "openclaw.json", src: ocConfigPath });
 
       // Backup manifest itself
-      const manifestPath = resolve(CLAWCORE_HOME, "manifest.json");
+      const manifestPath = resolve(THREADCLAW_HOME, "manifest.json");
       if (existsSync(manifestPath)) backupTargets.push({ label: "manifest.json", src: manifestPath });
 
       for (const target of backupTargets) {
@@ -314,7 +314,7 @@ export const upgradeCommand = new Command("upgrade")
       console.log("");
       console.log(chalk.dim("── Step 2: Data Migration ──"));
 
-      if (!isDryRun) mkdirSync(CLAWCORE_DATA_DIR, { recursive: true });
+      if (!isDryRun) mkdirSync(THREADCLAW_DATA_DIR, { recursive: true });
 
       const legacyMemory = legacyDbs.find((l) => l.name === "memory");
       if (legacyMemory?.exists && !existsSync(legacyMemory.newPath)) {
@@ -352,17 +352,17 @@ export const upgradeCommand = new Command("upgrade")
         }
       }
 
-      if (existsSync(oldRagPath) && !existsSync(resolve(CLAWCORE_DATA_DIR, "clawcore.db"))) {
+      if (existsSync(oldRagPath) && !existsSync(resolve(THREADCLAW_DATA_DIR, "threadclaw.db"))) {
         if (isDryRun) {
-          info(`Would move: ${oldRagPath} → ${resolve(CLAWCORE_DATA_DIR, "clawcore.db")}`);
+          info(`Would move: ${oldRagPath} → ${resolve(THREADCLAW_DATA_DIR, "threadclaw.db")}`);
         } else {
           try {
-            copyFileSync(oldRagPath, resolve(CLAWCORE_DATA_DIR, "clawcore.db"));
+            copyFileSync(oldRagPath, resolve(THREADCLAW_DATA_DIR, "threadclaw.db"));
             for (const ext of ["-wal", "-shm"]) {
               const walSrc = oldRagPath + ext;
-              if (existsSync(walSrc)) copyFileSync(walSrc, resolve(CLAWCORE_DATA_DIR, "clawcore.db") + ext);
+              if (existsSync(walSrc)) copyFileSync(walSrc, resolve(THREADCLAW_DATA_DIR, "threadclaw.db") + ext);
             }
-            ok(`Moved RAG DB to ${resolve(CLAWCORE_DATA_DIR, "clawcore.db")}`);
+            ok(`Moved RAG DB to ${resolve(THREADCLAW_DATA_DIR, "threadclaw.db")}`);
           } catch (e: any) {
             warn(`Could not move RAG DB: ${e.message}`);
           }
@@ -377,8 +377,8 @@ export const upgradeCommand = new Command("upgrade")
       console.log("");
       console.log(chalk.dim("── Step 3: Schema Migration ──"));
 
-      const ragDbPath = existsSync(resolve(CLAWCORE_DATA_DIR, "clawcore.db"))
-        ? resolve(CLAWCORE_DATA_DIR, "clawcore.db")
+      const ragDbPath = existsSync(resolve(THREADCLAW_DATA_DIR, "threadclaw.db"))
+        ? resolve(THREADCLAW_DATA_DIR, "threadclaw.db")
         : oldRagPath;
 
       let ragSchemaV = manifest.schemaVersion;
@@ -401,8 +401,8 @@ export const upgradeCommand = new Command("upgrade")
         }
       }
 
-      const graphDbPath = existsSync(resolve(CLAWCORE_DATA_DIR, "graph.db"))
-        ? resolve(CLAWCORE_DATA_DIR, "graph.db")
+      const graphDbPath = existsSync(resolve(THREADCLAW_DATA_DIR, "graph.db"))
+        ? resolve(THREADCLAW_DATA_DIR, "graph.db")
         : legacyGraph?.exists ? legacyGraph.legacyPath : null;
 
       let evidenceSchemaV = manifest.evidenceSchemaVersion;
@@ -424,7 +424,7 @@ export const upgradeCommand = new Command("upgrade")
               "console.log(JSON.stringify({ version: v?.v ?? 0 }));",
               "db.close();",
             ].join("\n");
-            const tmpScript = joinTmp(tmpdir(), `clawcore-upgrade-${Date.now()}.mts`);
+            const tmpScript = joinTmp(tmpdir(), `threadclaw-upgrade-${Date.now()}.mts`);
             writeTmp(tmpScript, script);
             let result: string;
             try {
@@ -627,7 +627,7 @@ export const upgradeCommand = new Command("upgrade")
         if (removed > 0) info(`Cleaned ${removed} old backup(s) (keeping last ${MAX_BACKUPS})`);
 
         console.log(chalk.green(`  Upgrade complete (${manifest.appVersion || "fresh"} → ${appVersion})`));
-        console.log(chalk.dim("  Restart services: clawcore (then select Start)"));
+        console.log(chalk.dim("  Restart services: threadclaw (then select Start)"));
         console.log(chalk.dim(`  Backup saved to: ${backupDir}`));
       }
       console.log(chalk.dim("───────────────────────────────────────"));

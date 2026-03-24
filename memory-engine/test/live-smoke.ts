@@ -1,5 +1,5 @@
 /**
- * RSMA Live Smoke Test — runs against the real clawcore-graph.db
+ * RSMA Live Smoke Test — runs against the real threadclaw-graph.db
  * Tests every RSMA layer: RAG hooks, DAG lineage, KG entities, AL awareness,
  * SL state, DE deltas, AOM attempts, BSG branches, EEL evidence log, CCL compiler.
  */
@@ -30,8 +30,8 @@ import { homedir } from "node:os";
 import { resolve } from "node:path";
 import { randomUUID } from "node:crypto";
 
-const DB_PATH = process.env.CLAWCORE_GRAPH_DB_PATH
-  || resolve(homedir(), ".openclaw", "clawcore-graph.db");
+const DB_PATH = process.env.THREADCLAW_GRAPH_DB_PATH
+  || resolve(homedir(), ".openclaw", "threadclaw-graph.db");
 const db = new DatabaseSync(DB_PATH);
 
 // Unique run ID so the test is idempotent across repeated runs
@@ -72,7 +72,7 @@ console.log(`    Top: ${topEntities.map((e: any) => `${e.display_name}(${e.menti
 // ── KG: Entity Extraction ──
 console.log("\u2500\u2500 KG: Entity Extraction \u2500\u2500");
 test("extractFast with terms list", () => {
-  const results = extractFast("ClawCore uses Redis and PostgreSQL for the OpenClaw project.", ["redis", "postgresql", "clawcore"]);
+  const results = extractFast("ThreadClaw uses Redis and PostgreSQL for the OpenClaw project.", ["redis", "postgresql", "threadclaw"]);
   assert(results.length >= 2, `expected 2+, got ${results.length}`);
   assert(results.some((e) => e.name === "redis"), "redis not found");
   assert(results.find((e) => e.name === "redis")!.confidence === 0.9, "terms list should be 0.9");

@@ -70,7 +70,7 @@ export async function parseAudio(filePath: string): Promise<ParsedDocument> {
   }
 
   // Unique temp dir per call to prevent concurrent ingest collisions
-  const outputDir = mkdtempSync(join(tmpdir(), "clawcore-whisper-"));
+  const outputDir = mkdtempSync(join(tmpdir(), "threadclaw-whisper-"));
 
   try {
     // Validate model against allowlist

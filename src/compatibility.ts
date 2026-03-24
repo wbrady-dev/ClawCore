@@ -1,5 +1,5 @@
 /**
- * Compatibility matrix — which ClawCore versions work with which OpenClaw versions.
+ * Compatibility matrix — which ThreadClaw versions work with which OpenClaw versions.
  */
 
 import { existsSync, readFileSync } from "fs";
@@ -13,7 +13,7 @@ export interface CompatEntry {
   ragSchema: { min: number; max: number };
 }
 
-/** Compatibility requirements per ClawCore version. */
+/** Compatibility requirements per ThreadClaw version. */
 export const COMPAT_MATRIX: Record<string, CompatEntry> = {
   "0.2.0": {
     openclaw: { min: "2026.3.0", max: "2026.12.99" },
@@ -67,16 +67,16 @@ export interface CompatCheckResult {
 }
 
 export function checkOpenClawCompat(
-  clawcoreVersion: string,
+  threadclawVersion: string,
   openclawVersion: string | null,
 ): CompatCheckResult {
   if (!openclawVersion) {
     return { compatible: true, level: "unknown", reason: "OpenClaw version not detected" };
   }
 
-  const compat = COMPAT_MATRIX[clawcoreVersion];
+  const compat = COMPAT_MATRIX[threadclawVersion];
   if (!compat) {
-    return { compatible: true, level: "unknown", reason: `No compatibility data for ClawCore ${clawcoreVersion}` };
+    return { compatible: true, level: "unknown", reason: `No compatibility data for ThreadClaw ${threadclawVersion}` };
   }
 
   const minOk = compareVersions(openclawVersion, compat.openclaw.min) >= 0;

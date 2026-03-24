@@ -1,5 +1,5 @@
 /**
- * Shared types for the ClawCore relations/evidence module.
+ * Shared types for the ThreadClaw relations/evidence module.
  *
  * The GraphDb interface abstracts over both `node:sqlite` DatabaseSync
  * and `better-sqlite3` so the same store code works in both processes.

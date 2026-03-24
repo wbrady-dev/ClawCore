@@ -207,7 +207,7 @@ export function getAdapter(id: string): SourceAdapter | undefined {
 
 /**
  * Start all enabled source adapters.
- * Called during ClawCore server startup.
+ * Called during ThreadClaw server startup.
  */
 export async function startSources(): Promise<void> {
   const configs = loadSourceConfigs();

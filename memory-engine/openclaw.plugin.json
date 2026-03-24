@@ -1,5 +1,5 @@
 {
-  "id": "clawcore-memory",
+  "id": "threadclaw-memory",
   "uiHints": {
     "contextThreshold": {
       "label": "Context Threshold",
@@ -15,11 +15,11 @@
     },
     "dbPath": {
       "label": "Database Path",
-      "help": "Path to ClawCore Memory SQLite database (default: ~/.clawcore/data/memory.db)"
+      "help": "Path to ThreadClaw Memory SQLite database (default: ~/.threadclaw/data/memory.db)"
     },
     "summaryModel": {
       "label": "Summary Model",
-      "help": "Model override for ClawCore Memory summarization (e.g., 'gpt-5.4' to reuse the session provider, or 'openai-resp/gpt-5.4' for a full cross-provider ref)"
+      "help": "Model override for ThreadClaw Memory summarization (e.g., 'gpt-5.4' to reuse the session provider, or 'openai-resp/gpt-5.4' for a full cross-provider ref)"
     },
     "summaryProvider": {
       "label": "Summary Provider",

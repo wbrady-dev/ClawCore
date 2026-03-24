@@ -19,16 +19,16 @@ export function ConfigureScreen({
   const config = readConfig();
   const env = readEnvMap(root);
   const watchPaths = getWatchPaths(root);
-  const relationsEnabled = env.CLAWCORE_MEMORY_RELATIONS_ENABLED === "true";
-  const deepEnabled = env.CLAWCORE_MEMORY_RELATIONS_DEEP_EXTRACTION_ENABLED === "true";
+  const relationsEnabled = env.THREADCLAW_MEMORY_RELATIONS_ENABLED === "true";
+  const deepEnabled = env.THREADCLAW_MEMORY_RELATIONS_DEEP_EXTRACTION_ENABLED === "true";
   const evidenceSummary = !relationsEnabled
     ? t.dim("disabled")
     : t.ok(
       [
         "entities",
-        env.CLAWCORE_MEMORY_RELATIONS_AWARENESS_ENABLED === "true" ? "awareness" : "",
-        env.CLAWCORE_MEMORY_RELATIONS_CLAIM_EXTRACTION_ENABLED === "true" ? "claims" : "",
-        env.CLAWCORE_MEMORY_RELATIONS_ATTEMPT_TRACKING_ENABLED === "true" ? "attempts" : "",
+        env.THREADCLAW_MEMORY_RELATIONS_AWARENESS_ENABLED === "true" ? "awareness" : "",
+        env.THREADCLAW_MEMORY_RELATIONS_CLAIM_EXTRACTION_ENABLED === "true" ? "claims" : "",
+        env.THREADCLAW_MEMORY_RELATIONS_ATTEMPT_TRACKING_ENABLED === "true" ? "attempts" : "",
         deepEnabled ? "deep" : "",
       ].filter(Boolean).join(", "),
     );
@@ -59,24 +59,24 @@ export function ConfigureScreen({
       <Section title="Automation" />
       <KV label="Watch Paths" value={watchPaths.length > 0 ? t.ok(`${watchPaths.length} active`) : t.dim("none")} />
       <KV label="Watch Debounce" value={`${env.WATCH_DEBOUNCE_MS ?? "3000"}ms`} />
-      <KV label="Data Directory" value={env.CLAWCORE_DATA_DIR ?? "./data"} />
+      <KV label="Data Directory" value={env.THREADCLAW_DATA_DIR ?? "./data"} />
 
       <Section title="Defaults" />
       <KV label="Collection" value={env.DEFAULT_COLLECTION ?? "default"} />
       <KV label="Results / Query" value={env.QUERY_TOP_K ?? "10"} />
       <KV label="Token Budget" value={env.QUERY_TOKEN_BUDGET ?? "4000"} />
-      <KV label="API Port" value={env.CLAWCORE_PORT ?? "18800"} />
+      <KV label="API Port" value={env.THREADCLAW_PORT ?? "18800"} />
 
       <Section title="Evidence OS" />
       <KV label="Status" value={evidenceSummary} />
-      <KV label="Context Tier" value={relationsEnabled ? t.value(env.CLAWCORE_MEMORY_RELATIONS_CONTEXT_TIER ?? "standard") : t.dim("n/a")} />
+      <KV label="Context Tier" value={relationsEnabled ? t.value(env.THREADCLAW_MEMORY_RELATIONS_CONTEXT_TIER ?? "standard") : t.dim("n/a")} />
       <KV
         label="Deep Model"
         value={
           deepEnabled
             ? t.value(
-              env.CLAWCORE_MEMORY_RELATIONS_DEEP_EXTRACTION_MODEL
-                ? `${env.CLAWCORE_MEMORY_RELATIONS_DEEP_EXTRACTION_PROVIDER ?? "default"}/${env.CLAWCORE_MEMORY_RELATIONS_DEEP_EXTRACTION_MODEL}`
+              env.THREADCLAW_MEMORY_RELATIONS_DEEP_EXTRACTION_MODEL
+                ? `${env.THREADCLAW_MEMORY_RELATIONS_DEEP_EXTRACTION_PROVIDER ?? "default"}/${env.THREADCLAW_MEMORY_RELATIONS_DEEP_EXTRACTION_MODEL}`
                 : "summary/OpenClaw default",
             )
             : t.dim("off")

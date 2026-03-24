@@ -145,7 +145,7 @@ export async function query(
   }
 
   // Get DB (migrations run once at server startup in server.ts)
-  const dbPath = resolve(config.dataDir, "clawcore.db");
+  const dbPath = resolve(config.dataDir, "threadclaw.db");
   const db = getDb(dbPath);
 
   // Determine collections — don't auto-create on queries

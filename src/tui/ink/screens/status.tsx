@@ -13,7 +13,7 @@ import { subscribeTasks } from "../../tasks.js";
 import type { GpuInfo } from "../../models.js";
 
 // Module-level cache for status screen so re-mounts don't flash
-let cachedSvc: ServiceStatus = { models: { running: false }, clawcore: { running: false } };
+let cachedSvc: ServiceStatus = { models: { running: false }, threadclaw: { running: false } };
 let cachedAutoStart = false;
 let cachedGpu: GpuInfo = { name: "None detected", vramTotalMb: 0, vramUsedMb: 0, vramFreeMb: 0, detected: false };
 
@@ -48,7 +48,7 @@ export function StatusScreen({ onBack }: { onBack: () => void }) {
 
     (async () => {
       // Use fast TCP port checks for service status
-      const [modelsUp, clawcoreUp, autoStartState, modelResponse, statsResponse, collectionsResponse] = await Promise.all([
+      const [modelsUp, threadclawUp, autoStartState, modelResponse, statsResponse, collectionsResponse] = await Promise.all([
         isPortReachable(getModelPort()),
         isPortReachable(getApiPort()),
         checkAutoStartupAsync(),
@@ -61,7 +61,7 @@ export function StatusScreen({ onBack }: { onBack: () => void }) {
 
       const serviceState: ServiceStatus = {
         models: { running: modelsUp },
-        clawcore: { running: clawcoreUp },
+        threadclaw: { running: threadclawUp },
       };
       cachedSvc = serviceState;
       cachedAutoStart = autoStartState;
@@ -124,7 +124,7 @@ export function StatusScreen({ onBack }: { onBack: () => void }) {
   const embedName = config?.embed_model ?? "not configured";
   const rerankName = config?.rerank_model ?? "not configured";
 
-  const gameModeOn = !svc.models.running && !svc.clawcore.running;
+  const gameModeOn = !svc.models.running && !svc.threadclaw.running;
 
   // Read .env once for all config values
   let envContent = "";
@@ -140,12 +140,12 @@ export function StatusScreen({ onBack }: { onBack: () => void }) {
   if (expEnabled === "true" && expModel) expansionLabel = t.value(expModel);
 
   // Database
-  const dbPath = resolve(getDataDir(), "clawcore.db");
+  const dbPath = resolve(getDataDir(), "threadclaw.db");
   const dbExists = existsSync(dbPath);
   const dbSize = dbExists ? (statSync(dbPath).size / 1024 / 1024).toFixed(2) : "0";
 
   // Network
-  const tPort = envContent.match(/CLAWCORE_PORT=(\d+)/)?.[1] ?? String(getApiPort());
+  const tPort = envContent.match(/THREADCLAW_PORT=(\d+)/)?.[1] ?? String(getApiPort());
   const mPort = envContent.match(/RERANKER_URL=.*:(\d+)/)?.[1] ?? String(getModelPort());
 
   const ocDir = findOpenClaw();
@@ -154,7 +154,7 @@ export function StatusScreen({ onBack }: { onBack: () => void }) {
     <Box flexDirection="column">
       <Section title="Services" />
       <StatusDot ok={svc.models.running} label="Models" detail={`port ${getModelPort()}`} />
-      <StatusDot ok={svc.clawcore.running} label="ClawCore RAG API" detail={`port ${getApiPort()}`} />
+      <StatusDot ok={svc.threadclaw.running} label="ThreadClaw RAG API" detail={`port ${getApiPort()}`} />
       <StatusDot ok={autoStart} label="Auto-Startup" />
       <KV label="Game Mode" value={gameModeOn ? t.warn("on (VRAM freed)") : t.dim("off")} />
 
@@ -208,7 +208,7 @@ export function StatusScreen({ onBack }: { onBack: () => void }) {
       )}
 
       <Section title="Network" />
-      <KV label="ClawCore API" value={`http://localhost:${tPort}`} />
+      <KV label="ThreadClaw API" value={`http://localhost:${tPort}`} />
       <KV label="Model Server" value={`http://localhost:${mPort}`} />
       {ocDir && <KV label="OpenClaw" value={t.ok(`detected at ${ocDir}`)} />}
 

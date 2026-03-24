@@ -87,7 +87,7 @@ export function registerIngestRoutes(server: FastifyInstance) {
 
     // Write to temp file and ingest
     const { writeFile, unlink } = await import("fs/promises");
-    const tmpPath = resolve(tmpdir(), `clawcore_tmp_${randomUUID()}.md`);
+    const tmpPath = resolve(tmpdir(), `threadclaw_tmp_${randomUUID()}.md`);
 
     const content = title ? `# ${title}\n\n${text}` : text;
     await writeFile(tmpPath, content, "utf-8");

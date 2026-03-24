@@ -1,13 +1,13 @@
 """
-OpenClaw Integration Script — ClawCore RSMA
-Sets up ClawCore as the unified knowledge + memory system for OpenClaw.
+OpenClaw Integration Script — ThreadClaw RSMA
+Sets up ThreadClaw as the unified knowledge + memory system for OpenClaw.
 
 1. Installs SKILL.md for document search routing
 2. Configures openclaw.json: Memory Engine plugin, disable memory-core
 3. Sets up auto-watch paths (workspace + skills + large files)
 4. Updates SOUL.md with unified search routing
 
-Usage: python integrate_openclaw.py <openclaw_dir> <clawcore_dir> <embed_model> [summary_model]
+Usage: python integrate_openclaw.py <openclaw_dir> <threadclaw_dir> <embed_model> [summary_model]
 
   summary_model: Optional. Model for memory summarization (e.g. "anthropic/claude-sonnet-4-6").
                  If omitted, uses the active session model automatically.
@@ -20,21 +20,21 @@ import json
 
 def main():
     if len(sys.argv) < 4:
-        print("[ERROR] Usage: python integrate_openclaw.py <openclaw_dir> <clawcore_dir> <embed_model> [summary_model]")
+        print("[ERROR] Usage: python integrate_openclaw.py <openclaw_dir> <threadclaw_dir> <embed_model> [summary_model]")
         sys.exit(1)
 
     openclaw_dir = sys.argv[1]
-    clawcore_dir = sys.argv[2]
+    threadclaw_dir = sys.argv[2]
     embed_model = sys.argv[3]
     summary_model = sys.argv[4] if len(sys.argv) >= 5 else None
 
-    clawcore_dir_native = os.path.abspath(clawcore_dir)
-    memory_engine_dir = os.path.join(clawcore_dir_native, "memory-engine")
+    threadclaw_dir_native = os.path.abspath(threadclaw_dir)
+    memory_engine_dir = os.path.join(threadclaw_dir_native, "memory-engine")
 
-    # Ensure clawcore is available as a global command
+    # Ensure threadclaw is available as a global command
     try:
         import subprocess
-        subprocess.run(["npm", "link"], cwd=clawcore_dir_native, capture_output=True, timeout=30)
+        subprocess.run(["npm", "link"], cwd=threadclaw_dir_native, capture_output=True, timeout=30)
     except Exception:
         pass
 
@@ -44,21 +44,21 @@ def main():
 
     skill_content = """---
 name: knowledge
-description: Search document knowledge base (ClawCore). For documents, files, reference material — NOT conversation history (use cc_grep/cc_recall for that).
+description: Search document knowledge base (ThreadClaw). For documents, files, reference material — NOT conversation history (use cc_grep/cc_recall for that).
 ---
 
-# Knowledge Search (ClawCore)
+# Knowledge Search (ThreadClaw)
 
-Use `clawcore query` to search your document knowledge base — files, PDFs, code, reference material, and workspace documents.
+Use `threadclaw query` to search your document knowledge base — files, PDFs, code, reference material, and workspace documents.
 
-## When to use ClawCore
+## When to use ThreadClaw
 - "What does the documentation say about X?"
 - "Find the section about Y in my files"
 - "What's in my research papers about Z?"
 - Searching workspace files (SOUL.md, AGENTS.md, skill playbooks)
 - Any question about ingested documents or reference material
 
-## When NOT to use ClawCore (use ClawCore memory tools instead)
+## When NOT to use ThreadClaw (use ThreadClaw memory tools instead)
 - "What did we discuss earlier?" — use cc_grep or cc_recall
 - "What was the decision we made about X?" — use cc_grep or cc_recall
 - "Remind me what I said about Y" — use cc_grep or cc_recall
@@ -68,22 +68,22 @@ Use `clawcore query` to search your document knowledge base — files, PDFs, cod
 
 **Default — use --brief (costs ~200 tokens):**
 ```
-exec: clawcore query "search terms" --collection workspace --brief
+exec: threadclaw query "search terms" --collection workspace --brief
 ```
 
 **Exploratory — use --titles first (costs ~30 tokens):**
 ```
-exec: clawcore query "topic" --collection all --titles
+exec: threadclaw query "topic" --collection all --titles
 ```
 
 **Full content — only when user asks to see a document:**
 ```
-exec: clawcore query "search terms" --collection default --full
+exec: threadclaw query "search terms" --collection default --full
 ```
 
 **Ingest a file:**
 ```
-exec: clawcore ingest "path/to/file" --collection default
+exec: threadclaw ingest "path/to/file" --collection default
 ```
 
 ## Collections
@@ -92,7 +92,7 @@ exec: clawcore ingest "path/to/file" --collection default
 |------------|---------|
 | workspace | Workspace files |
 | skills | Skill playbooks |
-| clawcore-files | Large files from conversations |
+| threadclaw-files | Large files from conversations |
 | default | General knowledge (user-added documents) |
 
 ## Efficiency
@@ -110,7 +110,7 @@ exec: clawcore ingest "path/to/file" --collection default
 ## Rules
 1. **Use --brief by default** — saves tokens, same answer quality
 2. **Cite sources** — mention which document the info came from
-3. **Don't dump** — never paste full ClawCore output. Summarize.
+3. **Don't dump** — never paste full ThreadClaw output. Summarize.
 4. **Miss is cheap** — "No relevant documents found" costs 5 tokens
 """
 
@@ -140,7 +140,7 @@ exec: clawcore ingest "path/to/file" --collection default
         if "slots" not in plugins:
             plugins["slots"] = {}
         plugins["slots"]["memory"] = "none"
-        plugins["slots"]["contextEngine"] = "clawcore-memory"
+        plugins["slots"]["contextEngine"] = "threadclaw-memory"
 
         # Set plugin load path
         if "load" not in plugins:
@@ -150,11 +150,11 @@ exec: clawcore ingest "path/to/file" --collection default
         if memory_engine_dir not in plugins["load"]["paths"]:
             plugins["load"]["paths"].append(memory_engine_dir)
 
-        # Allow clawcore-memory as trusted plugin
+        # Allow threadclaw-memory as trusted plugin
         if "allow" not in plugins:
             plugins["allow"] = []
-        if "clawcore-memory" not in plugins["allow"]:
-            plugins["allow"].append("clawcore-memory")
+        if "threadclaw-memory" not in plugins["allow"]:
+            plugins["allow"].append("threadclaw-memory")
 
         # Configure plugin entries
         if "entries" not in plugins:
@@ -171,7 +171,7 @@ exec: clawcore ingest "path/to/file" --collection default
         }
         if summary_model:
             memory_config["summaryModel"] = summary_model
-        plugins["entries"]["clawcore-memory"] = {
+        plugins["entries"]["threadclaw-memory"] = {
             "enabled": True,
             "config": memory_config
         }
@@ -199,22 +199,22 @@ exec: clawcore ingest "path/to/file" --collection default
     # 4. Configure auto-watch paths (Memory Engine owns conversation — no separate memory collection)
     workspace_dir = os.path.join(openclaw_dir, "workspace")
     skills_dir = os.path.join(workspace_dir, "skills")
-    clawcore_files_dir = os.path.join(openclaw_dir, "clawcore-files")
-    env_path = os.path.join(clawcore_dir_native, ".env")
+    threadclaw_files_dir = os.path.join(openclaw_dir, "threadclaw-files")
+    env_path = os.path.join(threadclaw_dir_native, ".env")
 
     try:
         if os.path.isfile(env_path):
             with open(env_path, "r", encoding="utf-8") as f:
                 env_content = f.read()
 
-            # Build watch paths: workspace + skills + clawcore-files (NOT memory)
+            # Build watch paths: workspace + skills + threadclaw-files (NOT memory)
             watch_entries = []
             if os.path.isdir(workspace_dir):
                 watch_entries.append(f"{workspace_dir}|workspace")
             if os.path.isdir(skills_dir):
                 watch_entries.append(f"{skills_dir}|skills")
-            # clawcore-files may not exist yet — add anyway, watcher handles missing dirs
-            watch_entries.append(f"{clawcore_files_dir}|clawcore-files")
+            # threadclaw-files may not exist yet — add anyway, watcher handles missing dirs
+            watch_entries.append(f"{threadclaw_files_dir}|threadclaw-files")
 
             watch_value = ",".join(watch_entries)
 
@@ -231,7 +231,7 @@ exec: clawcore ingest "path/to/file" --collection default
             with open(env_path, "w", encoding="utf-8") as f:
                 f.write(env_content)
 
-            print("[OK] Auto-watch configured (workspace + skills + clawcore-files)")
+            print("[OK] Auto-watch configured (workspace + skills + threadclaw-files)")
         else:
             print("[WARNING] .env not found, skipping auto-watch setup")
     except Exception as e:
@@ -247,17 +247,17 @@ exec: clawcore ingest "path/to/file" --collection default
 
 You have two knowledge systems. Use the right one:
 
-**Conversation Memory (ClawCore memory tools — already in your tool list)**
+**Conversation Memory (ThreadClaw memory tools — already in your tool list)**
 - For: what we discussed, decisions we made, things I told you, past context
 - Tools: cc_grep, cc_recall, cc_describe
 - Scope: current conversation by default (use allConversations flag for cross-conversation)
 
-**Document Knowledge (ClawCore — via exec commands in your knowledge skill)**
+**Document Knowledge (ThreadClaw — via exec commands in your knowledge skill)**
 - For: what files/docs/PDFs say, reference material, workspace files, code
-- Commands: see your knowledge skill for clawcore query usage
+- Commands: see your knowledge skill for threadclaw query usage
 - Scope: always global across all collections
 
-**Routing rule:** "What did we discuss/decide?" — ClawCore memory tools. "What does the doc say?" — ClawCore knowledge search. Unsure? — ClawCore memory first (cheaper), knowledge search if no results.
+**Routing rule:** "What did we discuss/decide?" — ThreadClaw memory tools. "What does the doc say?" — ThreadClaw knowledge search. Unsure? — ThreadClaw memory first (cheaper), knowledge search if no results.
 
 **Important:** When you switch conversations, conversation memory resets but document knowledge persists. Documents are always available regardless of conversation."""
 
@@ -277,13 +277,13 @@ You have two knowledge systems. Use the right one:
         print(f"[WARNING] Could not update SOUL.md: {e}")
 
     print()
-    print("[OK] ClawCore RSMA integration complete!")
+    print("[OK] ThreadClaw RSMA integration complete!")
     print("     Architecture: Reconciled Semantic Memory Architecture")
-    print("     - Knowledge Engine: document search via 'clawcore query'")
+    print("     - Knowledge Engine: document search via 'threadclaw query'")
     print("     - Memory Engine: conversation memory via cc_grep, cc_recall")
     print()
     print("     Restart your OpenClaw gateway to apply changes.")
-    print("     Start ClawCore first: clawcore serve (or start-clawcore.sh)")
+    print("     Start ThreadClaw first: threadclaw serve (or start-threadclaw.sh)")
 
 
 if __name__ == "__main__":

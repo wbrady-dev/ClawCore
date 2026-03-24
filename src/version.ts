@@ -1,7 +1,7 @@
 /**
  * Version tracking and manifest management.
  *
- * The manifest (~/.clawcore/manifest.json) is the single source of truth
+ * The manifest (~/.threadclaw/manifest.json) is the single source of truth
  * for what version is installed, what schema versions are active, and
  * what state the integration is in.
  */
@@ -17,14 +17,14 @@ import { createHash } from "crypto";
 
 // ── Paths ──
 
-export const CLAWCORE_HOME = resolve(homedir(), ".clawcore");
-export const CLAWCORE_DATA_DIR = resolve(CLAWCORE_HOME, "data");
-export const CLAWCORE_BACKUPS_DIR = resolve(CLAWCORE_HOME, "backups");
-export const MANIFEST_PATH = resolve(CLAWCORE_HOME, "manifest.json");
+export const THREADCLAW_HOME = resolve(homedir(), ".threadclaw");
+export const THREADCLAW_DATA_DIR = resolve(THREADCLAW_HOME, "data");
+export const THREADCLAW_BACKUPS_DIR = resolve(THREADCLAW_HOME, "backups");
+export const MANIFEST_PATH = resolve(THREADCLAW_HOME, "manifest.json");
 
 // ── Manifest schema ──
 
-export interface ClawCoreManifest {
+export interface ThreadClawManifest {
   appVersion: string;
   schemaVersion: number;           // RAG DB _migrations max
   evidenceSchemaVersion: number;   // graph DB _evidence_migrations max
@@ -36,13 +36,13 @@ export interface ClawCoreManifest {
   integrationHash: string;         // SHA-256 of managed openclaw.json block
   features: {
     managedIntegration: boolean;   // new check-only integration (vs old auto-fix)
-    consolidatedData: boolean;     // DBs moved to ~/.clawcore/data/
+    consolidatedData: boolean;     // DBs moved to ~/.threadclaw/data/
     noAutoMigrate: boolean;        // startup doesn't auto-run migrations
   };
   skills: Record<string, string>;  // path → SHA-256 of shipped content
 }
 
-const DEFAULT_MANIFEST: ClawCoreManifest = {
+const DEFAULT_MANIFEST: ThreadClawManifest = {
   appVersion: "0.0.0",
   schemaVersion: 0,
   evidenceSchemaVersion: 0,
@@ -62,7 +62,7 @@ const DEFAULT_MANIFEST: ClawCoreManifest = {
 
 // ── Read/Write ──
 
-export function readManifest(): ClawCoreManifest {
+export function readManifest(): ThreadClawManifest {
   if (!existsSync(MANIFEST_PATH)) {
     return { ...DEFAULT_MANIFEST };
   }
@@ -78,8 +78,8 @@ export function readManifest(): ClawCoreManifest {
   }
 }
 
-export function writeManifest(manifest: ClawCoreManifest): void {
-  mkdirSync(CLAWCORE_HOME, { recursive: true });
+export function writeManifest(manifest: ThreadClawManifest): void {
+  mkdirSync(THREADCLAW_HOME, { recursive: true });
   writeFileSync(MANIFEST_PATH, JSON.stringify(manifest, null, 2) + "\n");
 }
 
@@ -116,7 +116,7 @@ export interface VersionMismatch {
 }
 
 export function detectVersionMismatches(
-  manifest: ClawCoreManifest,
+  manifest: ThreadClawManifest,
   currentSchemaVersion: number,
   currentEvidenceSchemaVersion: number,
 ): VersionMismatch[] {
@@ -129,7 +129,7 @@ export function detectVersionMismatches(
       installed: manifest.appVersion,
       current: appVersion,
       severity: "warn",
-      message: `App version changed (${manifest.appVersion} → ${appVersion}). Run 'clawcore upgrade' to apply.`,
+      message: `App version changed (${manifest.appVersion} → ${appVersion}). Run 'threadclaw upgrade' to apply.`,
     });
   }
 
@@ -139,7 +139,7 @@ export function detectVersionMismatches(
       installed: manifest.schemaVersion,
       current: currentSchemaVersion,
       severity: "warn",
-      message: `RAG DB schema upgrade available (v${manifest.schemaVersion} → v${currentSchemaVersion}). Run 'clawcore upgrade'.`,
+      message: `RAG DB schema upgrade available (v${manifest.schemaVersion} → v${currentSchemaVersion}). Run 'threadclaw upgrade'.`,
     });
   } else if (manifest.schemaVersion > currentSchemaVersion) {
     mismatches.push({
@@ -157,7 +157,7 @@ export function detectVersionMismatches(
       installed: manifest.evidenceSchemaVersion,
       current: currentEvidenceSchemaVersion,
       severity: "warn",
-      message: `Evidence schema upgrade available (v${manifest.evidenceSchemaVersion} → v${currentEvidenceSchemaVersion}). Run 'clawcore upgrade'.`,
+      message: `Evidence schema upgrade available (v${manifest.evidenceSchemaVersion} → v${currentEvidenceSchemaVersion}). Run 'threadclaw upgrade'.`,
     });
   } else if (manifest.evidenceSchemaVersion > currentEvidenceSchemaVersion) {
     mismatches.push({
@@ -192,22 +192,22 @@ export function detectLegacyDbLocations(): LegacyDbLocation[] {
   return [
     {
       name: "memory",
-      legacyPath: resolve(openclawHome, "clawcore-memory.db"),
-      newPath: resolve(CLAWCORE_DATA_DIR, "memory.db"),
-      exists: existsSync(resolve(openclawHome, "clawcore-memory.db")),
+      legacyPath: resolve(openclawHome, "threadclaw-memory.db"),
+      newPath: resolve(THREADCLAW_DATA_DIR, "memory.db"),
+      exists: existsSync(resolve(openclawHome, "threadclaw-memory.db")),
     },
     {
       name: "graph",
-      legacyPath: resolve(openclawHome, "clawcore-graph.db"),
-      newPath: resolve(CLAWCORE_DATA_DIR, "graph.db"),
-      exists: existsSync(resolve(openclawHome, "clawcore-graph.db")),
+      legacyPath: resolve(openclawHome, "threadclaw-graph.db"),
+      newPath: resolve(THREADCLAW_DATA_DIR, "graph.db"),
+      exists: existsSync(resolve(openclawHome, "threadclaw-graph.db")),
     },
   ];
 }
 
 // ── Ensure data directory ──
 
-export function ensureClawCoreHome(): void {
-  mkdirSync(CLAWCORE_DATA_DIR, { recursive: true });
-  mkdirSync(CLAWCORE_BACKUPS_DIR, { recursive: true });
+export function ensureThreadClawHome(): void {
+  mkdirSync(THREADCLAW_DATA_DIR, { recursive: true });
+  mkdirSync(THREADCLAW_BACKUPS_DIR, { recursive: true });
 }

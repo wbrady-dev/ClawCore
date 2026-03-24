@@ -22,11 +22,11 @@ curl -s -X POST http://127.0.0.1:18800/shutdown >/dev/null 2>&1 || true
 curl -s -X POST http://127.0.0.1:8012/shutdown >/dev/null 2>&1 || true
 
 if [ "$(uname)" = "Darwin" ]; then
-  launchctl stop com.clawcore.rag 2>/dev/null || true
-  launchctl stop com.clawcore.models 2>/dev/null || true
+  launchctl stop com.threadclaw.rag 2>/dev/null || true
+  launchctl stop com.threadclaw.models 2>/dev/null || true
 else
-  systemctl --user stop clawcore-rag 2>/dev/null || true
-  systemctl --user stop clawcore-models 2>/dev/null || true
+  systemctl --user stop threadclaw-rag 2>/dev/null || true
+  systemctl --user stop threadclaw-models 2>/dev/null || true
 fi
 
 # Wait for ports to close (15s max)
@@ -65,34 +65,34 @@ npm run build || echo "[WARN] Build failed. TUI will use tsx fallback."
 
 # ── Run migrations ──
 echo "[update] Running migrations..."
-node "$ROOT/bin/clawcore.mjs" upgrade >/dev/null 2>&1 || echo "[WARN] Upgrade had issues. Run 'clawcore doctor' for details."
+node "$ROOT/bin/threadclaw.mjs" upgrade >/dev/null 2>&1 || echo "[WARN] Upgrade had issues. Run 'threadclaw doctor' for details."
 
 # ── Restart services ──
 echo "[update] Restarting services..."
 if [ "$(uname)" = "Darwin" ]; then
-  launchctl start com.clawcore.models 2>/dev/null || true
+  launchctl start com.threadclaw.models 2>/dev/null || true
   # Wait for model server health (60s max)
   for i in $(seq 1 30); do
     curl -s http://127.0.0.1:8012/health >/dev/null 2>&1 && break
     sleep 2
   done
-  launchctl start com.clawcore.rag 2>/dev/null || true
+  launchctl start com.threadclaw.rag 2>/dev/null || true
 else
-  systemctl --user start clawcore-models 2>/dev/null || true
+  systemctl --user start threadclaw-models 2>/dev/null || true
   for i in $(seq 1 30); do
     curl -s http://127.0.0.1:8012/health >/dev/null 2>&1 && break
     sleep 2
   done
-  systemctl --user start clawcore-rag 2>/dev/null || true
+  systemctl --user start threadclaw-rag 2>/dev/null || true
 fi
 
 # ── Smoke test ──
 echo "[update] Running smoke test..."
-if node "$ROOT/bin/clawcore.mjs" doctor >/dev/null 2>&1; then
+if node "$ROOT/bin/threadclaw.mjs" doctor >/dev/null 2>&1; then
   echo "[OK] Smoke test passed."
 else
-  echo "[WARN] Smoke test had issues. Run 'clawcore doctor' for details."
+  echo "[WARN] Smoke test had issues. Run 'threadclaw doctor' for details."
 fi
 
 echo ""
-echo "[OK] ClawCore updated successfully."
+echo "[OK] ThreadClaw updated successfully."

@@ -1,5 +1,5 @@
 /**
- * ClawCore Source Adapter System — Types
+ * ThreadClaw Source Adapter System — Types
  *
  * Every external data source implements SourceAdapter.
  * Local directory watching and polling-based adapters share this interface.
@@ -19,7 +19,7 @@ export interface SourceConfig {
   enabled: boolean;
   /** Seconds between sync checks (polling adapters only) */
   syncInterval: number;
-  /** Source path → ClawCore collection mapping */
+  /** Source path → ThreadClaw collection mapping */
   collections: { path: string; collection: string }[];
   /** File extensions to sync (e.g., [".md", ".pdf"]) */
   fileTypes?: string[];

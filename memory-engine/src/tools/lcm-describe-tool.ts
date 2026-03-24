@@ -64,9 +64,9 @@ export function createLcmDescribeTool(input: {
 }): AnyAgentTool {
   return {
     name: "cc_describe",
-    label: "ClawCore Describe",
+    label: "ThreadClaw Describe",
     description:
-      "Look up metadata and content for a ClawCore Memory item by ID. " +
+      "Look up metadata and content for a ThreadClaw Memory item by ID. " +
       "Use this to inspect summaries (sum_xxx) or stored files (file_xxx) " +
       "from compacted conversation history. Returns summary content, lineage, " +
       "token counts, and file exploration results.",

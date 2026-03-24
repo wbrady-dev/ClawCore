@@ -6,7 +6,7 @@ Vitest with in-memory SQLite databases for isolation. No external dependencies n
 
 ## Test Suites
 
-### ClawCore (src/) -- 89 tests
+### ThreadClaw (src/) -- 89 tests
 
 | File | Tests | Coverage |
 |------|-------|----------|
@@ -145,8 +145,8 @@ const objects = readMemoryObjects(db, { kinds: ["claim"], keyword: "postgres" })
 ## Running
 
 ```bash
-# ClawCore src tests (89)
-cd clawcore && npx vitest run
+# ThreadClaw src tests (89)
+cd threadclaw && npx vitest run
 
 # Memory engine tests (858)
 cd memory-engine && npx vitest run

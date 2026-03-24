@@ -2,9 +2,9 @@
 
 ## Overview
 
-ClawCore runs as two integrated components:
+ThreadClaw runs as two integrated components:
 
-1. **ClawCore HTTP Server** -- Fastify-based REST API + TUI + CLI. Handles document ingestion, search, source adapters, and analytics. Uses `better-sqlite3` for the document store.
+1. **ThreadClaw HTTP Server** -- Fastify-based REST API + TUI + CLI. Handles document ingestion, search, source adapters, and analytics. Uses `better-sqlite3` for the document store.
 
 2. **Memory Engine Plugin** -- OpenClaw plugin providing DAG-based conversation memory, context assembly, and the Evidence OS. Uses `node:sqlite` DatabaseSync.
 
@@ -13,10 +13,10 @@ Both components can write to the shared evidence graph database (`graph.db`) via
 ## Database Architecture
 
 ```
-~/.clawcore/data/
+~/.threadclaw/data/
   memory.db             # Conversation memory (memory engine)
   graph.db              # Evidence graph (shared by both processes)
-  clawcore.db           # Document store (RAG, main ClawCore)
+  threadclaw.db           # Document store (RAG, main ThreadClaw)
 ```
 
 ### Evidence Graph (graph.db)

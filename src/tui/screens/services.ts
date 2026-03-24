@@ -32,11 +32,11 @@ export async function manageServices(): Promise<void> {
     const root = getRootDir();
     const plat = getPlatform();
     const autoStartEnabled = checkAutoStartup();
-    const gameModeOn = !svc.models.running && !svc.clawcore.running;
+    const gameModeOn = !svc.models.running && !svc.threadclaw.running;
 
     console.log(section("Services"));
     console.log(status("Models", svc.models.running, `port ${getModelPort()}`));
-    console.log(status("ClawCore RAG API", svc.clawcore.running, `port ${getApiPort()}`));
+    console.log(status("ThreadClaw RAG API", svc.threadclaw.running, `port ${getApiPort()}`));
     console.log(kvLine("Auto-Startup", autoStartEnabled ? t.ok("on") : t.dim("off")));
     console.log(kvLine("Game Mode", gameModeOn ? t.warn("on (VRAM freed)") : t.dim("off")));
     console.log("");
@@ -49,7 +49,7 @@ export async function manageServices(): Promise<void> {
       items.push({ label: "Enable auto-startup", value: "auto-on" });
     }
 
-    if (svc.models.running || svc.clawcore.running) {
+    if (svc.models.running || svc.threadclaw.running) {
       items.push({ label: "Game Mode on (free VRAM)", value: "game-on", color: t.warn });
     } else {
       items.push({ label: "Game Mode off (restart)", value: "game-off", color: t.ok });
@@ -119,7 +119,7 @@ export async function manageServices(): Promise<void> {
         if (r.success) {
           spinner.text = "Waiting for model server...";
           await waitForPort(getModelPort(), 120000);
-          spinner.text = "Waiting for ClawCore API...";
+          spinner.text = "Waiting for ThreadClaw API...";
           await waitForPort(getApiPort(), 30000);
           spinner.succeed("Game Mode off. Services started.");
         } else {
@@ -407,7 +407,7 @@ function checkAutoStartup(): boolean {
   const plat = getPlatform();
   if (plat === "windows") {
     try {
-      execFileSync("schtasks", ["/query", "/tn", "ClawCore_Models"], { stdio: "pipe", timeout: 5000 });
+      execFileSync("schtasks", ["/query", "/tn", "ThreadClaw_Models"], { stdio: "pipe", timeout: 5000 });
       return true;
     } catch {
       return false;
@@ -415,7 +415,7 @@ function checkAutoStartup(): boolean {
   }
   if (plat === "linux") {
     try {
-      const out = execFileSync("systemctl", ["--user", "is-enabled", "clawcore-models"], { stdio: "pipe" }).toString().trim();
+      const out = execFileSync("systemctl", ["--user", "is-enabled", "threadclaw-models"], { stdio: "pipe" }).toString().trim();
       return out === "enabled";
     } catch {
       return false;
@@ -423,7 +423,7 @@ function checkAutoStartup(): boolean {
   }
   if (plat === "mac") {
     try {
-      const plistPath = resolve(homedir(), "Library", "LaunchAgents", "com.clawcore.models.plist");
+      const plistPath = resolve(homedir(), "Library", "LaunchAgents", "com.threadclaw.models.plist");
       return existsSync(plistPath);
     } catch {
       return false;

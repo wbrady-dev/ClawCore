@@ -678,12 +678,12 @@ export async function createLcmSummarizeFromLegacyParams(params: {
       : undefined;
 
   const nestedPluginConfig =
-    runtimeConfig?.plugins?.entries?.["clawcore-memory"]?.config ??
+    runtimeConfig?.plugins?.entries?.["threadclaw-memory"]?.config ??
     runtimeConfig?.plugins?.entries?.["lossless-claw"]?.config;
 
   const summaryLevels = [
     {
-      levelName: "plugin config (clawcore-memory)",
+      levelName: "plugin config (threadclaw-memory)",
       model: readModelRef(nestedPluginConfig?.summaryModel),
       provider: typeof nestedPluginConfig?.summaryProvider === "string" ? nestedPluginConfig.summaryProvider.trim() : "",
     },

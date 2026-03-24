@@ -51,7 +51,7 @@ function maybeAutoArchive(db: GraphDb): void {
 
     if (eventCount < AUTO_ARCHIVE_EVENT_THRESHOLD) return;
 
-    const archivePath = resolve(homedir(), ".clawcore", "data", "archive.db");
+    const archivePath = resolve(homedir(), ".threadclaw", "data", "archive.db");
     runArchive(db, archivePath);
   } catch {
     // Non-fatal: auto-archive failure must not break context compilation
@@ -331,7 +331,7 @@ export function compileContextCapsules(
     capsuleTypes[c.type] = (capsuleTypes[c.type] ?? 0) + 1;
   }
 
-  const text = `[ClawCore Evidence]\n${selected.map((c) => c.text).join("\n")}`;
+  const text = `[ThreadClaw Evidence]\n${selected.map((c) => c.text).join("\n")}`;
 
   return {
     text,

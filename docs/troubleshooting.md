@@ -5,23 +5,23 @@
 Before debugging manually, run the diagnostic tool:
 
 ```bash
-clawcore doctor
+threadclaw doctor
 ```
 
 This checks versions, data integrity, OpenClaw integration, services, skills, and compatibility in one pass. It will tell you exactly what's wrong and how to fix it.
 
 Other useful commands:
-- `clawcore doctor --json` — machine-readable output
-- `clawcore integrate --check` — check OpenClaw integration only
-- `clawcore upgrade` — fix version/migration issues
+- `threadclaw doctor --json` — machine-readable output
+- `threadclaw integrate --check` — check OpenClaw integration only
+- `threadclaw upgrade` — fix version/migration issues
 
 ## Database Issues
 
 ### "database is locked"
 **Cause**: Multiple processes writing to the same SQLite file simultaneously.
-**Fix**: ClawCore uses WAL mode with `busy_timeout=5000ms`. If still occurring:
-- Ensure only one ClawCore process runs per database
-- Check for zombie processes: `ps aux | grep clawcore`
+**Fix**: ThreadClaw uses WAL mode with `busy_timeout=5000ms`. If still occurring:
+- Ensure only one ThreadClaw process runs per database
+- Check for zombie processes: `ps aux | grep threadclaw`
 - The evidence graph DB supports concurrent reads via WAL mode
 
 ### "no such table" errors
@@ -34,11 +34,11 @@ Other useful commands:
 **Fix**:
 ```bash
 # Memory engine
-rm ~/.clawcore/data/memory.db
+rm ~/.threadclaw/data/memory.db
 # Evidence graph
-rm ~/.clawcore/data/graph.db
+rm ~/.threadclaw/data/graph.db
 # Document store
-rm ~/.clawcore/data/clawcore.db
+rm ~/.threadclaw/data/threadclaw.db
 ```
 All databases rebuild automatically on next startup.
 
@@ -46,40 +46,40 @@ All databases rebuild automatically on next startup.
 
 ### Awareness notes not appearing
 **Check**:
-1. `CLAWCORE_MEMORY_RELATIONS_ENABLED=true`
-2. `CLAWCORE_MEMORY_RELATIONS_AWARENESS_ENABLED=true`
+1. `THREADCLAW_MEMORY_RELATIONS_ENABLED=true`
+2. `THREADCLAW_MEMORY_RELATIONS_AWARENESS_ENABLED=true`
 3. Entities must have `mention_count >= RELATIONS_MIN_MENTIONS` (default: 2)
 4. Entity cache rebuilds every 30 seconds — new entities may take up to 30s to appear
 
 ### Claims not being extracted
 **Check**:
-1. `CLAWCORE_MEMORY_RELATIONS_CLAIM_EXTRACTION_ENABLED=true`
+1. `THREADCLAW_MEMORY_RELATIONS_CLAIM_EXTRACTION_ENABLED=true`
 2. Claims are extracted from every message (ingest-time, no compaction required)
 3. In **fast** extraction mode, only structured signals are detected: "Remember:", heading+bullets, YAML frontmatter, tool results
 4. In **smart** extraction mode, natural language claims are also detected (e.g. "The API runs on port 8080")
-5. Check extraction mode: `CLAWCORE_MEMORY_RELATIONS_EXTRACTION_MODE` (default: smart)
+5. Check extraction mode: `THREADCLAW_MEMORY_RELATIONS_EXTRACTION_MODE` (default: smart)
 
 ### Anti-runbooks not decaying
 Decay is applied **lazily** — only when anti-runbooks are queried (via `cc_procedures` tool or context compiler). Decay won't happen until something reads the data.
 
 ### Smart extraction not working (falling back to fast mode)
 **Check**:
-1. `CLAWCORE_MEMORY_RELATIONS_DEEP_EXTRACTION_ENABLED=true` (smart mode requires this)
-2. `CLAWCORE_MEMORY_RELATIONS_DEEP_EXTRACTION_MODEL` is set to a valid model
-3. `CLAWCORE_MEMORY_RELATIONS_DEEP_EXTRACTION_PROVIDER` is set (anthropic, openai, etc.)
-4. `CLAWCORE_MEMORY_RELATIONS_EXTRACTION_MODE` is not set to `fast`
+1. `THREADCLAW_MEMORY_RELATIONS_DEEP_EXTRACTION_ENABLED=true` (smart mode requires this)
+2. `THREADCLAW_MEMORY_RELATIONS_DEEP_EXTRACTION_MODEL` is set to a valid model
+3. `THREADCLAW_MEMORY_RELATIONS_DEEP_EXTRACTION_PROVIDER` is set (anthropic, openai, etc.)
+4. `THREADCLAW_MEMORY_RELATIONS_EXTRACTION_MODE` is not set to `fast`
 
 Smart extraction uses the same model as deep extraction — no extra model to configure. If the LLM call fails, it falls back to fast (regex) extraction silently.
 
 ### Extraction mode defaults
 - If `EXTRACTION_MODE` is not set and deep extraction is enabled: **smart** mode is used
 - If `EXTRACTION_MODE` is not set and deep extraction is disabled: **smart** is still the default in config, but since `useLlm` requires deep extraction to be enabled, it will use regex extraction in practice
-- To force regex-only: set `CLAWCORE_MEMORY_RELATIONS_EXTRACTION_MODE=fast`
+- To force regex-only: set `THREADCLAW_MEMORY_RELATIONS_EXTRACTION_MODE=fast`
 
 ## Search Issues
 
 ### Zero results
-- Check collection exists: `clawcore collections list`
+- Check collection exists: `threadclaw collections list`
 - Check embedding server is running: `curl http://127.0.0.1:8012/health`
 - Try broader query terms
 
@@ -117,15 +117,15 @@ The TUI provides 3 reset options: KB only, KB + Evidence, and Full wipe.
 ### Via file deletion
 ```bash
 # Disable evidence OS features (keeps core working)
-CLAWCORE_MEMORY_RELATIONS_ENABLED=false
+THREADCLAW_MEMORY_RELATIONS_ENABLED=false
 
 # Delete evidence data only
-rm ~/.clawcore/data/graph.db
+rm ~/.threadclaw/data/graph.db
 
 # Full reset
-rm ~/.clawcore/data/memory.db
-rm ~/.clawcore/data/graph.db
-rm ~/.clawcore/data/clawcore.db
+rm ~/.threadclaw/data/memory.db
+rm ~/.threadclaw/data/graph.db
+rm ~/.threadclaw/data/threadclaw.db
 ```
 
 All databases rebuild automatically on next startup.
@@ -133,16 +133,16 @@ All databases rebuild automatically on next startup.
 ## OpenClaw Integration Issues
 
 ### "plugins.allow is empty; discovered non-bundled plugins may auto-load"
-**Cause**: OpenClaw doesn't have `clawcore-memory` in its trusted plugin list.
-**Fix**: Run `clawcore integrate --apply` to set `plugins.allow` automatically.
+**Cause**: OpenClaw doesn't have `threadclaw-memory` in its trusted plugin list.
+**Fix**: Run `threadclaw integrate --apply` to set `plugins.allow` automatically.
 
 ### Evidence tools not showing up (cc_memory, cc_claims, etc.)
 **Cause**: The graph database isn't at the expected path, so `graphDb` is null and evidence tools don't register.
 **Fix**:
-1. Run `clawcore doctor` to check data paths
-2. Run `clawcore upgrade` to consolidate data to `~/.clawcore/data/`
+1. Run `threadclaw doctor` to check data paths
+2. Run `threadclaw upgrade` to consolidate data to `~/.threadclaw/data/`
 3. Restart OpenClaw services
 
 ### Integration drift after OpenClaw update
 **Cause**: OpenClaw update reset plugin configuration.
-**Fix**: Run `clawcore integrate --check` to see what drifted, then `clawcore integrate --apply` to fix.
+**Fix**: Run `threadclaw integrate --check` to see what drifted, then `threadclaw integrate --apply` to fix.

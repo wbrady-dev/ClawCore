@@ -2,13 +2,13 @@
 
 ## General
 
-**Q: Does ClawCore require an internet connection?**
+**Q: Does ThreadClaw require an internet connection?**
 A: No. All models can run locally. Cloud providers are optional for embeddings, reranking, and deep extraction.
 
-**Q: What databases does ClawCore use?**
+**Q: What databases does ThreadClaw use?**
 A: SQLite (3 separate files). Document store uses `better-sqlite3` with `sqlite-vec`. Memory engine uses `node:sqlite` (Node 22+ built-in). Evidence graph is shared between both via WAL mode. The evidence graph's core tables are `memory_objects` (unified knowledge store) and `provenance_links` (cross-object relationships).
 
-**Q: How much disk space does ClawCore need?**
+**Q: How much disk space does ThreadClaw need?**
 A: Models: 2-12 GB (depends on tier). Data: grows with usage. Typical: 50-500 MB for moderate use.
 
 ## Evidence OS
@@ -47,7 +47,7 @@ A: Deep extraction runs when enabled via config, not on every message. Smart ext
 
 ## Cost
 
-**Q: Does ClawCore make API calls?**
+**Q: Does ThreadClaw make API calls?**
 A: In fast extraction mode, zero API calls (all regex/pattern-based). Smart extraction mode and deep extraction optionally use LLM calls, gated by config. Input is truncated to 4000 chars, output capped at 1000 tokens.
 
 **Q: What's the token overhead per turn?**

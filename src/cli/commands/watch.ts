@@ -1,7 +1,7 @@
 import { Command } from "commander";
 import { resolve } from "path";
 import { existsSync } from "fs";
-import { ClawCoreWatcher } from "../../watcher/index.js";
+import { ThreadClawWatcher } from "../../watcher/index.js";
 
 export const watchCommand = new Command("watch")
   .description("Watch directories for changes and auto-ingest")
@@ -40,7 +40,7 @@ export const watchCommand = new Command("watch")
       console.log("Press Ctrl+C to stop.");
       console.log("");
 
-      const watcher = new ClawCoreWatcher([
+      const watcher = new ThreadClawWatcher([
         {
           paths: resolvedPaths,
           collection: opts.collection,

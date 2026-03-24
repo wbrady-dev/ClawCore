@@ -6,11 +6,11 @@ cd "$SCRIPT_DIR"
 
 echo ""
 echo "  ========================================"
-echo "   ClawCore - Guided Uninstaller"
+echo "   ThreadClaw - Guided Uninstaller"
 echo "  ========================================"
 echo ""
 echo "  This script launches the current guided"
-echo "  ClawCore uninstaller from this checkout."
+echo "  ThreadClaw uninstaller from this checkout."
 echo ""
 
 if ! command -v node >/dev/null 2>&1; then
@@ -18,10 +18,10 @@ if ! command -v node >/dev/null 2>&1; then
   exit 1
 fi
 
-if [ ! -d "$SCRIPT_DIR/node_modules" ] && [ ! -f "$SCRIPT_DIR/dist/cli/clawcore.js" ]; then
-  echo "[ERROR] ClawCore runtime files are missing."
+if [ ! -d "$SCRIPT_DIR/node_modules" ] && [ ! -f "$SCRIPT_DIR/dist/cli/threadclaw.js" ]; then
+  echo "[ERROR] ThreadClaw runtime files are missing."
   echo "        Reinstall local dependencies or use manual cleanup."
   exit 1
 fi
 
-exec node "$SCRIPT_DIR/bin/clawcore.mjs" uninstall "$@"
+exec node "$SCRIPT_DIR/bin/threadclaw.mjs" uninstall "$@"

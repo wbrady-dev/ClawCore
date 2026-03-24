@@ -61,7 +61,7 @@ function buildSystemPromptAddition(summarySignals: SummaryPromptSignal[]): strin
     "",
     "Summaries above are compressed context — maps to details, not the details themselves.",
     "",
-    "**Recall priority:** ClawCore memory tools first, then qmd (for Granola/Limitless/pre-ClawCore data), then memory_search as last resort.",
+    "**Recall priority:** ThreadClaw memory tools first, then qmd (for Granola/Limitless/pre-ThreadClaw data), then memory_search as last resort.",
     "",
     "**Tool escalation:**",
     "1. `cc_grep` — search by regex or full-text across messages and summaries",

@@ -19,7 +19,7 @@ export const deleteCommand = new Command("delete")
       allCollection?: string;
     }) => {
       try {
-        const dbPath = resolve(config.dataDir, "clawcore.db");
+        const dbPath = resolve(config.dataDir, "threadclaw.db");
         const db = getDb(dbPath);
         runMigrations(db);
 

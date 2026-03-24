@@ -1,6 +1,6 @@
 @echo off
 setlocal enabledelayedexpansion
-title ClawCore - Build Distribution
+title ThreadClaw - Build Distribution
 
 set "SCRIPT_DIR=%~dp0"
 if "%SCRIPT_DIR:~-1%"=="\" set "SCRIPT_DIR=%SCRIPT_DIR:~0,-1%"
@@ -10,7 +10,7 @@ cd /d "%ROOT%"
 
 echo.
 echo  ========================================
-echo   ClawCore - Distribution Builder
+echo   ThreadClaw - Distribution Builder
 echo  ========================================
 echo.
 
@@ -52,7 +52,7 @@ if not exist "%ROOT%\memory-engine\node_modules\@sinclair\typebox" (
 echo [OK] node_modules verified
 
 :: ── Step 4: Create distribution directory ──
-set "DIST_NAME=ClawCore-%VERSION%-win-x64"
+set "DIST_NAME=ThreadClaw-%VERSION%-win-x64"
 set "DIST_DIR=%ROOT%\build\%DIST_NAME%"
 
 if exist "%ROOT%\build" rmdir /s /q "%ROOT%\build"

@@ -639,7 +639,7 @@ export async function configureOneDrive(): Promise<void> {
       console.log("");
       console.log(t.label("  Azure AD app setup:\n"));
       console.log(t.dim("  1. Go to portal.azure.com > App registrations > New registration"));
-      console.log(t.dim("  2. Name: ClawCore, Accounts: Personal + org"));
+      console.log(t.dim("  2. Name: ThreadClaw, Accounts: Personal + org"));
       console.log(t.dim("  3. Redirect URI: Web → http://localhost:18802/oauth2callback"));
       console.log(t.dim("  4. Certificates & secrets > New client secret"));
       console.log(t.dim("  5. API permissions > Add > Microsoft Graph > Files.Read.All\n"));
@@ -1000,7 +1000,7 @@ async function promptNotesFolder(): Promise<string | null> {
   return `${folderName}|${coll}`;
 }
 
-/** Notify the running ClawCore server to reload source config */
+/** Notify the running ThreadClaw server to reload source config */
 async function triggerReload(): Promise<void> {
   try {
     const res = await fetch(`${getApiBaseUrl()}/sources/reload`, {
@@ -1013,7 +1013,7 @@ async function triggerReload(): Promise<void> {
       console.log(t.dim("  Changes saved changes."));
     }
   } catch {
-    console.log(t.dim("  ClawCore not running. Changes will apply on next start."));
+    console.log(t.dim("  ThreadClaw not running. Changes will apply on next start."));
   }
 }
 

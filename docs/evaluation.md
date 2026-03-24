@@ -25,7 +25,7 @@ const stats = getAwarenessStats(86_400_000); // 24-hour window
 
 ### HTTP Endpoint
 
-`GET /analytics/awareness` (when running in-process with ClawCore HTTP server).
+`GET /analytics/awareness` (when running in-process with ThreadClaw HTTP server).
 
 ## Performance Targets
 

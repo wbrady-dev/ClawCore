@@ -12,7 +12,7 @@ import {
 let _db: ReturnType<typeof getDb> | null = null;
 function db() {
   if (!_db) {
-    _db = getDb(resolve(config.dataDir, "clawcore.db"));
+    _db = getDb(resolve(config.dataDir, "threadclaw.db"));
     runMigrations(_db);
   }
   return _db;

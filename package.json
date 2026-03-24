@@ -1,24 +1,24 @@
 {
-  "name": "clawcore",
+  "name": "threadclaw",
   "version": "0.3.0",
   "description": "RSMA (Reconciled Semantic Memory Architecture) — Retrieval, Knowledge Graphs, Awareness, Evidence State, and Context Compilation for OpenClaw",
   "type": "module",
   "scripts": {
     "build": "tsup",
     "dev": "tsx src/index.ts",
-    "cli": "tsx src/cli/clawcore.ts",
+    "cli": "tsx src/cli/threadclaw.ts",
     "typecheck": "tsc --noEmit",
     "test": "cd memory-engine && npx vitest run && cd .. && npx vitest run --config vitest.config.ts",
     "test:src": "npx vitest run --config vitest.config.ts",
     "test:tui": "npx tsc --outDir .tui-test-build --module nodenext --moduleResolution nodenext --target es2022 --skipLibCheck --allowImportingTsExtensions true --rewriteRelativeImportExtensions true test/tui/run.ts && node .tui-test-build/test/tui/run.js",
     "test:stress": "cd memory-engine && npx vitest run test/rsma-stress.test.ts",
-    "smoke": "node bin/clawcore.mjs --version",
+    "smoke": "node bin/threadclaw.mjs --version",
     "lint": "eslint src/",
     "format": "prettier --write src/",
     "format:check": "prettier --check src/"
   },
   "bin": {
-    "clawcore": "./bin/clawcore.mjs"
+    "threadclaw": "./bin/threadclaw.mjs"
   },
   "author": "Wesley Brady",
   "contributors": [

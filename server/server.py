@@ -1,5 +1,5 @@
 """
-ClawCore Model Server
+ThreadClaw Model Server
 Serves embedding, reranking, NER, and document parsing via sentence-transformers + Docling.
 Reads model config from config.json (written by installer).
 
@@ -590,7 +590,7 @@ def shutdown():
 if __name__ == "__main__":
     load_models()
     host = os.environ.get("MODEL_SERVER_HOST", "127.0.0.1")
-    logger.info(f"ClawCore Model Server starting on {host}:{PORT}")
+    logger.info(f"ThreadClaw Model Server starting on {host}:{PORT}")
 
     # Use Waitress (production WSGI server) if available, else fall back to Flask dev server.
     # threads=1: GPU inference is not thread-safe; Waitress queues requests naturally.

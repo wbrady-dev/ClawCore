@@ -646,8 +646,8 @@ function messageIdentity(role: string, content: string): string {
 
 export class LcmContextEngine implements ContextEngine {
   readonly info: ContextEngineInfo = {
-    id: "clawcore-memory",
-    name: "ClawCore Memory Engine",
+    id: "threadclaw-memory",
+    name: "ThreadClaw Memory Engine",
     version: "0.3.0",
     ownsCompaction: true,
   };
@@ -715,7 +715,7 @@ export class LcmContextEngine implements ContextEngine {
     };
     // Initialize relations/evidence graph DB if enabled
     if (!this.config.relationsEnabled) {
-      this.deps.log.info("[cc-mem] Relations/RSMA extraction disabled. Set CLAWCORE_MEMORY_RELATIONS_ENABLED=true to enable.");
+      this.deps.log.info("[cc-mem] Relations/RSMA extraction disabled. Set THREADCLAW_MEMORY_RELATIONS_ENABLED=true to enable.");
     }
     if (this.config.relationsEnabled) {
       try {
@@ -922,14 +922,14 @@ export class LcmContextEngine implements ContextEngine {
     }
   }
 
-  /** Persist intercepted large-file text payloads to ~/.openclaw/clawcore-files. */
+  /** Persist intercepted large-file text payloads to ~/.openclaw/threadclaw-files. */
   private async storeLargeFileContent(params: {
     conversationId: number;
     fileId: string;
     extension: string;
     content: string;
   }): Promise<string> {
-    const dir = join(homedir(), ".openclaw", "clawcore-files", String(params.conversationId));
+    const dir = join(homedir(), ".openclaw", "threadclaw-files", String(params.conversationId));
     await mkdir(dir, { recursive: true });
 
     const normalizedExtension = params.extension.replace(/[^a-z0-9]/gi, "").toLowerCase() || "txt";
@@ -1348,7 +1348,7 @@ export class LcmContextEngine implements ContextEngine {
 
       // NER enhancement — non-blocking, uses spaCy model server if available
       try {
-        const nerUrl = `${process.env.CLAWCORE_MODEL_SERVER_URL ?? process.env.MODEL_SERVER_URL ?? "http://127.0.0.1:8012"}/ner`;
+        const nerUrl = `${process.env.THREADCLAW_MODEL_SERVER_URL ?? process.env.MODEL_SERVER_URL ?? "http://127.0.0.1:8012"}/ner`;
         const nerResp = await fetch(nerUrl, {
           method: "POST",
           headers: { "Content-Type": "application/json" },

@@ -2,7 +2,7 @@ import chalk from "chalk";
 import { getTerminalCapabilities } from "./capabilities.js";
 
 /**
- * ClawCore TUI theme.
+ * ThreadClaw TUI theme.
  * Falls back to ASCII-safe output when the terminal is limited.
  */
 export const t = {
@@ -31,7 +31,7 @@ export function banner(): string {
   if (!caps.unicode) {
     return [
       "",
-      r("  CLAWCORE"),
+      r("  THREADCLAW"),
       w("  Premium RAG for OpenClaw"),
       "",
     ].join("\n");
@@ -39,7 +39,7 @@ export function banner(): string {
 
   return [
     "",
-    `              ${r("🦞")} ${w("CLAWCORE")} ${r("🦞")}`,
+    `              ${r("🦞")} ${w("THREADCLAW")} ${r("🦞")}`,
     `          ${chalk.dim("RSMA So Good It Pinches")}`,
     "",
   ].join("\n");

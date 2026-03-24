@@ -13,16 +13,16 @@
 - Context DAG (summary hierarchy)
 - File metadata (names, sizes, not content)
 
-### Document Store (clawcore.db)
+### Document Store (threadclaw.db)
 - Ingested document chunks and embeddings
 - Metadata (titles, authors, tags)
 
 ## Data Location
 
 All data is stored locally:
-- **Default**: `~/.clawcore/data/` (configurable via `CLAWCORE_DATA_DIR`)
-- **Windows**: `%USERPROFILE%\.clawcore\data\`
-- **Unix/macOS**: `~/.clawcore/data/`
+- **Default**: `~/.threadclaw/data/` (configurable via `THREADCLAW_DATA_DIR`)
+- **Windows**: `%USERPROFILE%\.threadclaw\data\`
+- **Unix/macOS**: `~/.threadclaw/data/`
 
 No data leaves your machine unless:
 1. You enable cloud embedding models (OpenAI, Cohere, etc.)
@@ -36,7 +36,7 @@ No data leaves your machine unless:
 
 ## API Key Authentication
 
-When `CLAWCORE_API_KEY` is set, all endpoints except `/health` require `Authorization: Bearer <key>`. The comparison uses **timing-safe SHA-256 hash comparison** (`crypto.timingSafeEqual`) to prevent timing-based side-channel attacks. Both the expected and supplied tokens are hashed before comparison.
+When `THREADCLAW_API_KEY` is set, all endpoints except `/health` require `Authorization: Bearer <key>`. The comparison uses **timing-safe SHA-256 hash comparison** (`crypto.timingSafeEqual`) to prevent timing-based side-channel attacks. Both the expected and supplied tokens are hashed before comparison.
 
 ## Localhost Guards
 
@@ -82,13 +82,13 @@ All API routes have rate limiting applied via the Fastify rate-limit plugin, con
 
 ```bash
 # Delete all evidence data
-rm ~/.clawcore/data/graph.db
+rm ~/.threadclaw/data/graph.db
 
 # Delete conversation memory
-rm ~/.clawcore/data/memory.db
+rm ~/.threadclaw/data/memory.db
 
 # Delete document store
-rm ~/.clawcore/data/clawcore.db
+rm ~/.threadclaw/data/threadclaw.db
 ```
 
 Databases rebuild automatically on next startup with empty state.

@@ -35,9 +35,9 @@ const WHISPER_MODELS = [
 
 const GENERAL_FIELDS = [
   { key: "RERANKER_URL", label: "Model Server URL", fallback: "http://127.0.0.1:8012", message: "Base URL for the local or remote model server." },
-  { key: "CLAWCORE_PORT", label: "ClawCore API Port", fallback: "18800", message: "HTTP port for the ClawCore API." },
+  { key: "THREADCLAW_PORT", label: "ThreadClaw API Port", fallback: "18800", message: "HTTP port for the ThreadClaw API." },
   { key: "QUERY_EXPANSION_URL", label: "Expansion LLM URL", fallback: "http://127.0.0.1:1234/v1", message: "Chat endpoint used for query expansion." },
-  { key: "CLAWCORE_DATA_DIR", label: "Data Directory", fallback: "./data", message: "Where ingested data and databases live." },
+  { key: "THREADCLAW_DATA_DIR", label: "Data Directory", fallback: "./data", message: "Where ingested data and databases live." },
   { key: "DEFAULT_COLLECTION", label: "Default Collection", fallback: "default", message: "Collection used when none is provided." },
   { key: "QUERY_TOP_K", label: "Results Per Query", fallback: "10", message: "How many chunks to return before context compilation." },
   { key: "QUERY_TOKEN_BUDGET", label: "Token Budget", fallback: "4000", message: "Max token budget for response context." },
@@ -131,7 +131,7 @@ async function configureModel(type: "embed" | "rerank"): Promise<void> {
     });
     if (!confirmed) return;
 
-    const dbPath = resolve(getDataDir(root), "clawcore.db");
+    const dbPath = resolve(getDataDir(root), "threadclaw.db");
     if (existsSync(dbPath)) unlinkSync(dbPath);
 
     writeConfig({
@@ -230,7 +230,7 @@ async function configureCloudModel(
     });
     if (!confirmed) return;
 
-    const dbPath = resolve(getDataDir(root), "clawcore.db");
+    const dbPath = resolve(getDataDir(root), "threadclaw.db");
     if (existsSync(dbPath)) unlinkSync(dbPath);
 
     updateEnvValues(root, {
@@ -290,7 +290,7 @@ async function configureCustomModel(type: "embed" | "rerank", python: string): P
   try {
     let dimensions = 0;
     const trustArg = trustRemote ? "True" : "False";
-    const tmpScript = resolve(tmpdir(), `clawcore_check_${randomUUID()}.py`);
+    const tmpScript = resolve(tmpdir(), `threadclaw_check_${randomUUID()}.py`);
     try {
       if (type === "embed") {
         writeFileSync(tmpScript, `import sys; from sentence_transformers import SentenceTransformer; model = SentenceTransformer(sys.argv[1], trust_remote_code=${trustArg}); print(model.get_sentence_embedding_dimension())`);
@@ -312,7 +312,7 @@ async function configureCustomModel(type: "embed" | "rerank", python: string): P
       });
       if (!confirmed) return;
 
-      const dbPath = resolve(getDataDir(root), "clawcore.db");
+      const dbPath = resolve(getDataDir(root), "threadclaw.db");
       if (existsSync(dbPath)) unlinkSync(dbPath);
 
       writeConfig({
@@ -632,11 +632,11 @@ async function configureEvidence(): Promise<void> {
     title: "Evidence OS",
     message: "Toggle the relation, awareness, claim, attempt, and deep extraction features.",
     items: [
-      { key: "relations", label: "Entity Relations", checked: env.CLAWCORE_MEMORY_RELATIONS_ENABLED === "true", description: "Master switch for graph-aware memory." },
-      { key: "awareness", label: "Awareness Notes", checked: env.CLAWCORE_MEMORY_RELATIONS_AWARENESS_ENABLED === "true", description: "Inject short context notes into prompts." },
-      { key: "claims", label: "Claim Extraction", checked: env.CLAWCORE_MEMORY_RELATIONS_CLAIM_EXTRACTION_ENABLED === "true", description: "Extract factual claims from outputs." },
-      { key: "attempts", label: "Attempt Tracking", checked: env.CLAWCORE_MEMORY_RELATIONS_ATTEMPT_TRACKING_ENABLED === "true", description: "Track successful and failed tool attempts." },
-      { key: "deep", label: "Deep Extraction", checked: env.CLAWCORE_MEMORY_RELATIONS_DEEP_EXTRACTION_ENABLED === "true", description: "Use an LLM for richer graph extraction." },
+      { key: "relations", label: "Entity Relations", checked: env.THREADCLAW_MEMORY_RELATIONS_ENABLED === "true", description: "Master switch for graph-aware memory." },
+      { key: "awareness", label: "Awareness Notes", checked: env.THREADCLAW_MEMORY_RELATIONS_AWARENESS_ENABLED === "true", description: "Inject short context notes into prompts." },
+      { key: "claims", label: "Claim Extraction", checked: env.THREADCLAW_MEMORY_RELATIONS_CLAIM_EXTRACTION_ENABLED === "true", description: "Extract factual claims from outputs." },
+      { key: "attempts", label: "Attempt Tracking", checked: env.THREADCLAW_MEMORY_RELATIONS_ATTEMPT_TRACKING_ENABLED === "true", description: "Track successful and failed tool attempts." },
+      { key: "deep", label: "Deep Extraction", checked: env.THREADCLAW_MEMORY_RELATIONS_DEEP_EXTRACTION_ENABLED === "true", description: "Use an LLM for richer graph extraction." },
     ],
     confirmLabel: "Save features",
   });
@@ -646,12 +646,12 @@ async function configureEvidence(): Promise<void> {
   const selected = new Set(items.filter((item) => item.checked).map((item) => item.key));
   const relationsEnabled = selected.has("relations");
   updateEnvValues(root, {
-    CLAWCORE_MEMORY_RELATIONS_ENABLED: relationsEnabled ? "true" : "false",
-    CLAWCORE_RELATIONS_ENABLED: relationsEnabled ? "true" : "false",
-    CLAWCORE_MEMORY_RELATIONS_AWARENESS_ENABLED: relationsEnabled && selected.has("awareness") ? "true" : "false",
-    CLAWCORE_MEMORY_RELATIONS_CLAIM_EXTRACTION_ENABLED: relationsEnabled && selected.has("claims") ? "true" : "false",
-    CLAWCORE_MEMORY_RELATIONS_ATTEMPT_TRACKING_ENABLED: relationsEnabled && selected.has("attempts") ? "true" : "false",
-    CLAWCORE_MEMORY_RELATIONS_DEEP_EXTRACTION_ENABLED: relationsEnabled && selected.has("deep") ? "true" : "false",
+    THREADCLAW_MEMORY_RELATIONS_ENABLED: relationsEnabled ? "true" : "false",
+    THREADCLAW_RELATIONS_ENABLED: relationsEnabled ? "true" : "false",
+    THREADCLAW_MEMORY_RELATIONS_AWARENESS_ENABLED: relationsEnabled && selected.has("awareness") ? "true" : "false",
+    THREADCLAW_MEMORY_RELATIONS_CLAIM_EXTRACTION_ENABLED: relationsEnabled && selected.has("claims") ? "true" : "false",
+    THREADCLAW_MEMORY_RELATIONS_ATTEMPT_TRACKING_ENABLED: relationsEnabled && selected.has("attempts") ? "true" : "false",
+    THREADCLAW_MEMORY_RELATIONS_DEEP_EXTRACTION_ENABLED: relationsEnabled && selected.has("deep") ? "true" : "false",
   });
 
   if (relationsEnabled) {
@@ -666,7 +666,7 @@ async function configureEvidence(): Promise<void> {
       ],
     });
     if (tier && tier !== "__keep__") {
-      updateEnvValues(root, { CLAWCORE_MEMORY_RELATIONS_CONTEXT_TIER: tier });
+      updateEnvValues(root, { THREADCLAW_MEMORY_RELATIONS_CONTEXT_TIER: tier });
     }
 
     if (selected.has("deep")) {
@@ -674,7 +674,7 @@ async function configureEvidence(): Promise<void> {
         title: "Deep Extraction Provider",
         message: "Examples: ollama, lmstudio, openai, anthropic. Leave blank to use the summary/OpenClaw model.",
         label: "Provider",
-        initial: env.CLAWCORE_MEMORY_RELATIONS_DEEP_EXTRACTION_PROVIDER ?? "",
+        initial: env.THREADCLAW_MEMORY_RELATIONS_DEEP_EXTRACTION_PROVIDER ?? "",
         allowEmpty: true,
       });
       if (provider == null) return;
@@ -683,14 +683,14 @@ async function configureEvidence(): Promise<void> {
         title: "Deep Extraction Model",
         message: "Examples: llama3.1:8b, gpt-4o-mini, claude-sonnet-4-20250514.",
         label: "Model",
-        initial: env.CLAWCORE_MEMORY_RELATIONS_DEEP_EXTRACTION_MODEL ?? "",
+        initial: env.THREADCLAW_MEMORY_RELATIONS_DEEP_EXTRACTION_MODEL ?? "",
         allowEmpty: true,
       });
       if (model == null) return;
 
       updateEnvValues(root, {
-        CLAWCORE_MEMORY_RELATIONS_DEEP_EXTRACTION_PROVIDER: provider,
-        CLAWCORE_MEMORY_RELATIONS_DEEP_EXTRACTION_MODEL: model,
+        THREADCLAW_MEMORY_RELATIONS_DEEP_EXTRACTION_PROVIDER: provider,
+        THREADCLAW_MEMORY_RELATIONS_DEEP_EXTRACTION_MODEL: model,
       });
     }
   }
@@ -800,7 +800,7 @@ function discoverWatchCandidates(): Array<{ path: string; collection: string }> 
 
 async function warmModel(choice: ModelInfo, python: string, type: "embed" | "rerank"): Promise<void> {
   const spinner = ora(`Downloading ${choice.name}...`).start();
-  const dlScript = resolve(tmpdir(), `clawcore_dl_${randomUUID()}.py`);
+  const dlScript = resolve(tmpdir(), `threadclaw_dl_${randomUUID()}.py`);
   try {
     const trustPy = choice.trustRemoteCode ? ", trust_remote_code=True" : "";
     if (type === "embed") {

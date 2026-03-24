@@ -1,20 +1,20 @@
-# ClawCore — Stateful Evidence Engine
+# ThreadClaw — Stateful Evidence Engine
 
 **Persistent, evidence-backed memory for AI agents.**
 
 ![tests](https://img.shields.io/badge/tests-947%20passing-brightgreen)
-![build](https://img.shields.io/github/actions/workflow/status/wbrady-dev/ClawCore/ci.yml?branch=main&label=build)
+![build](https://img.shields.io/github/actions/workflow/status/wbrady-dev/ThreadClaw/ci.yml?branch=main&label=build)
 ![license](https://img.shields.io/badge/license-MIT-blue)
 ![node](https://img.shields.io/badge/node-22%2B-green)
 ![platform](https://img.shields.io/badge/platform-windows%20%7C%20linux%20%7C%20macos-lightgrey)
 
 ---
 
-**ClawCore** brings a knowledge and memory backbone to [OpenClaw](https://openclaw.ai), built on the **RSMA (Reconciled Semantic Memory Architecture)** — a multi-layer agent architecture that combines retrieval, summary lineage, knowledge graphs, awareness, evidence-backed state, delta tracking, attempt memory, branch governance, and low-token context compilation. It gives your AI agent persistent, inspectable, evidence-backed memory.
+**ThreadClaw** brings a knowledge and memory backbone to [OpenClaw](https://openclaw.ai), built on the **RSMA (Reconciled Semantic Memory Architecture)** — a multi-layer agent architecture that combines retrieval, summary lineage, knowledge graphs, awareness, evidence-backed state, delta tracking, attempt memory, branch governance, and low-token context compilation. It gives your AI agent persistent, inspectable, evidence-backed memory.
 
 ### Evidence OS
 
-ClawCore's Evidence OS extracts structured knowledge from conversations, documents, and tool results — then surfaces it at the right time via an ROI-governed context compiler.
+ThreadClaw's Evidence OS extracts structured knowledge from conversations, documents, and tool results — then surfaces it at the right time via an ROI-governed context compiler.
 
 - **Entity Awareness** — Extracts entities from text, detects mismatches across sources, surfaces contextual notes
 - **Claims & Decisions** — Tracks factual claims with evidence chains, manages decision history with automatic supersession
@@ -25,7 +25,7 @@ ClawCore's Evidence OS extracts structured knowledge from conversations, documen
 - **Runbooks & Anti-Runbooks** — Learns success patterns and failure patterns from tool history
 - **Branch Promotion** — Speculative memory with policy-validated promotion to shared scope
 - **Timeline & Snapshots** — Event timeline materialization and point-in-time state reconstruction
-- **Semantic Extraction** — Two modes: **Smart** (LLM-based, understands natural language without magic prefixes) and **Fast** (regex-only, no LLM, <5ms). Configurable via `CLAWCORE_MEMORY_RELATIONS_EXTRACTION_MODE=smart|fast`
+- **Semantic Extraction** — Two modes: **Smart** (LLM-based, understands natural language without magic prefixes) and **Fast** (regex-only, no LLM, <5ms). Configurable via `THREADCLAW_MEMORY_RELATIONS_EXTRACTION_MODE=smart|fast`
 - **Extraction Quality Filters** — Multi-layer junk rejection: code block stripping, LLM prompt rules, post-extraction filters (rejects message metadata, file paths, URLs, low-confidence noise, transient debugging context)
 - **Typed Structured Interfaces** — `StructuredClaim`, `StructuredDecision`, `StructuredLoop`, `StructuredEntity` — compile-time type safety prevents field-name mismatches between extraction and storage
 - **Unified Ontology** — `memory_objects` + `provenance_links` replace 15+ legacy tables. Single `MemoryObject` type with 13 kinds, unified CRUD via mo-store.ts (upsert with weighted confidence blending), 19 migrations (v1-v19) including full legacy data copy and table rename
@@ -91,16 +91,16 @@ ClawCore's Evidence OS extracts structured knowledge from conversations, documen
 ### Windows
 
 ```bash
-git clone https://github.com/wbrady-dev/ClawCore.git
-cd ClawCore
+git clone https://github.com/wbrady-dev/ThreadClaw.git
+cd ThreadClaw
 install.bat
 ```
 
 ### Linux / Mac
 
 ```bash
-git clone https://github.com/wbrady-dev/ClawCore.git
-cd ClawCore
+git clone https://github.com/wbrady-dev/ThreadClaw.git
+cd ThreadClaw
 chmod +x install.sh
 ./install.sh
 ```
@@ -118,7 +118,7 @@ The installer will:
 4. Detect and connect Obsidian vaults
 5. Optionally integrate with OpenClaw
 
-After install, run `clawcore` to launch the TUI.
+After install, run `threadclaw` to launch the TUI.
 
 ## Model Tiers
 
@@ -133,17 +133,17 @@ All models run locally. Cloud providers (OpenAI, Cohere, Voyage AI, Google) also
 
 ## Databases
 
-ClawCore uses three SQLite databases, each with a distinct purpose:
+ThreadClaw uses three SQLite databases, each with a distinct purpose:
 
 | Database | Path | Purpose |
 |----------|------|---------|
-| **clawcore.db** | `~/.clawcore/data/clawcore.db` | RAG knowledge base: documents, chunks, vectors, metadata |
-| **graph.db** | `~/.clawcore/data/graph.db` | Evidence OS: claims, decisions, loops, entities, relations, provenance |
-| **memory.db** | `~/.clawcore/data/memory.db` | Conversation memory: messages, summaries, context items |
+| **threadclaw.db** | `~/.threadclaw/data/threadclaw.db` | RAG knowledge base: documents, chunks, vectors, metadata |
+| **graph.db** | `~/.threadclaw/data/graph.db` | Evidence OS: claims, decisions, loops, entities, relations, provenance |
+| **memory.db** | `~/.threadclaw/data/memory.db` | Conversation memory: messages, summaries, context items |
 
 ### Reset Options (TUI)
 
-| Option | clawcore.db | graph.db | memory.db |
+| Option | threadclaw.db | graph.db | memory.db |
 |--------|:-----------:|:--------:|:---------:|
 | **Reset KB only** | Cleared | Preserved | Preserved |
 | **Reset KB + Evidence OS** | Cleared | Cleared | Preserved |
@@ -157,31 +157,31 @@ The Full Wipe requires typing "DELETE EVERYTHING" to confirm and shows a detaile
 
 ```bash
 # Search
-clawcore query "what is VLSM?" --collection networking --brief
+threadclaw query "what is VLSM?" --collection networking --brief
 
 # Ingest a file
-clawcore ingest ./research-paper.pdf --collection research
+threadclaw ingest ./research-paper.pdf --collection research
 
 # Ingest a folder recursively
-clawcore ingest ./documents/ -r --collection docs
+threadclaw ingest ./documents/ -r --collection docs
 
 # Simple search (no reranking, faster)
-clawcore search "subnet mask" --collection networking
+threadclaw search "subnet mask" --collection networking
 
 # List collections
-clawcore collections list
+threadclaw collections list
 
 # System health check
-clawcore doctor
+threadclaw doctor
 
 # System status
-clawcore status
+threadclaw status
 
 # Start model + API servers
-clawcore serve
+threadclaw serve
 
 # Launch interactive TUI
-clawcore
+threadclaw
 ```
 
 ### Output Modes
@@ -207,15 +207,15 @@ Configure from `Sources` in the TUI. All indexing runs locally. Cloud adapters d
 
 ## OpenClaw Integration
 
-ClawCore integrates with OpenClaw as both a **knowledge skill** and **memory engine**:
+ThreadClaw integrates with OpenClaw as both a **knowledge skill** and **memory engine**:
 
-1. **Knowledge Engine** — agents search your documents via `clawcore query`
+1. **Knowledge Engine** — agents search your documents via `threadclaw query`
 2. **Memory Engine** — DAG-based conversation context (replaces built-in memory-core)
 
 The installer handles this automatically, or run manually:
 
 ```bash
-python server/integrate_openclaw.py ~/.openclaw ./clawcore nvidia/llama-nv-embed-reasoning-3b
+python server/integrate_openclaw.py ~/.openclaw ./threadclaw nvidia/llama-nv-embed-reasoning-3b
 ```
 
 ## HTTP API
@@ -245,18 +245,18 @@ POST /sources/reload        — Hot-reload source configuration (localhost only)
 POST /shutdown              — Graceful shutdown: flushes tokens, stops sources, closes DB (localhost only)
 ```
 
-Default port: 18800 (localhost only; set `CLAWCORE_HOST=0.0.0.0` to expose).
+Default port: 18800 (localhost only; set `THREADCLAW_HOST=0.0.0.0` to expose).
 
 Rate limited: 300 requests/minute per IP (configurable via `RATE_LIMIT_MAX`).
 
-Authentication: set `CLAWCORE_API_KEY` to require `Authorization: Bearer <key>` on all endpoints (timing-safe comparison).
+Authentication: set `THREADCLAW_API_KEY` to require `Authorization: Bearer <key>` on all endpoints (timing-safe comparison).
 
 ## Architecture
 
 ```
-                    ClawCore (Node.js :18800)
+                    ThreadClaw (Node.js :18800)
                     +-------------------------------+
-  clawcore query -> |  Query Pipeline               |
+  threadclaw query -> |  Query Pipeline               |
   HTTP POST      -> |  cache -> expand ->           |
   MCP tool       -> |  embed -> search ->           |
                     |  dedup -> gate -> rerank ->   |
@@ -266,7 +266,7 @@ Authentication: set `CLAWCORE_API_KEY` to require `Authorization: Bearer <key>` 
                                     |
                     +---------------+---------------+
                     |  3 SQLite Databases            |
-                    |  clawcore.db: vectors + FTS5   |
+                    |  threadclaw.db: vectors + FTS5   |
                     |  graph.db: Evidence OS         |
                     |  memory.db: conversations      |
                     +---------------+---------------+
@@ -331,7 +331,7 @@ cd memory-engine && npm test # 858 memory-engine tests
 ## Credits
 
 - **Memory Engine** based on [lossless-claw](https://github.com/nicobailon/lossless-claw) by [Martian Engineering](https://github.com/nicobailon) / [Voltropy](https://x.com/Voltropy) (MIT License). DAG-based lossless conversation memory with incremental compaction.
-- **ClawCore** created by Wesley Brady for [OpenClaw](https://openclaw.ai).
+- **ThreadClaw** created by Wesley Brady for [OpenClaw](https://openclaw.ai).
 
 ## License
 

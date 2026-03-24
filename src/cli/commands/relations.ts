@@ -21,7 +21,7 @@ relationsCommand
     const start = Date.now();
     console.log("Relations backfill: extracting entities from existing chunks...");
 
-    const db = getDb(config.dataDir + "/clawcore.db");
+    const db = getDb(config.dataDir + "/threadclaw.db");
     const graphDb = getGraphDb(config.relations.graphDbPath);
 
 
@@ -119,7 +119,7 @@ relationsCommand
   .action(async (opts: { claimDays: string; decisionDays: string; eventDays: string; dryRun?: boolean }) => {
     const graphDb = getGraphDb(config.relations.graphDbPath);
 
-    const archivePath = resolve(homedir(), ".clawcore", "data", "archive.db");
+    const archivePath = resolve(homedir(), ".threadclaw", "data", "archive.db");
 
     if (opts.dryRun) {
       const claimDays = parseInt(opts.claimDays, 10);
@@ -160,7 +160,7 @@ relationsCommand
         "console.log(JSON.stringify({ result: r, stats: s }));",
         "db.close();",
       ].join("\n");
-      const tmpScript = joinTmp(tmpdir(), `clawcore-archive-${Date.now()}.mts`);
+      const tmpScript = joinTmp(tmpdir(), `threadclaw-archive-${Date.now()}.mts`);
       writeTmp(tmpScript, script);
       try {
         const out = execFileSync(process.platform === "win32" ? "npx.cmd" : "npx", ["tsx", tmpScript], {
@@ -191,10 +191,10 @@ relationsCommand
   .command("archive-status")
   .description("Show archive run history and cold storage stats")
   .action(async () => {
-    const archivePath = resolve(homedir(), ".clawcore", "data", "archive.db");
+    const archivePath = resolve(homedir(), ".threadclaw", "data", "archive.db");
     const { existsSync: exists } = await import("fs");
     if (!exists(archivePath)) {
-      console.log("No archive DB found. Run 'clawcore relations archive' first.");
+      console.log("No archive DB found. Run 'threadclaw relations archive' first.");
       return;
     }
 
@@ -217,7 +217,7 @@ relationsCommand
       "  runs,",
       "}));",
     ].join("\n");
-    const tmpScript = joinTmp(tmpdir(), `clawcore-archive-status-${Date.now()}.mts`);
+    const tmpScript = joinTmp(tmpdir(), `threadclaw-archive-status-${Date.now()}.mts`);
     writeTmp(tmpScript, script);
 
     try {

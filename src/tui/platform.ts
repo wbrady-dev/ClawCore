@@ -11,12 +11,12 @@ export type Platform = "windows" | "linux" | "mac";
 
 /* ── Port & URL constants ─────────────────────────────────────────── */
 
-/** Default ports — override via CLAWCORE_PORT / RERANKER_URL in .env */
+/** Default ports — override via THREADCLAW_PORT / RERANKER_URL in .env */
 export const DEFAULT_API_PORT = 18800;
 export const DEFAULT_MODEL_PORT = 8012;
 
 export function getApiPort(): number {
-  return parseInt(process.env.CLAWCORE_PORT ?? String(DEFAULT_API_PORT), 10);
+  return parseInt(process.env.THREADCLAW_PORT ?? String(DEFAULT_API_PORT), 10);
 }
 
 export function getModelPort(): number {
@@ -38,8 +38,8 @@ export function getModelBaseUrl(): string {
 
 /* ── End port constants ───────────────────────────────────────────── */
 
-let rootDirOverride = process.env.CLAWCORE_ROOT
-  ? resolve(process.env.CLAWCORE_ROOT)
+let rootDirOverride = process.env.THREADCLAW_ROOT
+  ? resolve(process.env.THREADCLAW_ROOT)
   : null;
 
 export function getPlatform(): Platform {
@@ -56,8 +56,8 @@ export function getRootDir(): string {
 
 export function setRootDirOverride(root: string | null): void {
   rootDirOverride = root ? resolve(root) : null;
-  if (rootDirOverride) process.env.CLAWCORE_ROOT = rootDirOverride;
-  else delete process.env.CLAWCORE_ROOT;
+  if (rootDirOverride) process.env.THREADCLAW_ROOT = rootDirOverride;
+  else delete process.env.THREADCLAW_ROOT;
 }
 
 export function getDataDir(root = getRootDir()): string {
@@ -141,7 +141,7 @@ export function findOpenClaw(): string | null {
 // Config Management
 // ========================================
 
-export interface ClawCoreConfig {
+export interface ThreadClawConfig {
   embed_model: string;
   rerank_model: string;
   trust_remote_code: boolean;
@@ -164,7 +164,7 @@ export function getConfigPath(root = getRootDir()): string {
   return resolve(root, "server", "config.json");
 }
 
-export function readConfig(root = getRootDir()): ClawCoreConfig | null {
+export function readConfig(root = getRootDir()): ThreadClawConfig | null {
   for (const configPath of getConfigCandidates(root)) {
     if (existsSync(configPath)) {
       try {
@@ -175,7 +175,7 @@ export function readConfig(root = getRootDir()): ClawCoreConfig | null {
   return null;
 }
 
-export function writeConfig(config: ClawCoreConfig, root = getRootDir()): void {
+export function writeConfig(config: ThreadClawConfig, root = getRootDir()): void {
   const configPath = getConfigPath(root);
   mkdirSync(dirname(configPath), { recursive: true });
   writeFileSync(configPath, JSON.stringify(config, null, 2) + "\n");
@@ -187,13 +187,13 @@ export function writeConfig(config: ClawCoreConfig, root = getRootDir()): void {
 
 export interface ServiceStatus {
   models: { running: boolean; pid?: number };
-  clawcore: { running: boolean; pid?: number };
+  threadclaw: { running: boolean; pid?: number };
 }
 
 // ── Windows Task Scheduler helpers (uses schtasks.exe — instant, no PowerShell) ──
 
-const TASK_MODELS = "ClawCore_Models";
-const TASK_RAG = "ClawCore_RAG";
+const TASK_MODELS = "ThreadClaw_Models";
+const TASK_RAG = "ThreadClaw_RAG";
 
 /** Run schtasks.exe and return stdout. */
 function schtasks(...args: string[]): string {
@@ -328,7 +328,7 @@ function ensureWindowsTasks(root: string): { success: boolean; error?: string } 
 export function checkServices(): ServiceStatus {
   const result: ServiceStatus = {
     models: { running: false },
-    clawcore: { running: false },
+    threadclaw: { running: false },
   };
 
   const plat = getPlatform();
@@ -336,17 +336,17 @@ export function checkServices(): ServiceStatus {
   if (plat === "windows") {
     // Check via Task Scheduler
     result.models.running = isTaskRunning(TASK_MODELS);
-    result.clawcore.running = isTaskRunning(TASK_RAG);
+    result.threadclaw.running = isTaskRunning(TASK_RAG);
   } else {
     // Check systemd services (Linux)
     if (plat === "linux") {
       try {
-        const out = execFileSync("systemctl", ["--user", "is-active", "clawcore-models"], { stdio: "pipe", timeout: 5000 }).toString().trim();
+        const out = execFileSync("systemctl", ["--user", "is-active", "threadclaw-models"], { stdio: "pipe", timeout: 5000 }).toString().trim();
         if (out === "active") result.models.running = true;
       } catch {}
       try {
-        const out = execFileSync("systemctl", ["--user", "is-active", "clawcore-rag"], { stdio: "pipe", timeout: 5000 }).toString().trim();
-        if (out === "active") result.clawcore.running = true;
+        const out = execFileSync("systemctl", ["--user", "is-active", "threadclaw-rag"], { stdio: "pipe", timeout: 5000 }).toString().trim();
+        if (out === "active") result.threadclaw.running = true;
       } catch {}
     }
 
@@ -354,8 +354,8 @@ export function checkServices(): ServiceStatus {
     if (plat === "mac") {
       try {
         const out = execFileSync("launchctl", ["list"], { stdio: "pipe", timeout: 5000 }).toString();
-        if (out.includes("com.clawcore.models")) result.models.running = true;
-        if (out.includes("com.clawcore.rag")) result.clawcore.running = true;
+        if (out.includes("com.threadclaw.models")) result.models.running = true;
+        if (out.includes("com.threadclaw.rag")) result.threadclaw.running = true;
       } catch {}
     }
 
@@ -371,12 +371,12 @@ export function checkServices(): ServiceStatus {
         }
       } catch {}
     }
-    if (!result.clawcore.running) {
+    if (!result.threadclaw.running) {
       try {
-        if (existsSync(resolve(root, ".clawcore.pid"))) {
-          const pid = parseInt(readFileSync(resolve(root, ".clawcore.pid"), "utf-8").trim(), 10);
+        if (existsSync(resolve(root, ".threadclaw.pid"))) {
+          const pid = parseInt(readFileSync(resolve(root, ".threadclaw.pid"), "utf-8").trim(), 10);
           if (Number.isFinite(pid) && pid > 0) {
-            try { process.kill(pid, 0); result.clawcore = { running: true, pid }; } catch {}
+            try { process.kill(pid, 0); result.threadclaw = { running: true, pid }; } catch {}
           }
         }
       } catch {}
@@ -387,8 +387,8 @@ export function checkServices(): ServiceStatus {
   if (!result.models.running) {
     result.models.running = isPortOpen(getModelPort());
   }
-  if (!result.clawcore.running) {
-    result.clawcore.running = isPortOpen(getApiPort());
+  if (!result.threadclaw.running) {
+    result.threadclaw.running = isPortOpen(getApiPort());
   }
 
   return result;
@@ -410,7 +410,7 @@ function isPortOpen(port: number): boolean {
 }
 
 /**
- * Find ClawCore API entry point — prefers built dist, falls back to tsx dev mode.
+ * Find ThreadClaw API entry point — prefers built dist, falls back to tsx dev mode.
  * Returns [args] to pass to node.
  */
 function findApiEntryArgs(root: string): string[] {
@@ -465,12 +465,12 @@ export function startModelServer(): { success: boolean; error?: string } {
 }
 
 /**
- * Start the ClawCore RAG API server.
+ * Start the ThreadClaw RAG API server.
  * On Windows: uses Task Scheduler.
  * On Unix: detached spawn.
  * Call AFTER model server is ready.
  */
-export function startClawCoreApi(): { success: boolean; error?: string } {
+export function startThreadClawApi(): { success: boolean; error?: string } {
   if (isPortOpen(getApiPort())) return { success: true }; // already running
 
   const root = getRootDir();
@@ -488,7 +488,7 @@ export function startClawCoreApi(): { success: boolean; error?: string } {
     const entryArgs = findApiEntryArgs(root);
     const logsDir = resolve(root, "logs");
     mkdirSync(logsDir, { recursive: true });
-    const clawLog = openSync(resolve(logsDir, "clawcore.log"), "a");
+    const clawLog = openSync(resolve(logsDir, "threadclaw.log"), "a");
     const tal = spawn(process.execPath, entryArgs, {
       cwd: root,
       detached: true,
@@ -497,7 +497,7 @@ export function startClawCoreApi(): { success: boolean; error?: string } {
     });
     tal.unref();
     try { closeSync(clawLog); } catch {}
-    if (tal.pid) writeFileSync(resolve(root, ".clawcore.pid"), String(tal.pid));
+    if (tal.pid) writeFileSync(resolve(root, ".threadclaw.pid"), String(tal.pid));
     return { success: true };
   } catch (e) {
     return { success: false, error: String(e) };
@@ -508,7 +508,7 @@ export function startClawCoreApi(): { success: boolean; error?: string } {
 export function startServices(): { success: boolean; error?: string } {
   const r1 = startModelServer();
   if (!r1.success) return r1;
-  const r2 = startClawCoreApi();
+  const r2 = startThreadClawApi();
   return r2;
 }
 
@@ -537,15 +537,15 @@ export function stopServices(): { success: boolean; error?: string } {
       try { endTask(TASK_RAG); } catch {}
       try { endTask(TASK_MODELS); } catch {}
     } else if (plat === "linux") {
-      try { execFileSync("systemctl", ["--user", "stop", "clawcore-rag"], { stdio: "pipe", timeout: 10000 }); } catch {}
-      try { execFileSync("systemctl", ["--user", "stop", "clawcore-models"], { stdio: "pipe", timeout: 10000 }); } catch {}
+      try { execFileSync("systemctl", ["--user", "stop", "threadclaw-rag"], { stdio: "pipe", timeout: 10000 }); } catch {}
+      try { execFileSync("systemctl", ["--user", "stop", "threadclaw-models"], { stdio: "pipe", timeout: 10000 }); } catch {}
     } else if (plat === "mac") {
-      try { execFileSync("launchctl", ["stop", "com.clawcore.rag"], { stdio: "pipe", timeout: 10000 }); } catch {}
-      try { execFileSync("launchctl", ["stop", "com.clawcore.models"], { stdio: "pipe", timeout: 10000 }); } catch {}
+      try { execFileSync("launchctl", ["stop", "com.threadclaw.rag"], { stdio: "pipe", timeout: 10000 }); } catch {}
+      try { execFileSync("launchctl", ["stop", "com.threadclaw.models"], { stdio: "pipe", timeout: 10000 }); } catch {}
     }
 
     // 3. Clean up PID files (don't try to kill — HTTP shutdown handles it)
-    for (const pidFile of [".clawcore.pid", ".models.pid"]) {
+    for (const pidFile of [".threadclaw.pid", ".models.pid"]) {
       const pidPath = resolve(root, pidFile);
       try { if (existsSync(pidPath)) unlinkSync(pidPath); } catch {}
     }
@@ -582,7 +582,7 @@ export async function forceKillByPort(port: number): Promise<void> {
   });
 }
 
-/** Install Windows scheduled tasks for ClawCore services (no admin required). */
+/** Install Windows scheduled tasks for ThreadClaw services (no admin required). */
 export function installWindowsServices(root: string): { success: boolean; error?: string } {
   if (getPlatform() !== "windows") {
     return { success: false, error: "Windows services only available on Windows" };
@@ -590,7 +590,7 @@ export function installWindowsServices(root: string): { success: boolean; error?
   return ensureWindowsTasks(root);
 }
 
-/** Remove Windows scheduled tasks for ClawCore services. */
+/** Remove Windows scheduled tasks for ThreadClaw services. */
 export function removeWindowsServices(): { success: boolean } {
   deleteTask(TASK_RAG);
   deleteTask(TASK_MODELS);
@@ -611,7 +611,7 @@ export function installLinuxServices(root: string): { success: boolean; error?: 
 
   const modelsScript = findModelsScript(root);
   const modelsUnit = `[Unit]
-Description=ClawCore Models (Embed + Rerank)
+Description=ThreadClaw Models (Embed + Rerank)
 After=default.target
 
 [Service]
@@ -628,9 +628,9 @@ WantedBy=default.target
 `;
 
   const ragUnit = `[Unit]
-Description=ClawCore RAG (Search API)
-After=default.target clawcore-models.service
-Requires=clawcore-models.service
+Description=ThreadClaw RAG (Search API)
+After=default.target threadclaw-models.service
+Requires=threadclaw-models.service
 
 [Service]
 Type=simple
@@ -638,20 +638,20 @@ WorkingDirectory=${root}
 ExecStart="${nodeCmd}" ${entryArgs.map(a => `"${a}"`).join(" ")}
 Restart=on-failure
 RestartSec=5
-StandardOutput=append:${resolve(logsDir, "clawcore.log")}
-StandardError=append:${resolve(logsDir, "clawcore.log")}
+StandardOutput=append:${resolve(logsDir, "threadclaw.log")}
+StandardError=append:${resolve(logsDir, "threadclaw.log")}
 
 [Install]
 WantedBy=default.target
 `;
 
   try {
-    writeFileSync(resolve(userUnitDir, "clawcore-models.service"), modelsUnit);
-    writeFileSync(resolve(userUnitDir, "clawcore-rag.service"), ragUnit);
+    writeFileSync(resolve(userUnitDir, "threadclaw-models.service"), modelsUnit);
+    writeFileSync(resolve(userUnitDir, "threadclaw-rag.service"), ragUnit);
     execFileSync("systemctl", ["--user", "daemon-reload"], { stdio: "pipe", timeout: 10000 });
-    execFileSync("systemctl", ["--user", "enable", "clawcore-models", "clawcore-rag"], { stdio: "pipe", timeout: 10000 });
-    execFileSync("systemctl", ["--user", "start", "clawcore-models"], { stdio: "pipe", timeout: 10000 });
-    execFileSync("systemctl", ["--user", "start", "clawcore-rag"], { stdio: "pipe", timeout: 10000 });
+    execFileSync("systemctl", ["--user", "enable", "threadclaw-models", "threadclaw-rag"], { stdio: "pipe", timeout: 10000 });
+    execFileSync("systemctl", ["--user", "start", "threadclaw-models"], { stdio: "pipe", timeout: 10000 });
+    execFileSync("systemctl", ["--user", "start", "threadclaw-rag"], { stdio: "pipe", timeout: 10000 });
     // Enable lingering so user services survive logout
     try { execFileSync("loginctl", ["enable-linger"], { stdio: "pipe", timeout: 10000 }); } catch {}
     return { success: true };
@@ -662,14 +662,14 @@ WantedBy=default.target
 
 export function removeLinuxServices(): { success: boolean } {
   try {
-    execFileSync("systemctl", ["--user", "stop", "clawcore-rag", "clawcore-models"], { stdio: "pipe", timeout: 10000 });
+    execFileSync("systemctl", ["--user", "stop", "threadclaw-rag", "threadclaw-models"], { stdio: "pipe", timeout: 10000 });
   } catch {}
   try {
-    execFileSync("systemctl", ["--user", "disable", "clawcore-rag", "clawcore-models"], { stdio: "pipe", timeout: 10000 });
+    execFileSync("systemctl", ["--user", "disable", "threadclaw-rag", "threadclaw-models"], { stdio: "pipe", timeout: 10000 });
   } catch {}
   const userUnitDir = resolve(homedir(), ".config", "systemd", "user");
-  try { unlinkSync(resolve(userUnitDir, "clawcore-rag.service")); } catch {}
-  try { unlinkSync(resolve(userUnitDir, "clawcore-models.service")); } catch {}
+  try { unlinkSync(resolve(userUnitDir, "threadclaw-rag.service")); } catch {}
+  try { unlinkSync(resolve(userUnitDir, "threadclaw-models.service")); } catch {}
   try {
     execFileSync("systemctl", ["--user", "daemon-reload"], { stdio: "pipe", timeout: 10000 });
   } catch {}
@@ -692,7 +692,7 @@ export function installMacServices(root: string): { success: boolean; error?: st
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-  <key>Label</key><string>com.clawcore.models</string>
+  <key>Label</key><string>com.threadclaw.models</string>
   <key>ProgramArguments</key>
   <array>
     <string>${escapeXml(pythonCmd)}</string>
@@ -711,7 +711,7 @@ export function installMacServices(root: string): { success: boolean; error?: st
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-  <key>Label</key><string>com.clawcore.rag</string>
+  <key>Label</key><string>com.threadclaw.rag</string>
   <key>ProgramArguments</key>
   <array>
     <string>${escapeXml(nodeCmd)}</string>
@@ -720,15 +720,15 @@ ${entryArgs.map(a => `    <string>${escapeXml(a)}</string>`).join("\n")}
   <key>WorkingDirectory</key><string>${escapeXml(root)}</string>
   <key>RunAtLoad</key><true/>
   <key>KeepAlive</key><true/>
-  <key>StandardOutPath</key><string>${escapeXml(resolve(logsDir, "clawcore.log"))}</string>
-  <key>StandardErrorPath</key><string>${escapeXml(resolve(logsDir, "clawcore.log"))}</string>
+  <key>StandardOutPath</key><string>${escapeXml(resolve(logsDir, "threadclaw.log"))}</string>
+  <key>StandardErrorPath</key><string>${escapeXml(resolve(logsDir, "threadclaw.log"))}</string>
 </dict>
 </plist>
 `;
 
   try {
-    const modelsPath = resolve(plistDir, "com.clawcore.models.plist");
-    const ragPath = resolve(plistDir, "com.clawcore.rag.plist");
+    const modelsPath = resolve(plistDir, "com.threadclaw.models.plist");
+    const ragPath = resolve(plistDir, "com.threadclaw.rag.plist");
     writeFileSync(modelsPath, modelsPlist);
     writeFileSync(ragPath, ragPlist);
     // Unload first to handle reinstall case
@@ -744,8 +744,8 @@ ${entryArgs.map(a => `    <string>${escapeXml(a)}</string>`).join("\n")}
 
 export function removeMacServices(): { success: boolean } {
   const plistDir = resolve(homedir(), "Library", "LaunchAgents");
-  const modelsPath = resolve(plistDir, "com.clawcore.models.plist");
-  const ragPath = resolve(plistDir, "com.clawcore.rag.plist");
+  const modelsPath = resolve(plistDir, "com.threadclaw.models.plist");
+  const ragPath = resolve(plistDir, "com.threadclaw.rag.plist");
   try { execFileSync("launchctl", ["unload", ragPath], { stdio: "pipe", timeout: 10000 }); } catch {}
   try { execFileSync("launchctl", ["unload", modelsPath], { stdio: "pipe", timeout: 10000 }); } catch {}
   try { unlinkSync(ragPath); } catch {}

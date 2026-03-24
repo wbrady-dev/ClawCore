@@ -3,41 +3,41 @@
 ## 1. Install
 
 ```bash
-git clone https://github.com/openclaw/clawcore.git
-cd clawcore && npm install
+git clone https://github.com/openclaw/threadclaw.git
+cd threadclaw && npm install
 ```
 
 ## 2. Start the Service
 
 ```bash
-clawcore serve    # HTTP API on port 18800
+threadclaw serve    # HTTP API on port 18800
 # OR
-clawcore          # Interactive TUI
+threadclaw          # Interactive TUI
 ```
 
 ## 3. Ingest Documents
 
 ```bash
-clawcore ingest ./documents/ -r --collection research
+threadclaw ingest ./documents/ -r --collection research
 ```
 
 ## 4. Search
 
 ```bash
-clawcore query "what is VLSM?" --collection research --brief
+threadclaw query "what is VLSM?" --collection research --brief
 ```
 
 ## 5. Connect to OpenClaw
 
-ClawCore integrates with OpenClaw as both a knowledge skill and memory engine plugin. The TUI installer handles this automatically.
+ThreadClaw integrates with OpenClaw as both a knowledge skill and memory engine plugin. The TUI installer handles this automatically.
 
 ## 6. Enable Evidence OS (Optional)
 
 Add to `.env`:
 
 ```bash
-CLAWCORE_MEMORY_RELATIONS_ENABLED=true
-CLAWCORE_MEMORY_RELATIONS_AWARENESS_ENABLED=true
+THREADCLAW_MEMORY_RELATIONS_ENABLED=true
+THREADCLAW_MEMORY_RELATIONS_AWARENESS_ENABLED=true
 ```
 
 This enables:
@@ -47,13 +47,13 @@ This enables:
 
 ## 7. Configure Extraction Mode (Optional)
 
-By default, ClawCore uses **smart** extraction (LLM-based) when deep extraction is enabled, and **fast** extraction (regex-only) otherwise. To set explicitly:
+By default, ThreadClaw uses **smart** extraction (LLM-based) when deep extraction is enabled, and **fast** extraction (regex-only) otherwise. To set explicitly:
 
 ```bash
 # In .env:
-CLAWCORE_MEMORY_RELATIONS_EXTRACTION_MODE=smart   # LLM-based, understands natural language
+THREADCLAW_MEMORY_RELATIONS_EXTRACTION_MODE=smart   # LLM-based, understands natural language
 # or
-CLAWCORE_MEMORY_RELATIONS_EXTRACTION_MODE=fast     # Regex-only, no LLM, <5ms
+THREADCLAW_MEMORY_RELATIONS_EXTRACTION_MODE=fast     # Regex-only, no LLM, <5ms
 ```
 
 Smart mode uses the same model as deep extraction — no extra model to configure.

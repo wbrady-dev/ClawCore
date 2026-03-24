@@ -17,7 +17,7 @@ export const chunksCommand = new Command("chunks")
       opts: { collection?: string; full: boolean },
     ) => {
       try {
-        const dbPath = resolve(config.dataDir, "clawcore.db");
+        const dbPath = resolve(config.dataDir, "threadclaw.db");
         const db = getDb(dbPath);
         runMigrations(db);
 

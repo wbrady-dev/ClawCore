@@ -10,9 +10,9 @@ logs/
 __pycache__/
 *.pyc
 .models.pid
-.clawcore.pid
-bin/ClawCore_*.cmd
-bin/ClawCore_*.xml
+.threadclaw.pid
+bin/ThreadClaw_*.cmd
+bin/ThreadClaw_*.xml
 server/config.json
 package-lock.json
 *.exe

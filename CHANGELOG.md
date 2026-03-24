@@ -1,6 +1,6 @@
 # Changelog
 
-All notable changes to ClawCore are documented here.
+All notable changes to ThreadClaw are documented here.
 
 ## [0.3.2] — 2026-03-23
 
@@ -26,7 +26,7 @@ All notable changes to ClawCore are documented here.
 
 ### Testing
 - **858 memory-engine tests** across the full test suite
-- **89 src tests** for ClawCore core
+- **89 src tests** for ThreadClaw core
 - **19 graph database migrations** (v1-v19)
 
 ### Documentation
@@ -46,7 +46,7 @@ All notable changes to ClawCore are documented here.
 ### Semantic Extraction
 - **Smart mode** (default) — single structured LLM call extracts all memory events from a message. Understands natural language without magic prefixes ("We're going with Postgres" → decision, "Actually no" → correction). Uses same model as deep extraction.
 - **Fast mode** — regex-only extraction, no LLM calls, <5ms. Fallback when no model configured.
-- **Config**: `CLAWCORE_MEMORY_RELATIONS_EXTRACTION_MODE=smart|fast`
+- **Config**: `THREADCLAW_MEMORY_RELATIONS_EXTRACTION_MODE=smart|fast`
 - **Signal detection** — correction, uncertainty, preference, and temporal signals detected via regex in both modes. Smart mode merges regex signals with LLM output.
 - **Automatic fallback** — smart mode falls back to fast (regex) if LLM call fails or returns unparseable output
 
@@ -90,7 +90,7 @@ All notable changes to ClawCore are documented here.
 
 ### Tests
 - **89 new tests** — API routes (28), parsers (39), chunking (14), CLI (8)
-- **Total: 1,197 tests** across 66 files (643 ClawCore + 554 memory-engine)
+- **Total: 1,197 tests** across 66 files (643 ThreadClaw + 554 memory-engine)
 
 ### Bug Fixes
 - **`isPortOpen` netstat bug** — was checking entire output not per-line; TIME_WAIT sockets caused false positives preventing service starts
@@ -145,9 +145,9 @@ All notable changes to ClawCore are documented here.
 ## [0.2.0] — 2026-03-19
 
 ### Sidecar Architecture
-- Data consolidation to `~/.clawcore/data/`
+- Data consolidation to `~/.threadclaw/data/`
 - Manifest versioning and lock-protected transactional upgrades
-- `clawcore doctor` / `clawcore upgrade` / `clawcore integrate` CLI commands
+- `threadclaw doctor` / `threadclaw upgrade` / `threadclaw integrate` CLI commands
 - Managed OpenClaw integration with check-only startup validation
 - Backup validation, post-upgrade smoke test, PID-aware stale lock, backup retention
 

@@ -1,5 +1,5 @@
 /**
- * clawcore doctor — diagnose installation health.
+ * threadclaw doctor — diagnose installation health.
  *
  * Checks versions, data integrity, OpenClaw integration, services,
  * skills, and compatibility. Never writes. Never fixes.
@@ -17,7 +17,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 import {
   readManifest, getAppVersion, detectLegacyDbLocations,
-  detectVersionMismatches, CLAWCORE_DATA_DIR, CLAWCORE_HOME,
+  detectVersionMismatches, THREADCLAW_DATA_DIR, THREADCLAW_HOME,
 } from "../../version.js";
 import { checkOpenClawCompat, checkNodeCompat, getOpenClawVersion } from "../../compatibility.js";
 import { checkOpenClawIntegration } from "../../integration.js";
@@ -29,9 +29,9 @@ const err = (msg: string) => console.log(`  ${chalk.red("✗")} ${msg}`);
 const dim = (msg: string) => console.log(`    ${chalk.dim(msg)}`);
 
 export const doctorCommand = new Command("doctor")
-  .description("Diagnose ClawCore installation health")
+  .description("Diagnose ThreadClaw installation health")
   .option("--json", "Output as JSON")
-  .option("--fix", "Alias for 'clawcore integrate --apply'")
+  .option("--fix", "Alias for 'threadclaw integrate --apply'")
   .action(async (opts: { json?: boolean; fix?: boolean }) => {
     // --fix: alias for integrate --apply
     if (opts.fix) {
@@ -58,7 +58,7 @@ export const doctorCommand = new Command("doctor")
     const fail = (msg: string) => { err(msg); totalFail++; };
 
     console.log("");
-    console.log(chalk.bold("ClawCore Doctor"));
+    console.log(chalk.bold("ThreadClaw Doctor"));
     console.log("");
 
     // ── Version ──
@@ -66,7 +66,7 @@ export const doctorCommand = new Command("doctor")
     pass(`App: ${appVersion} (installed: ${manifest.appVersion})`);
 
     if (manifest.appVersion !== "0.0.0" && manifest.appVersion !== appVersion) {
-      warning(`Version mismatch: installed ${manifest.appVersion}, running ${appVersion}. Run 'clawcore upgrade'.`);
+      warning(`Version mismatch: installed ${manifest.appVersion}, running ${appVersion}. Run 'threadclaw upgrade'.`);
     }
 
     console.log("");
@@ -76,9 +76,9 @@ export const doctorCommand = new Command("doctor")
 
     // Check new data locations
     const dbChecks = [
-      { name: "RAG DB", path: resolve(CLAWCORE_DATA_DIR, "clawcore.db") },
-      { name: "Memory DB", path: resolve(CLAWCORE_DATA_DIR, "memory.db") },
-      { name: "Graph DB", path: resolve(CLAWCORE_DATA_DIR, "graph.db") },
+      { name: "RAG DB", path: resolve(THREADCLAW_DATA_DIR, "threadclaw.db") },
+      { name: "Memory DB", path: resolve(THREADCLAW_DATA_DIR, "memory.db") },
+      { name: "Graph DB", path: resolve(THREADCLAW_DATA_DIR, "graph.db") },
     ];
     for (const db of dbChecks) {
       if (existsSync(db.path)) {
@@ -88,14 +88,14 @@ export const doctorCommand = new Command("doctor")
         // Check if it's still in legacy location
         const legacy = detectLegacyDbLocations().find((l) => l.name === db.name.split(" ")[0].toLowerCase());
         if (legacy?.exists) {
-          warning(`${db.name}: still in legacy location (${legacy.legacyPath}). Run 'clawcore upgrade' to consolidate.`);
+          warning(`${db.name}: still in legacy location (${legacy.legacyPath}). Run 'threadclaw upgrade' to consolidate.`);
         } else {
           // Check old install-relative path for RAG DB
           const rootDir = resolve(__dirname, "..", "..", "..");
-          const oldRagPath = resolve(rootDir, "data", "clawcore.db");
+          const oldRagPath = resolve(rootDir, "data", "threadclaw.db");
           if (db.name === "RAG DB" && existsSync(oldRagPath)) {
             const sizeMb = (statSync(oldRagPath).size / 1024 / 1024).toFixed(1);
-            warning(`${db.name}: in legacy location (${oldRagPath}, ${sizeMb} MB). Run 'clawcore upgrade' to consolidate.`);
+            warning(`${db.name}: in legacy location (${oldRagPath}, ${sizeMb} MB). Run 'threadclaw upgrade' to consolidate.`);
           } else {
             fail(`${db.name}: not found at ${db.path}`);
           }
@@ -154,7 +154,7 @@ export const doctorCommand = new Command("doctor")
             warning(`${drift.field}: ${JSON.stringify(drift.actual)} (expected absent)`);
           }
         }
-        dim("Run 'clawcore integrate --apply' to fix integration drift.");
+        dim("Run 'threadclaw integrate --apply' to fix integration drift.");
       }
     }
 
@@ -190,7 +190,7 @@ export const doctorCommand = new Command("doctor")
       }
     } catch {}
 
-    for (const skill of ["clawcore-evidence", "clawcore-knowledge"]) {
+    for (const skill of ["threadclaw-evidence", "threadclaw-knowledge"]) {
       const skillPath = resolve(workspaceDir, "skills", skill, "SKILL.md");
       const rootDir = resolve(__dirname, "..", "..", "..");
       const shippedPath = resolve(rootDir, "skills", skill, "SKILL.md");
@@ -208,7 +208,7 @@ export const doctorCommand = new Command("doctor")
         if (installedHash === shippedHash) {
           pass(`${skill}: installed, up to date`);
         } else if (installedHash === manifestHash) {
-          warning(`${skill}: outdated (newer version available). Run 'clawcore upgrade'.`);
+          warning(`${skill}: outdated (newer version available). Run 'threadclaw upgrade'.`);
         } else {
           warning(`${skill}: user-modified (upgrade will preserve your changes)`);
         }
@@ -241,20 +241,20 @@ export const doctorCommand = new Command("doctor")
     // ── Manifest ──
     console.log("");
     console.log(chalk.dim("── Manifest ──"));
-    if (existsSync(resolve(CLAWCORE_HOME, "manifest.json"))) {
-      pass(`Manifest: ${resolve(CLAWCORE_HOME, "manifest.json")}`);
+    if (existsSync(resolve(THREADCLAW_HOME, "manifest.json"))) {
+      pass(`Manifest: ${resolve(THREADCLAW_HOME, "manifest.json")}`);
       if (manifest.features.managedIntegration) {
         pass("Feature: managed integration (check-only startup)");
       } else {
-        warning("Feature: legacy integration (auto-fix startup). Run 'clawcore upgrade' to switch.");
+        warning("Feature: legacy integration (auto-fix startup). Run 'threadclaw upgrade' to switch.");
       }
       if (manifest.features.consolidatedData) {
-        pass("Feature: consolidated data (~/.clawcore/data/)");
+        pass("Feature: consolidated data (~/.threadclaw/data/)");
       } else {
-        warning("Feature: legacy data locations. Run 'clawcore upgrade' to consolidate.");
+        warning("Feature: legacy data locations. Run 'threadclaw upgrade' to consolidate.");
       }
     } else {
-      warning("No manifest found. Run 'clawcore upgrade' to initialize.");
+      warning("No manifest found. Run 'threadclaw upgrade' to initialize.");
     }
 
     // ── Summary ──

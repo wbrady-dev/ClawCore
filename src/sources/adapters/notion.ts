@@ -2,13 +2,13 @@
  * Notion Source Adapter
  *
  * Uses the @notionhq/client to poll Notion databases for changes.
- * Pages are exported as Markdown and ingested into ClawCore.
+ * Pages are exported as Markdown and ingested into ThreadClaw.
  *
  * Prerequisites:
  * - Notion Integration API key (NOTION_API_KEY in env)
  * - Databases shared with the integration
  *
- * Read-only: ClawCore never writes to Notion.
+ * Read-only: ThreadClaw never writes to Notion.
  */
 import { Client } from "@notionhq/client";
 import { writeFileSync, mkdirSync, unlinkSync, existsSync } from "fs";
@@ -21,7 +21,7 @@ import { getDb } from "../../storage/index.js";
 import { deleteDocument } from "../../storage/collections.js";
 import type { SourceAdapter, SourceConfig, SourceStatus, ChangeSet, StagedFile } from "../types.js";
 
-const STAGING_DIR = resolve(homedir(), ".clawcore", "staging", "notion");
+const STAGING_DIR = resolve(homedir(), ".threadclaw", "staging", "notion");
 
 /** Sync manifest — tracks last_edited_time per page */
 interface ManifestEntry {
@@ -233,7 +233,7 @@ export class NotionAdapter implements SourceAdapter {
 
       // Clean up DB documents/chunks/vectors to prevent orphans
       try {
-        const db = getDb(resolve(config.dataDir, "clawcore.db"));
+        const db = getDb(resolve(config.dataDir, "threadclaw.db"));
         const doc = db.prepare("SELECT id FROM documents WHERE source_path = ?").get(stagingPath) as { id: string } | undefined;
         if (doc) {
           deleteDocument(db, doc.id);

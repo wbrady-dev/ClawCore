@@ -80,11 +80,11 @@ export async function runConfigure(): Promise<void> {
       // Network
       console.log(t.dim("\n  Network"));
       console.log(kvLine("  Model Server", getModelBaseUrl()));
-      console.log(kvLine("  ClawCore API Port", String(getApiPort())));
+      console.log(kvLine("  ThreadClaw API Port", String(getApiPort())));
       const expUrl = envVal("QUERY_EXPANSION_URL", "http://127.0.0.1:1234/v1");
       const expEnabled = envVal("QUERY_EXPANSION_ENABLED", "false") === "true";
       if (expEnabled) console.log(kvLine("  Expansion LLM", expUrl));
-      console.log(kvLine("  Data Directory", envVal("CLAWCORE_DATA_DIR", "./data")));
+      console.log(kvLine("  Data Directory", envVal("THREADCLAW_DATA_DIR", "./data")));
 
       // Search & Ingestion
       console.log(t.dim("\n  Defaults"));
@@ -94,24 +94,24 @@ export async function runConfigure(): Promise<void> {
       console.log(kvLine("  Chunk Size", `${envVal("CHUNK_TARGET_TOKENS", "512")} target, ${envVal("CHUNK_MAX_TOKENS", "1024")} max, ${envVal("CHUNK_MIN_TOKENS", "100")} min`));
 
       // Evidence OS
-      const relEnabled = envVal("CLAWCORE_MEMORY_RELATIONS_ENABLED", "false") === "true";
+      const relEnabled = envVal("THREADCLAW_MEMORY_RELATIONS_ENABLED", "false") === "true";
       console.log(t.dim("\n  Evidence OS"));
       console.log(kvLine("  Relations", relEnabled ? t.ok("enabled") : t.dim("disabled")));
       if (relEnabled) {
-        console.log(kvLine("  Awareness", envVal("CLAWCORE_MEMORY_RELATIONS_AWARENESS_ENABLED", "false") === "true" ? t.ok("on") : t.dim("off")));
-        console.log(kvLine("  Claim Extraction", envVal("CLAWCORE_MEMORY_RELATIONS_CLAIM_EXTRACTION_ENABLED", "false") === "true" ? t.ok("on") : t.dim("off")));
-        console.log(kvLine("  Attempt Tracking", envVal("CLAWCORE_MEMORY_RELATIONS_ATTEMPT_TRACKING_ENABLED", "false") === "true" ? t.ok("on") : t.dim("off")));
-        const deepOn = envVal("CLAWCORE_MEMORY_RELATIONS_DEEP_EXTRACTION_ENABLED", "false") === "true";
+        console.log(kvLine("  Awareness", envVal("THREADCLAW_MEMORY_RELATIONS_AWARENESS_ENABLED", "false") === "true" ? t.ok("on") : t.dim("off")));
+        console.log(kvLine("  Claim Extraction", envVal("THREADCLAW_MEMORY_RELATIONS_CLAIM_EXTRACTION_ENABLED", "false") === "true" ? t.ok("on") : t.dim("off")));
+        console.log(kvLine("  Attempt Tracking", envVal("THREADCLAW_MEMORY_RELATIONS_ATTEMPT_TRACKING_ENABLED", "false") === "true" ? t.ok("on") : t.dim("off")));
+        const deepOn = envVal("THREADCLAW_MEMORY_RELATIONS_DEEP_EXTRACTION_ENABLED", "false") === "true";
         console.log(kvLine("  Deep Extraction", deepOn ? t.ok("on") : t.dim("off")));
         if (deepOn) {
-          const deepModel = envVal("CLAWCORE_MEMORY_RELATIONS_DEEP_EXTRACTION_MODEL", "");
-          const deepProvider = envVal("CLAWCORE_MEMORY_RELATIONS_DEEP_EXTRACTION_PROVIDER", "");
+          const deepModel = envVal("THREADCLAW_MEMORY_RELATIONS_DEEP_EXTRACTION_MODEL", "");
+          const deepProvider = envVal("THREADCLAW_MEMORY_RELATIONS_DEEP_EXTRACTION_PROVIDER", "");
           console.log(kvLine("    Model", deepModel || t.dim("(uses summary model)")));
           if (deepProvider) console.log(kvLine("    Provider", deepProvider));
         }
-        const extractionMode = envVal("CLAWCORE_MEMORY_RELATIONS_EXTRACTION_MODE", "smart");
+        const extractionMode = envVal("THREADCLAW_MEMORY_RELATIONS_EXTRACTION_MODE", "smart");
         console.log(kvLine("  Extraction Mode", extractionMode === "smart" ? t.ok("Smart (LLM)") : t.dim("Fast (regex only)")));
-        console.log(kvLine("  Context Tier", envVal("CLAWCORE_MEMORY_RELATIONS_CONTEXT_TIER", "standard")));
+        console.log(kvLine("  Context Tier", envVal("THREADCLAW_MEMORY_RELATIONS_CONTEXT_TIER", "standard")));
       }
 
       console.log("");
@@ -211,7 +211,7 @@ async function changeEmbedModel(
   };
   writeConfig(newConfig);
 
-  const dbPath = resolve(getDataDir(), "clawcore.db");
+  const dbPath = resolve(getDataDir(), "threadclaw.db");
   if (existsSync(dbPath)) unlinkSync(dbPath);
 
   updateEnvValues(root, {
@@ -397,7 +397,7 @@ async function changeExpansion(root: string): Promise<void> {
   if (apiKey) updates.QUERY_EXPANSION_API_KEY = apiKey;
 
   updateEnvValues(root, updates);
-  console.log(t.ok("\n  Query expansion enabled. Restart ClawCore to apply."));
+  console.log(t.ok("\n  Query expansion enabled. Restart ThreadClaw to apply."));
 }
 
 // ── Image OCR ──
@@ -471,7 +471,7 @@ async function changeAudioTranscription(root: string): Promise<void> {
   try {
     envData = readFileSync(envPath, "utf-8");
   } catch {
-    try { writeFileSync(envPath, "# ClawCore Configuration\n"); envData = "# ClawCore Configuration\n"; } catch (e: any) {
+    try { writeFileSync(envPath, "# ThreadClaw Configuration\n"); envData = "# ThreadClaw Configuration\n"; } catch (e: any) {
       console.log(t.err(`\n  Cannot read or create .env at ${envPath}: ${e.message}\n`));
       await new Promise((r) => setTimeout(r, 2000));
       return;
@@ -528,7 +528,7 @@ async function changeSearchTuning(root: string): Promise<void> {
   try {
     envData = readFileSync(envPath, "utf-8");
   } catch {
-    try { writeFileSync(envPath, "# ClawCore Configuration\n"); envData = "# ClawCore Configuration\n"; } catch (e: any) {
+    try { writeFileSync(envPath, "# ThreadClaw Configuration\n"); envData = "# ThreadClaw Configuration\n"; } catch (e: any) {
       console.log(t.err(`\n  Cannot read or create .env at ${envPath}: ${e.message}\n`));
       await new Promise((r) => setTimeout(r, 2000));
       return;
@@ -665,7 +665,7 @@ const SETTINGS: Setting[] = [
     },
   },
   {
-    key: "clawcorePort", envKey: "CLAWCORE_PORT", label: "ClawCore API Port",
+    key: "threadclawPort", envKey: "THREADCLAW_PORT", label: "ThreadClaw API Port",
     description: "HTTP port for the RAG search API",
     fallback: "18800", group: "Network",
   },
@@ -675,7 +675,7 @@ const SETTINGS: Setting[] = [
     fallback: "http://127.0.0.1:1234/v1", group: "Network",
   },
   {
-    key: "dataDir", envKey: "CLAWCORE_DATA_DIR", label: "Data Directory",
+    key: "dataDir", envKey: "THREADCLAW_DATA_DIR", label: "Data Directory",
     description: "Where the database and ingested data are stored",
     fallback: "./data", group: "Network",
   },
@@ -879,7 +879,7 @@ async function setupCloudModel(
     }, { onCancel: cloudOnCancel });
     if (cloudCancelled || !confirm) return;
 
-    const dbPath = resolve(getDataDir(), "clawcore.db");
+    const dbPath = resolve(getDataDir(), "threadclaw.db");
     if (existsSync(dbPath)) unlinkSync(dbPath);
 
     updateEnvValues(root, {
@@ -937,7 +937,7 @@ async function handleCustomModel(
 
   // Test if model works — use sys.argv[1] to prevent code injection via model ID
   const sp = ora(`Testing ${modelId}...`).start();
-  const tmpScript = resolve(tmpdir(), `clawcore_check_${randomUUID()}.py`);
+  const tmpScript = resolve(tmpdir(), `threadclaw_check_${randomUUID()}.py`);
   try {
     let dims = 0;
     if (type === "embed") {
@@ -1177,16 +1177,16 @@ export function getWatchPaths(root: string): { path: string; collection: string 
 const EXCLUDED_DIRS = new Set([
   // System / build
   "node_modules", ".git", "dist", "__pycache__", "Windows", "ProgramData",
-  // ClawCore internals
-  "clawcore-files",   // memory engine file store
-  "clawcore-memory",  // memory engine internal
-  "memory-engine",    // ClawCore memory engine source
+  // ThreadClaw internals
+  "threadclaw-files",   // memory engine file store
+  "threadclaw-memory",  // memory engine internal
+  "memory-engine",    // ThreadClaw memory engine source
   // OpenClaw internals
   "skills",           // skill definitions (SKILL.md, scripts) — not user knowledge
-  "memory",           // OpenClaw conversation memory — redundant with ClawCore memory engine
+  "memory",           // OpenClaw conversation memory — redundant with ThreadClaw memory engine
   "logs",             // log files
   "cache",            // cached data
-  "services",         // ClawCore service installation
+  "services",         // ThreadClaw service installation
 ]);
 
 function buildDirNode(dirPath: string, collection: string, depth: number, enabledPaths: Set<string>, maxDepth = 3): WatchEntry {
@@ -1453,7 +1453,7 @@ async function changeEvidenceSettings(root: string): Promise<void> {
   try {
     envData = readFileSync(envPath, "utf-8");
   } catch {
-    try { writeFileSync(envPath, "# ClawCore Configuration\n"); envData = "# ClawCore Configuration\n"; } catch (e: any) {
+    try { writeFileSync(envPath, "# ThreadClaw Configuration\n"); envData = "# ThreadClaw Configuration\n"; } catch (e: any) {
       console.log(t.err(`\n  Cannot read or create .env at ${envPath}: ${e.message}\n`));
       await new Promise((r) => setTimeout(r, 2000));
       return;
@@ -1470,23 +1470,23 @@ async function changeEvidenceSettings(root: string): Promise<void> {
     }
   };
 
-  const MASTER_KEY = "CLAWCORE_MEMORY_RELATIONS_ENABLED";
+  const MASTER_KEY = "THREADCLAW_MEMORY_RELATIONS_ENABLED";
 
   // ── Feature list with dependency grouping ──
   const features: EvidenceFeature[] = [
     { label: "Entity Relations", key: MASTER_KEY, enabled: getVal(MASTER_KEY) === "true", description: "Entity graph + evidence tracking (required)", indent: 0 },
-    { label: "Awareness Notes", key: "CLAWCORE_MEMORY_RELATIONS_AWARENESS_ENABLED", enabled: getVal("CLAWCORE_MEMORY_RELATIONS_AWARENESS_ENABLED") === "true", description: "Surface context in prompts (~30-80 tokens)", indent: 1, dependsOn: MASTER_KEY },
-    { label: "Claim Extraction", key: "CLAWCORE_MEMORY_RELATIONS_CLAIM_EXTRACTION_ENABLED", enabled: getVal("CLAWCORE_MEMORY_RELATIONS_CLAIM_EXTRACTION_ENABLED") === "true", description: "Extract facts from tool results (no LLM)", indent: 1, dependsOn: MASTER_KEY },
-    { label: "Attempt Tracking", key: "CLAWCORE_MEMORY_RELATIONS_ATTEMPT_TRACKING_ENABLED", enabled: getVal("CLAWCORE_MEMORY_RELATIONS_ATTEMPT_TRACKING_ENABLED") === "true", description: "Record tool outcomes + learn patterns", indent: 1, dependsOn: MASTER_KEY },
-    { label: "Deep Extraction", key: "CLAWCORE_MEMORY_RELATIONS_DEEP_EXTRACTION_ENABLED", enabled: getVal("CLAWCORE_MEMORY_RELATIONS_DEEP_EXTRACTION_ENABLED") === "true", description: "LLM-powered (ENTER to configure model)", indent: 1, dependsOn: MASTER_KEY, configAction: "deep_model" },
-    { label: "Extraction Mode", key: "CLAWCORE_MEMORY_RELATIONS_EXTRACTION_MODE", enabled: getVal("CLAWCORE_MEMORY_RELATIONS_EXTRACTION_MODE") !== "fast", description: getVal("CLAWCORE_MEMORY_RELATIONS_EXTRACTION_MODE") === "fast" ? "Fast: regex only, no LLM, <5ms" : "Smart: LLM understands natural language", indent: 1, dependsOn: "CLAWCORE_MEMORY_RELATIONS_DEEP_EXTRACTION_ENABLED" },
+    { label: "Awareness Notes", key: "THREADCLAW_MEMORY_RELATIONS_AWARENESS_ENABLED", enabled: getVal("THREADCLAW_MEMORY_RELATIONS_AWARENESS_ENABLED") === "true", description: "Surface context in prompts (~30-80 tokens)", indent: 1, dependsOn: MASTER_KEY },
+    { label: "Claim Extraction", key: "THREADCLAW_MEMORY_RELATIONS_CLAIM_EXTRACTION_ENABLED", enabled: getVal("THREADCLAW_MEMORY_RELATIONS_CLAIM_EXTRACTION_ENABLED") === "true", description: "Extract facts from tool results (no LLM)", indent: 1, dependsOn: MASTER_KEY },
+    { label: "Attempt Tracking", key: "THREADCLAW_MEMORY_RELATIONS_ATTEMPT_TRACKING_ENABLED", enabled: getVal("THREADCLAW_MEMORY_RELATIONS_ATTEMPT_TRACKING_ENABLED") === "true", description: "Record tool outcomes + learn patterns", indent: 1, dependsOn: MASTER_KEY },
+    { label: "Deep Extraction", key: "THREADCLAW_MEMORY_RELATIONS_DEEP_EXTRACTION_ENABLED", enabled: getVal("THREADCLAW_MEMORY_RELATIONS_DEEP_EXTRACTION_ENABLED") === "true", description: "LLM-powered (ENTER to configure model)", indent: 1, dependsOn: MASTER_KEY, configAction: "deep_model" },
+    { label: "Extraction Mode", key: "THREADCLAW_MEMORY_RELATIONS_EXTRACTION_MODE", enabled: getVal("THREADCLAW_MEMORY_RELATIONS_EXTRACTION_MODE") !== "fast", description: getVal("THREADCLAW_MEMORY_RELATIONS_EXTRACTION_MODE") === "fast" ? "Fast: regex only, no LLM, <5ms" : "Smart: LLM understands natural language", indent: 1, dependsOn: "THREADCLAW_MEMORY_RELATIONS_DEEP_EXTRACTION_ENABLED" },
   ];
 
   const toggledFeatures = await evidenceCheckboxMenu(features, envData, getVal, setVal);
   if (!toggledFeatures) return;
 
   for (const f of toggledFeatures) {
-    if (f.key === "CLAWCORE_MEMORY_RELATIONS_EXTRACTION_MODE") {
+    if (f.key === "THREADCLAW_MEMORY_RELATIONS_EXTRACTION_MODE") {
       // Extraction mode: enabled=true → "smart", enabled=false → "fast"
       setVal(f.key, f.enabled ? "smart" : "fast");
     } else {
@@ -1494,12 +1494,12 @@ async function changeEvidenceSettings(root: string): Promise<void> {
     }
   }
   // Also set the top-level alias used by non-memory-engine code
-  setVal("CLAWCORE_RELATIONS_ENABLED", String(toggledFeatures[0].enabled));
+  setVal("THREADCLAW_RELATIONS_ENABLED", String(toggledFeatures[0].enabled));
 
   // ── Context tier ──
   clearScreen();
   console.log(section("Context Compiler Budget"));
-  const currentTier = getVal("CLAWCORE_MEMORY_RELATIONS_CONTEXT_TIER") || "standard";
+  const currentTier = getVal("THREADCLAW_MEMORY_RELATIONS_CONTEXT_TIER") || "standard";
   console.log(kvLine("Current", currentTier));
   console.log(kvLine("Lite", t.dim("lowest token overhead")));
   console.log(kvLine("Standard", t.dim("balanced default")));
@@ -1510,7 +1510,7 @@ async function changeEvidenceSettings(root: string): Promise<void> {
     { label: `Standard (190 tokens) — balanced${currentTier === "standard" ? "  ← current" : ""}`, value: "standard" },
     { label: `Premium (280 tokens) — maximum context${currentTier === "premium" ? "  ← current" : ""}`, value: "premium" },
   ]);
-  if (tierChoice) setVal("CLAWCORE_MEMORY_RELATIONS_CONTEXT_TIER", tierChoice);
+  if (tierChoice) setVal("THREADCLAW_MEMORY_RELATIONS_CONTEXT_TIER", tierChoice);
 
   writeFileSync(envPath, envData);
   console.log(t.ok("\n  Evidence OS settings saved. Restart services to apply.\n"));
@@ -1529,7 +1529,7 @@ async function configureDeepExtractionModel(
     _getVal: (key: string) => string,
     _setVal: (key: string, val: string) => void,
   ): Promise<void> {
-    const currentKey = _getVal("CLAWCORE_MEMORY_RELATIONS_DEEP_EXTRACTION_API_KEY");
+    const currentKey = _getVal("THREADCLAW_MEMORY_RELATIONS_DEEP_EXTRACTION_API_KEY");
     const hasKey = currentKey && currentKey.length > 5;
     console.log("");
     console.log(t.dim(`  ${providerName} API key${hasKey ? " (already set)" : ""}:`));
@@ -1544,18 +1544,18 @@ async function configureDeepExtractionModel(
     });
 
     if (key && key !== "••••••••" && key.trim().length > 5) {
-      _setVal("CLAWCORE_MEMORY_RELATIONS_DEEP_EXTRACTION_API_KEY", key.trim());
+      _setVal("THREADCLAW_MEMORY_RELATIONS_DEEP_EXTRACTION_API_KEY", key.trim());
       console.log(t.ok(`  API key saved — extraction will use your own ${providerName} key.`));
     } else if (!key || key.trim() === "") {
-      _setVal("CLAWCORE_MEMORY_RELATIONS_DEEP_EXTRACTION_API_KEY", "");
+      _setVal("THREADCLAW_MEMORY_RELATIONS_DEEP_EXTRACTION_API_KEY", "");
       console.log(t.dim("  No API key — will use OpenClaw OAuth credentials."));
     }
   }
 
   clearScreen();
   console.log(section("Extraction Model (RSMA Smart Mode)"));
-  const currentModel = getVal("CLAWCORE_MEMORY_RELATIONS_DEEP_EXTRACTION_MODEL");
-  const currentProvider = getVal("CLAWCORE_MEMORY_RELATIONS_DEEP_EXTRACTION_PROVIDER");
+  const currentModel = getVal("THREADCLAW_MEMORY_RELATIONS_DEEP_EXTRACTION_MODEL");
+  const currentProvider = getVal("THREADCLAW_MEMORY_RELATIONS_DEEP_EXTRACTION_PROVIDER");
   const currentLabel = currentModel && currentModel !== "false"
     ? `${currentProvider || "default"}/${currentModel}`
     : t.dim("not configured — using regex only");
@@ -1581,19 +1581,19 @@ async function configureDeepExtractionModel(
   if (!modelChoice || modelChoice === "__back__") return;
 
   if (modelChoice === "anthropic_haiku") {
-    setVal("CLAWCORE_MEMORY_RELATIONS_DEEP_EXTRACTION_MODEL", "claude-haiku-4-5-20251001");
-    setVal("CLAWCORE_MEMORY_RELATIONS_DEEP_EXTRACTION_PROVIDER", "anthropic");
+    setVal("THREADCLAW_MEMORY_RELATIONS_DEEP_EXTRACTION_MODEL", "claude-haiku-4-5-20251001");
+    setVal("THREADCLAW_MEMORY_RELATIONS_DEEP_EXTRACTION_PROVIDER", "anthropic");
     // Ask for API key (optional)
     await promptForApiKey("Anthropic", "sk-ant-...", getVal, setVal);
     console.log(t.ok("\n  Set to Anthropic Haiku (~$0.25/M tokens).\n"));
   } else if (modelChoice === "openai_mini") {
-    setVal("CLAWCORE_MEMORY_RELATIONS_DEEP_EXTRACTION_MODEL", "gpt-4o-mini");
-    setVal("CLAWCORE_MEMORY_RELATIONS_DEEP_EXTRACTION_PROVIDER", "openai");
+    setVal("THREADCLAW_MEMORY_RELATIONS_DEEP_EXTRACTION_MODEL", "gpt-4o-mini");
+    setVal("THREADCLAW_MEMORY_RELATIONS_DEEP_EXTRACTION_PROVIDER", "openai");
     await promptForApiKey("OpenAI", "sk-...", getVal, setVal);
     console.log(t.ok("\n  Set to OpenAI GPT-4o-mini (~$0.15/M tokens).\n"));
   } else if (modelChoice === "openclaw") {
-    setVal("CLAWCORE_MEMORY_RELATIONS_DEEP_EXTRACTION_MODEL", "");
-    setVal("CLAWCORE_MEMORY_RELATIONS_DEEP_EXTRACTION_PROVIDER", "");
+    setVal("THREADCLAW_MEMORY_RELATIONS_DEEP_EXTRACTION_MODEL", "");
+    setVal("THREADCLAW_MEMORY_RELATIONS_DEEP_EXTRACTION_PROVIDER", "");
     console.log(t.ok("\n  Will use the agent's primary model.\n"));
   } else if (modelChoice === "ollama") {
     console.log(t.dim("\n  Popular Ollama models for extraction:\n"));
@@ -1609,12 +1609,12 @@ async function configureDeepExtractionModel(
       const p = (await import("prompts")).default;
       const { name } = await p({ type: "text", name: "name", message: "Ollama model name" });
       if (name) {
-        setVal("CLAWCORE_MEMORY_RELATIONS_DEEP_EXTRACTION_MODEL", name.trim());
-        setVal("CLAWCORE_MEMORY_RELATIONS_DEEP_EXTRACTION_PROVIDER", "ollama");
+        setVal("THREADCLAW_MEMORY_RELATIONS_DEEP_EXTRACTION_MODEL", name.trim());
+        setVal("THREADCLAW_MEMORY_RELATIONS_DEEP_EXTRACTION_PROVIDER", "ollama");
       }
     } else if (ollamaModel) {
-      setVal("CLAWCORE_MEMORY_RELATIONS_DEEP_EXTRACTION_MODEL", ollamaModel);
-      setVal("CLAWCORE_MEMORY_RELATIONS_DEEP_EXTRACTION_PROVIDER", "ollama");
+      setVal("THREADCLAW_MEMORY_RELATIONS_DEEP_EXTRACTION_MODEL", ollamaModel);
+      setVal("THREADCLAW_MEMORY_RELATIONS_DEEP_EXTRACTION_PROVIDER", "ollama");
     }
   } else if (modelChoice === "lmstudio") {
     const p = (await import("prompts")).default;
@@ -1624,8 +1624,8 @@ async function configureDeepExtractionModel(
       initial: "local-model",
     });
     if (model) {
-      setVal("CLAWCORE_MEMORY_RELATIONS_DEEP_EXTRACTION_MODEL", model.trim());
-      setVal("CLAWCORE_MEMORY_RELATIONS_DEEP_EXTRACTION_PROVIDER", "lmstudio");
+      setVal("THREADCLAW_MEMORY_RELATIONS_DEEP_EXTRACTION_MODEL", model.trim());
+      setVal("THREADCLAW_MEMORY_RELATIONS_DEEP_EXTRACTION_PROVIDER", "lmstudio");
     }
   } else if (modelChoice === "cloud") {
     const cloudChoice = await selectMenu([
@@ -1646,8 +1646,8 @@ async function configureDeepExtractionModel(
         initial: defaults[cloudChoice] ?? "",
       });
       if (model) {
-        setVal("CLAWCORE_MEMORY_RELATIONS_DEEP_EXTRACTION_MODEL", model.trim());
-        setVal("CLAWCORE_MEMORY_RELATIONS_DEEP_EXTRACTION_PROVIDER", cloudChoice);
+        setVal("THREADCLAW_MEMORY_RELATIONS_DEEP_EXTRACTION_MODEL", model.trim());
+        setVal("THREADCLAW_MEMORY_RELATIONS_DEEP_EXTRACTION_PROVIDER", cloudChoice);
         await promptForApiKey(cloudChoice, "", getVal, setVal);
       }
     }
@@ -1655,9 +1655,9 @@ async function configureDeepExtractionModel(
     const p = (await import("prompts")).default;
     const { model } = await p({ type: "text", name: "model", message: "Model name" });
     const { provider } = await p({ type: "text", name: "provider", message: "Provider" });
-    if (model) setVal("CLAWCORE_MEMORY_RELATIONS_DEEP_EXTRACTION_MODEL", model.trim());
+    if (model) setVal("THREADCLAW_MEMORY_RELATIONS_DEEP_EXTRACTION_MODEL", model.trim());
     if (provider) {
-      setVal("CLAWCORE_MEMORY_RELATIONS_DEEP_EXTRACTION_PROVIDER", provider.trim());
+      setVal("THREADCLAW_MEMORY_RELATIONS_DEEP_EXTRACTION_PROVIDER", provider.trim());
       await promptForApiKey(provider.trim(), "", getVal, setVal);
     }
   }
@@ -1704,8 +1704,8 @@ function evidenceCheckboxMenu(
         const label = i === selected ? t.selected(item.label.padEnd(20)) : t.value(item.label.padEnd(20));
         let desc = t.dim(item.description);
         if (item.configAction === "deep_model" && item.enabled) {
-          const curModel = getVal("CLAWCORE_MEMORY_RELATIONS_DEEP_EXTRACTION_MODEL");
-          const curProv = getVal("CLAWCORE_MEMORY_RELATIONS_DEEP_EXTRACTION_PROVIDER");
+          const curModel = getVal("THREADCLAW_MEMORY_RELATIONS_DEEP_EXTRACTION_MODEL");
+          const curProv = getVal("THREADCLAW_MEMORY_RELATIONS_DEEP_EXTRACTION_PROVIDER");
           if (curModel && curModel !== "false") {
             desc = t.dim(`Model: ${curProv || "default"}/${curModel}  [ENTER to change]`);
           } else {

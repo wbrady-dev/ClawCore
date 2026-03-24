@@ -5,19 +5,19 @@
 Install the plugin with OpenClaw's plugin installer:
 
 ```bash
-openclaw plugins install clawcore-memory
+openclaw plugins install threadclaw-memory
 ```
 
 If you're running from a local OpenClaw checkout:
 
 ```bash
-pnpm openclaw plugins install clawcore-memory
+pnpm openclaw plugins install threadclaw-memory
 ```
 
 For local development of this plugin, link your working copy:
 
 ```bash
-openclaw plugins install --link /path/to/clawcore/memory-engine
+openclaw plugins install --link /path/to/threadclaw/memory-engine
 ```
 
 `openclaw plugins install` handles plugin registration/enabling and slot selection automatically.
@@ -112,12 +112,12 @@ Using a cheaper/faster model for summarization can reduce costs, but quality mat
 
 ## Database management
 
-The SQLite database lives at `LCM_DATABASE_PATH` (default `~/.clawcore/data/memory.db`).
+The SQLite database lives at `LCM_DATABASE_PATH` (default `~/.threadclaw/data/memory.db`).
 
 ### Inspecting the database
 
 ```bash
-sqlite3 ~/.clawcore/data/memory.db
+sqlite3 ~/.threadclaw/data/memory.db
 
 # Count conversations
 SELECT COUNT(*) FROM conversations;
@@ -137,13 +137,13 @@ SELECT summary_id, depth, token_count FROM summaries ORDER BY token_count DESC L
 The database is a single file. Back it up with:
 
 ```bash
-cp ~/.clawcore/data/memory.db ~/.clawcore/data/memory.db.backup
+cp ~/.threadclaw/data/memory.db ~/.threadclaw/data/memory.db.backup
 ```
 
 Or use SQLite's online backup:
 
 ```bash
-sqlite3 ~/.clawcore/data/memory.db ".backup ~/.clawcore/data/memory.db.backup"
+sqlite3 ~/.threadclaw/data/memory.db ".backup ~/.threadclaw/data/memory.db.backup"
 ```
 
 ## Per-agent configuration

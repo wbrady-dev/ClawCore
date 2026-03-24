@@ -29,7 +29,7 @@ if (process.argv.length <= 2) {
   const program = new Command();
 
   program
-    .name("clawcore")
+    .name("threadclaw")
     .description("State-of-the-art RAG system for OpenClaw")
     .version(getAppVersion());
 

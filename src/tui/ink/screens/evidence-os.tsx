@@ -150,7 +150,7 @@ export function EvidenceOsScreen({ onBack }: { onBack: () => void }) {
         <Box flexDirection="column">
           <Section title="Evidence OS" />
           <Text>{"  " + t.warn("Relations are not enabled.")}</Text>
-          <Text>{"  " + t.dim("Enable in Configure → Evidence OS, or set CLAWCORE_RELATIONS_ENABLED=true in .env")}</Text>
+          <Text>{"  " + t.dim("Enable in Configure → Evidence OS, or set THREADCLAW_RELATIONS_ENABLED=true in .env")}</Text>
           <Separator />
           <Menu items={[{ label: "← Back", value: "back" }]} onSelect={onBack} />
         </Box>
@@ -252,7 +252,7 @@ export function EvidenceOsScreen({ onBack }: { onBack: () => void }) {
       <Box flexDirection="column">
         <Section title="Entity Terms List" />
         <Text>{"  " + t.dim("Terms are matched with high confidence (0.9) during entity extraction.")}</Text>
-        <Text>{"  " + t.dim(`File: ~/.clawcore/relations-terms.json`)}</Text>
+        <Text>{"  " + t.dim(`File: ~/.threadclaw/relations-terms.json`)}</Text>
         <KV label="Terms" value={String(terms.length)} />
         {status && <Text>{"  " + (status.startsWith("Failed") ? t.err(status) : t.ok(status))}</Text>}
         <Separator />

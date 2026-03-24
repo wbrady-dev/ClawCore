@@ -38,7 +38,7 @@ import { t } from "./components.js";
 
 export async function runInkInstall(): Promise<boolean> {
   const proceed = await promptConfirm({
-    title: "Welcome to ClawCore",
+    title: "Welcome to ThreadClaw",
     message: "Recommended setup gets you to a working local install quickly. Advanced setup lets you tune models, parsing, evidence, integrations, and services up front.",
     confirmLabel: "Begin setup",
     cancelLabel: "Cancel",
@@ -60,7 +60,7 @@ export async function runInkInstall(): Promise<boolean> {
   if (!gpu.detected) {
     const cpuOk = await promptConfirm({
       title: "GPU Not Detected",
-      message: "ClawCore can still run in CPU mode, but indexing and search will be slower. Continue?",
+      message: "ThreadClaw can still run in CPU mode, but indexing and search will be slower. Continue?",
       confirmLabel: "Use CPU mode",
       cancelLabel: "Cancel",
     });
@@ -69,7 +69,7 @@ export async function runInkInstall(): Promise<boolean> {
 
   let root: string;
   if (openclawDir) {
-    const defaultRoot = resolve(openclawDir, "services", "clawcore");
+    const defaultRoot = resolve(openclawDir, "services", "threadclaw");
     const useDefault = await promptConfirm({
       title: "Install Location",
       message: `OpenClaw detected. Install to ${defaultRoot}?`,
@@ -92,7 +92,7 @@ export async function runInkInstall(): Promise<boolean> {
   } else {
     const installDir = await promptText({
       title: "Install Location",
-      message: "No OpenClaw detected. Enter the ClawCore install directory.",
+      message: "No OpenClaw detected. Enter the ThreadClaw install directory.",
       label: "Install directory",
       initial: sourceRoot,
     });
@@ -120,7 +120,7 @@ export async function runInkInstall(): Promise<boolean> {
       });
     }
     if (!existsSync(resolve(root, "package.json"))) {
-      await showNotice("Install Location", "The selected directory does not contain a ClawCore package checkout.");
+      await showNotice("Install Location", "The selected directory does not contain a ThreadClaw package checkout.");
       return false;
     }
   }
@@ -294,7 +294,7 @@ export async function runInkInstall(): Promise<boolean> {
 
   await promptMenu({
     title: "Installation Complete",
-    message: "ClawCore is installed. Continue to the main menu to start services and finish setup.",
+    message: "ThreadClaw is installed. Continue to the main menu to start services and finish setup.",
     items: [{ label: "Continue to main menu", value: "continue" }],
   });
   return true;
@@ -418,8 +418,8 @@ async function promptEvidenceSettings(): Promise<EvidenceConfig> {
   }
 
   if (deep && (deepProvider || deepModel)) {
-    if (deepProvider) process.env.CLAWCORE_MEMORY_RELATIONS_DEEP_EXTRACTION_PROVIDER = deepProvider;
-    if (deepModel) process.env.CLAWCORE_MEMORY_RELATIONS_DEEP_EXTRACTION_MODEL = deepModel;
+    if (deepProvider) process.env.THREADCLAW_MEMORY_RELATIONS_DEEP_EXTRACTION_PROVIDER = deepProvider;
+    if (deepModel) process.env.THREADCLAW_MEMORY_RELATIONS_DEEP_EXTRACTION_MODEL = deepModel;
   }
 
   return {
@@ -485,7 +485,7 @@ async function promptCustomModel(python: string, type: "embed" | "rerank"): Prom
     if (type === "embed") {
       // Use sys.argv[1] for model ID — never interpolate user input into Python code
       const script = "import sys; from sentence_transformers import SentenceTransformer; model = SentenceTransformer(sys.argv[1], trust_remote_code=True); print(model.get_sentence_embedding_dimension())";
-      const tmpScript = resolve(tmpdir(), `clawcore_check_${randomUUID()}.py`);
+      const tmpScript = resolve(tmpdir(), `threadclaw_check_${randomUUID()}.py`);
       writeFileSync(tmpScript, script);
       let output: string;
       try {
@@ -509,7 +509,7 @@ async function promptCustomModel(python: string, type: "embed" | "rerank"): Prom
 
     // Use sys.argv[1] for model ID — never interpolate user input into Python code
     const rerankScript = "import sys; from sentence_transformers import CrossEncoder; CrossEncoder(sys.argv[1], trust_remote_code=True)";
-    const tmpRerankScript = resolve(tmpdir(), `clawcore_check_${randomUUID()}.py`);
+    const tmpRerankScript = resolve(tmpdir(), `threadclaw_check_${randomUUID()}.py`);
     writeFileSync(tmpRerankScript, rerankScript);
     try {
       execFileSync(python, [tmpRerankScript, modelId], { stdio: "pipe", timeout: 600000 });

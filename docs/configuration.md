@@ -6,10 +6,10 @@ All configuration is via environment variables. Copy `.env.example` to `.env` an
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `CLAWCORE_PORT` | `18800` | HTTP API port |
-| `CLAWCORE_HOST` | `127.0.0.1` | HTTP API bind address |
-| `CLAWCORE_API_KEY` | `` | API key for authentication (timing-safe comparison). When set, all endpoints except /health require `Authorization: Bearer <key>` |
-| `CLAWCORE_DATA_DIR` | `~/.clawcore/data/` | Path to all ClawCore databases |
+| `THREADCLAW_PORT` | `18800` | HTTP API port |
+| `THREADCLAW_HOST` | `127.0.0.1` | HTTP API bind address |
+| `THREADCLAW_API_KEY` | `` | API key for authentication (timing-safe comparison). When set, all endpoints except /health require `Authorization: Bearer <key>` |
+| `THREADCLAW_DATA_DIR` | `~/.threadclaw/data/` | Path to all ThreadClaw databases |
 
 ## Embedding
 
@@ -57,54 +57,54 @@ All configuration is via environment variables. Copy `.env.example` to `.env` an
 
 ## Evidence Graph (Relations)
 
-### Main ClawCore Process
+### Main ThreadClaw Process
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `CLAWCORE_RELATIONS_ENABLED` | `false` | Enable entity extraction in ingest pipeline |
-| `CLAWCORE_RELATIONS_GRAPH_DB_PATH` | `~/.clawcore/data/graph.db` | Graph database path |
+| `THREADCLAW_RELATIONS_ENABLED` | `false` | Enable entity extraction in ingest pipeline |
+| `THREADCLAW_RELATIONS_GRAPH_DB_PATH` | `~/.threadclaw/data/graph.db` | Graph database path |
 
 ### Memory Engine Plugin
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `CLAWCORE_MEMORY_RELATIONS_ENABLED` | `false` | Enable evidence graph in memory engine |
-| `CLAWCORE_MEMORY_RELATIONS_GRAPH_DB_PATH` | `~/.clawcore/data/graph.db` | Graph database path |
-| `CLAWCORE_MEMORY_RELATIONS_MIN_MENTIONS` | `2` | Min mentions before entity surfaced |
-| `CLAWCORE_MEMORY_RELATIONS_STALE_DAYS` | `30` | Days before entity is stale |
+| `THREADCLAW_MEMORY_RELATIONS_ENABLED` | `false` | Enable evidence graph in memory engine |
+| `THREADCLAW_MEMORY_RELATIONS_GRAPH_DB_PATH` | `~/.threadclaw/data/graph.db` | Graph database path |
+| `THREADCLAW_MEMORY_RELATIONS_MIN_MENTIONS` | `2` | Min mentions before entity surfaced |
+| `THREADCLAW_MEMORY_RELATIONS_STALE_DAYS` | `30` | Days before entity is stale |
 
 ### Awareness
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `CLAWCORE_MEMORY_RELATIONS_AWARENESS_ENABLED` | `false` | Inject awareness notes into system prompt |
-| `CLAWCORE_MEMORY_RELATIONS_AWARENESS_MAX_NOTES` | `3` | Max awareness notes per turn |
-| `CLAWCORE_MEMORY_RELATIONS_AWARENESS_MAX_TOKENS` | `100` | Token budget for awareness notes |
-| `CLAWCORE_MEMORY_RELATIONS_AWARENESS_DOC_SURFACING` | `false` | Enable unseen-document surfacing |
+| `THREADCLAW_MEMORY_RELATIONS_AWARENESS_ENABLED` | `false` | Inject awareness notes into system prompt |
+| `THREADCLAW_MEMORY_RELATIONS_AWARENESS_MAX_NOTES` | `3` | Max awareness notes per turn |
+| `THREADCLAW_MEMORY_RELATIONS_AWARENESS_MAX_TOKENS` | `100` | Token budget for awareness notes |
+| `THREADCLAW_MEMORY_RELATIONS_AWARENESS_DOC_SURFACING` | `false` | Enable unseen-document surfacing |
 
 ### Claims & Evidence (Horizon 2)
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `CLAWCORE_MEMORY_RELATIONS_CLAIM_EXTRACTION_ENABLED` | `false` | Extract claims from compacted messages |
-| `CLAWCORE_MEMORY_RELATIONS_USER_CLAIM_EXTRACTION_ENABLED` | `false` | Extract claims from "Remember:" statements |
-| `CLAWCORE_MEMORY_RELATIONS_CONTEXT_TIER` | `standard` | Context compiler budget: `lite` (110), `standard` (190), `premium` (280) |
+| `THREADCLAW_MEMORY_RELATIONS_CLAIM_EXTRACTION_ENABLED` | `false` | Extract claims from compacted messages |
+| `THREADCLAW_MEMORY_RELATIONS_USER_CLAIM_EXTRACTION_ENABLED` | `false` | Extract claims from "Remember:" statements |
+| `THREADCLAW_MEMORY_RELATIONS_CONTEXT_TIER` | `standard` | Context compiler budget: `lite` (110), `standard` (190), `premium` (280) |
 
 ### Durability (Horizon 3)
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `CLAWCORE_MEMORY_RELATIONS_ATTEMPT_TRACKING_ENABLED` | `false` | Track tool attempt outcomes |
-| `CLAWCORE_MEMORY_RELATIONS_DECAY_INTERVAL_DAYS` | `90` | Days before anti-runbook confidence decay |
+| `THREADCLAW_MEMORY_RELATIONS_ATTEMPT_TRACKING_ENABLED` | `false` | Track tool attempt outcomes |
+| `THREADCLAW_MEMORY_RELATIONS_DECAY_INTERVAL_DAYS` | `90` | Days before anti-runbook confidence decay |
 
 ### Deep Extraction (Horizon 5)
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `CLAWCORE_MEMORY_RELATIONS_DEEP_EXTRACTION_ENABLED` | `false` | Enable LLM-powered deep extraction |
-| `CLAWCORE_MEMORY_RELATIONS_DEEP_EXTRACTION_MODEL` | `` | Model for deep extraction (falls back to summary model) |
-| `CLAWCORE_MEMORY_RELATIONS_DEEP_EXTRACTION_PROVIDER` | `` | Provider for deep extraction |
-| `CLAWCORE_MEMORY_RELATIONS_EXTRACTION_MODE` | `smart` | Extraction mode: `smart` (LLM-based semantic extraction) or `fast` (regex-only, no LLM, <5ms). Smart mode uses the same model as deep extraction. |
+| `THREADCLAW_MEMORY_RELATIONS_DEEP_EXTRACTION_ENABLED` | `false` | Enable LLM-powered deep extraction |
+| `THREADCLAW_MEMORY_RELATIONS_DEEP_EXTRACTION_MODEL` | `` | Model for deep extraction (falls back to summary model) |
+| `THREADCLAW_MEMORY_RELATIONS_DEEP_EXTRACTION_PROVIDER` | `` | Provider for deep extraction |
+| `THREADCLAW_MEMORY_RELATIONS_EXTRACTION_MODE` | `smart` | Extraction mode: `smart` (LLM-based semantic extraction) or `fast` (regex-only, no LLM, <5ms). Smart mode uses the same model as deep extraction. |
 
 ### Extraction Quality Filters
 
@@ -129,20 +129,20 @@ These are built-in (not configurable) quality controls applied during extraction
 
 | Command | Description |
 |---------|-------------|
-| `clawcore doctor` | Diagnose installation health: versions, data, integration, services, skills, compatibility |
-| `clawcore upgrade` | Safe transactional upgrade: backup → migrate → validate → manifest |
-| `clawcore integrate --check` | Read-only check for OpenClaw integration drift |
-| `clawcore integrate --apply` | Re-apply the managed integration block |
+| `threadclaw doctor` | Diagnose installation health: versions, data, integration, services, skills, compatibility |
+| `threadclaw upgrade` | Safe transactional upgrade: backup → migrate → validate → manifest |
+| `threadclaw integrate --check` | Read-only check for OpenClaw integration drift |
+| `threadclaw integrate --apply` | Re-apply the managed integration block |
 
 ## Rollback
 
 ```bash
 # Disable awareness only
-CLAWCORE_MEMORY_RELATIONS_AWARENESS_ENABLED=false
+THREADCLAW_MEMORY_RELATIONS_AWARENESS_ENABLED=false
 
 # Disable entire evidence engine
-CLAWCORE_MEMORY_RELATIONS_ENABLED=false
+THREADCLAW_MEMORY_RELATIONS_ENABLED=false
 
 # Delete all evidence data
-rm ~/.clawcore/data/graph.db
+rm ~/.threadclaw/data/graph.db
 ```

@@ -15,7 +15,7 @@ import {
   installWindowsServices,
   setRootDirOverride,
   writeConfig,
-  type ClawCoreConfig,
+  type ThreadClawConfig,
 } from "../platform.js";
 import {
   detectGpu,
@@ -79,7 +79,7 @@ export const OFF_EVIDENCE: EvidenceConfig = {
 
 /**
  * Non-interactive install — uses recommended defaults, zero prompts.
- * Called by install.bat/install.sh via `clawcore install --non-interactive`.
+ * Called by install.bat/install.sh via `threadclaw install --non-interactive`.
  * Shell scripts handle venv + pip before this runs.
  */
 export async function runNonInteractiveInstall(): Promise<void> {
@@ -113,7 +113,7 @@ export async function runNonInteractiveInstall(): Promise<void> {
   // Determine install root
   let root = sourceRoot;
   if (openclawDir) {
-    const ocRoot = resolve(openclawDir, "services", "clawcore");
+    const ocRoot = resolve(openclawDir, "services", "threadclaw");
     if (existsSync(resolve(ocRoot, "package.json"))) {
       root = ocRoot;
     } else if (existsSync(resolve(sourceRoot, "package.json"))) {
@@ -154,14 +154,14 @@ export async function runNonInteractiveInstall(): Promise<void> {
     huggingFaceToken: "",
   });
 
-  console.log(t.ok("\n  Installation complete. Run `clawcore` to launch.\n"));
+  console.log(t.ok("\n  Installation complete. Run `threadclaw` to launch.\n"));
 }
 
 export async function runInstall(): Promise<void> {
   clearScreen();
   cancelled = false;
 
-  console.log(section("Welcome to ClawCore"));
+  console.log(section("Welcome to ThreadClaw"));
   console.log(t.dim("  Recommended install gets you to a working local setup quickly."));
   console.log(t.dim("  Advanced install lets you tune parser, evidence, integrations,"));
   console.log(t.dim("  sources, and services during setup.\n"));
@@ -200,7 +200,7 @@ export async function runInstall(): Promise<void> {
     console.log(kvLine("VRAM Free", `${gpu.vramFreeMb} MB`));
     console.log(kvLine("Recommended", formatTierName(getRecommendedTier(gpu))));
   } else {
-    console.log(t.warn("  No GPU detected. ClawCore will run in CPU mode."));
+    console.log(t.warn("  No GPU detected. ThreadClaw will run in CPU mode."));
     const { cpuOk } = await prompts({ type: "confirm", name: "cpuOk", message: "Continue with CPU mode?", initial: true }, { onCancel });
     if (!cpuOk || cancelled) return;
   }
@@ -209,7 +209,7 @@ export async function runInstall(): Promise<void> {
   let root: string;
   if (openclawDir) {
     // OpenClaw detected — default to its services directory
-    const defaultRoot = resolve(openclawDir, "services", "clawcore");
+    const defaultRoot = resolve(openclawDir, "services", "threadclaw");
     console.log(t.ok(`  OpenClaw detected at ${openclawDir}`));
     console.log(t.dim(`  Installing to: ${defaultRoot}\n`));
     const { useDefault } = await prompts({ type: "confirm", name: "useDefault", message: "Install to OpenClaw services directory?", initial: true }, { onCancel });
@@ -230,7 +230,7 @@ export async function runInstall(): Promise<void> {
   // If target doesn't have package.json, copy source files there (fresh install to new location)
   if (!existsSync(resolve(root, "package.json"))) {
     if (root !== sourceRoot && existsSync(resolve(sourceRoot, "package.json"))) {
-      console.log(t.dim(`\n  Copying ClawCore to ${root}...`));
+      console.log(t.dim(`\n  Copying ThreadClaw to ${root}...`));
       mkdirSync(root, { recursive: true });
       cpSync(sourceRoot, root, {
         recursive: true,
@@ -249,7 +249,7 @@ export async function runInstall(): Promise<void> {
       console.log(t.ok("  Copied.\n"));
     }
     if (!existsSync(resolve(root, "package.json"))) {
-      console.log(t.err("\n  The selected directory does not contain a ClawCore package checkout.\n"));
+      console.log(t.err("\n  The selected directory does not contain a ThreadClaw package checkout.\n"));
       return;
     }
   }
@@ -394,9 +394,9 @@ export async function performInstallPlan(plan: InstallPlan): Promise<void> {
 
   // ── Step 1: Node.js dependencies ──
   let sp = ora("Installing Node.js dependencies...").start();
-  if (process.env.CLAWCORE_SKIP_NODE_INSTALL === "1") {
+  if (process.env.THREADCLAW_SKIP_NODE_INSTALL === "1") {
     sp.succeed("Node.js dependencies already bootstrapped");
-    delete process.env.CLAWCORE_SKIP_NODE_INSTALL;
+    delete process.env.THREADCLAW_SKIP_NODE_INSTALL;
   } else {
     try {
       await runCommandWithSpinner(sp, "Installing Node.js dependencies...", npmCmd, ["install"], {
@@ -540,11 +540,11 @@ export async function performInstallPlan(plan: InstallPlan): Promise<void> {
   if (failures.length > 0) {
     console.log(t.warn("\n  Some components need attention:"));
     for (const f of failures) console.log(t.err(`    • ${f}`));
-    console.log(t.dim("  These are non-fatal — ClawCore will work with reduced functionality.\n"));
+    console.log(t.dim("  These are non-fatal — ThreadClaw will work with reduced functionality.\n"));
   }
 
   sp = ora("Writing configuration...").start();
-  const config: ClawCoreConfig = {
+  const config: ThreadClawConfig = {
     embed_model: embedChoice.id,
     rerank_model: rerankChoice.id,
     trust_remote_code: embedChoice.trustRemoteCode || rerankChoice.trustRemoteCode,
@@ -553,8 +553,8 @@ export async function performInstallPlan(plan: InstallPlan): Promise<void> {
   writeConfig(config, root);
   // Three-way .env merge: preserve user customizations, add new keys, keep unknown keys
   const templateEnv: EnvMap = {
-    CLAWCORE_PORT: "18800",
-    CLAWCORE_DATA_DIR: "./data",
+    THREADCLAW_PORT: "18800",
+    THREADCLAW_DATA_DIR: "./data",
     EMBEDDING_URL: "http://127.0.0.1:8012/v1",
     EMBEDDING_MODEL: embedChoice.id,
     EMBEDDING_DIMENSIONS: String(embedChoice.dims),
@@ -570,20 +570,20 @@ export async function performInstallPlan(plan: InstallPlan): Promise<void> {
     CHUNK_TARGET_TOKENS: "512",
     QUERY_TOP_K: "10",
     QUERY_TOKEN_BUDGET: "4000",
-    CLAWCORE_RELATIONS_ENABLED: String(evidenceConfig.relationsEnabled),
-    CLAWCORE_MEMORY_RELATIONS_ENABLED: String(evidenceConfig.relationsEnabled),
-    CLAWCORE_MEMORY_RELATIONS_AWARENESS_ENABLED: String(evidenceConfig.awarenessEnabled),
-    CLAWCORE_MEMORY_RELATIONS_CLAIM_EXTRACTION_ENABLED: String(evidenceConfig.claimExtraction),
-    CLAWCORE_MEMORY_RELATIONS_ATTEMPT_TRACKING_ENABLED: String(evidenceConfig.attemptTracking),
-    CLAWCORE_MEMORY_RELATIONS_DEEP_EXTRACTION_ENABLED: String(evidenceConfig.deepExtraction),
-    CLAWCORE_MEMORY_RELATIONS_CONTEXT_TIER: "standard",
+    THREADCLAW_RELATIONS_ENABLED: String(evidenceConfig.relationsEnabled),
+    THREADCLAW_MEMORY_RELATIONS_ENABLED: String(evidenceConfig.relationsEnabled),
+    THREADCLAW_MEMORY_RELATIONS_AWARENESS_ENABLED: String(evidenceConfig.awarenessEnabled),
+    THREADCLAW_MEMORY_RELATIONS_CLAIM_EXTRACTION_ENABLED: String(evidenceConfig.claimExtraction),
+    THREADCLAW_MEMORY_RELATIONS_ATTEMPT_TRACKING_ENABLED: String(evidenceConfig.attemptTracking),
+    THREADCLAW_MEMORY_RELATIONS_DEEP_EXTRACTION_ENABLED: String(evidenceConfig.deepExtraction),
+    THREADCLAW_MEMORY_RELATIONS_CONTEXT_TIER: "standard",
     OCR_ENABLED: String(enableOcr),
     AUDIO_TRANSCRIPTION_ENABLED: String(enableAudio),
     WHISPER_MODEL: "base",
   };
 
   const oldEnv: EnvMap = hadExistingEnv ? readEnvMap(root) : {};
-  const mergedLines = ["# ClawCore RSMA Configuration"];
+  const mergedLines = ["# ThreadClaw RSMA Configuration"];
   const templateKeys = new Set(Object.keys(templateEnv));
 
   // Write template keys — use user's value if they customized it, otherwise template default
@@ -638,33 +638,33 @@ export async function performInstallPlan(plan: InstallPlan): Promise<void> {
     else console.log(t.dim("  Windows service setup is skipped for now. Use Services later.\n"));
   }
 
-  // Register `clawcore` as a global CLI command (PATH-based, no npm link / no admin)
-  sp = ora("Registering clawcore command...").start();
+  // Register `threadclaw` as a global CLI command (PATH-based, no npm link / no admin)
+  sp = ora("Registering threadclaw command...").start();
   try {
-    const binEntry = resolve(root, "bin", "clawcore.mjs");
+    const binEntry = resolve(root, "bin", "threadclaw.mjs");
     if (platform === "windows") {
-      const cmdDir = resolve(process.env.LOCALAPPDATA ?? resolve(homedir(), "AppData", "Local"), "ClawCore");
+      const cmdDir = resolve(process.env.LOCALAPPDATA ?? resolve(homedir(), "AppData", "Local"), "ThreadClaw");
       mkdirSync(cmdDir, { recursive: true });
-      writeFileSync(resolve(cmdDir, "clawcore.cmd"), `@echo off\r\nnode "${binEntry}" %*\r\n`);
+      writeFileSync(resolve(cmdDir, "threadclaw.cmd"), `@echo off\r\nnode "${binEntry}" %*\r\n`);
       // Add to user PATH if not already there
       const currentPath = process.env.PATH ?? "";
-      if (!currentPath.toLowerCase().includes("clawcore")) {
+      if (!currentPath.toLowerCase().includes("threadclaw")) {
         try {
           execFileSync("setx", ["PATH", `${currentPath};${cmdDir}`], { stdio: "pipe", timeout: 10000 });
         } catch {}
       }
-      sp.succeed("clawcore command registered. Restart terminal to use.");
+      sp.succeed("threadclaw command registered. Restart terminal to use.");
     } else {
       const localBin = resolve(homedir(), ".local", "bin");
       mkdirSync(localBin, { recursive: true });
       try {
-        execFileSync("ln", ["-sf", binEntry, resolve(localBin, "clawcore")], { stdio: "pipe" });
-        execFileSync("chmod", ["+x", resolve(localBin, "clawcore")], { stdio: "pipe" });
+        execFileSync("ln", ["-sf", binEntry, resolve(localBin, "threadclaw")], { stdio: "pipe" });
+        execFileSync("chmod", ["+x", resolve(localBin, "threadclaw")], { stdio: "pipe" });
       } catch {}
-      sp.succeed("clawcore command registered at ~/.local/bin/clawcore");
+      sp.succeed("threadclaw command registered at ~/.local/bin/threadclaw");
     }
   } catch {
-    sp.warn(`Global command not registered. Run: node ${resolve(root, "bin", "clawcore.mjs")}`);
+    sp.warn(`Global command not registered. Run: node ${resolve(root, "bin", "threadclaw.mjs")}`);
   }
 
   setRootDirOverride(root);
@@ -681,7 +681,7 @@ export async function performInstallPlan(plan: InstallPlan): Promise<void> {
   console.log(t.dim("    2. Wait for the model server and API to become healthy"));
   console.log(t.dim("    3. Add sources and advanced features later"));
   console.log("");
-  console.log(t.highlight("  Type `clawcore` anywhere to launch the management console."));
+  console.log(t.highlight("  Type `threadclaw` anywhere to launch the management console."));
   console.log("");
 }
 
@@ -802,7 +802,7 @@ export async function applyOpenClawIntegration(
       applyOpenClawIntegration(resolve(root, "memory-engine"));
       sp.succeed("OpenClaw integrated (fallback path)");
     } catch {
-      sp.warn("Integration failed. Run 'clawcore integrate --apply' later.");
+      sp.warn("Integration failed. Run 'threadclaw integrate --apply' later.");
     }
   }
 }
@@ -903,10 +903,10 @@ function printVerification(root: string, python: string, envPath: string): void 
   // Global command
   try {
     const which = getPlatform() === "windows" ? "where" : "which";
-    execFileSync(which, ["clawcore"], { stdio: "pipe", timeout: 5000 });
-    checks.push(["clawcore global command", true]);
+    execFileSync(which, ["threadclaw"], { stdio: "pipe", timeout: 5000 });
+    checks.push(["threadclaw global command", true]);
   } catch {
-    checks.push(["clawcore global command", false, `Run: cd ${root} && npm link`]);
+    checks.push(["threadclaw global command", false, `Run: cd ${root} && npm link`]);
   }
 
   let allOk = true;
@@ -920,7 +920,7 @@ function printVerification(root: string, python: string, envPath: string): void 
   }
   console.log("");
   if (!allOk) {
-    console.log(t.warn("  Some checks failed. ClawCore will work with reduced functionality."));
+    console.log(t.warn("  Some checks failed. ThreadClaw will work with reduced functionality."));
     console.log(t.dim("  Fix the items above and restart services to enable all features.\n"));
   }
 }
@@ -934,7 +934,7 @@ function installSkills(openclawDir: string | null, sourceRoot: string, root: str
     if (!existsSync(skillsSource)) return;
     const skillsDestination = resolve(workspace, "skills");
     mkdirSync(skillsDestination, { recursive: true });
-    for (const skillDir of ["clawcore-evidence", "clawcore-knowledge"]) {
+    for (const skillDir of ["threadclaw-evidence", "threadclaw-knowledge"]) {
       const source = resolve(skillsSource, skillDir);
       if (existsSync(source)) cpSync(source, resolve(skillsDestination, skillDir), { recursive: true });
     }
@@ -998,7 +998,7 @@ async function handleCustomModel(pythonCmd: string): Promise<ModelInfo | null> {
   const sp = ora(`Testing ${modelId}...`).start();
   try {
     // Use sys.argv[1] for model ID — never interpolate user input into Python code
-    const tmpScript = resolve(tmpdir(), `clawcore_check_${randomUUID()}.py`);
+    const tmpScript = resolve(tmpdir(), `threadclaw_check_${randomUUID()}.py`);
     writeFileSync(tmpScript, "import sys; from sentence_transformers import SentenceTransformer; m = SentenceTransformer(sys.argv[1], trust_remote_code=True); print(m.get_sentence_embedding_dimension())");
     let output: string;
     try {

@@ -1,6 +1,6 @@
 # Feature Audit
 
-Deep functional audit of a specific ClawCore feature. Goes beyond code reading — verifies the feature actually works by tracing data, checking types, and identifying structural risks.
+Deep functional audit of a specific ThreadClaw feature. Goes beyond code reading — verifies the feature actually works by tracing data, checking types, and identifying structural risks.
 
 ## Input
 

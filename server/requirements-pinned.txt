@@ -1,4 +1,4 @@
-# ClawCore Python Dependencies — Pinned Versions
+# ThreadClaw Python Dependencies — Pinned Versions
 # Generated from a tested working environment.
 #
 # PyTorch must be installed separately first:

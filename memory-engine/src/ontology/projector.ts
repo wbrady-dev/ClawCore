@@ -3,7 +3,7 @@
  *
  * Takes MemoryObjects produced by the Writer + reconciled by the TruthEngine
  * and projects them into the appropriate physical stores (graph.db, memory.db,
- * clawcore.db) plus the unified provenance_links table.
+ * threadclaw.db) plus the unified provenance_links table.
  *
  * Phase 2: Dual-write mode — writes to BOTH old tables AND provenance_links.
  * Phase 5: provenance_links becomes sole source for cross-object relationships.

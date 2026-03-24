@@ -29,7 +29,7 @@ setInterval(() => {
 
 function getClientIp(req: FastifyRequest): string {
   // Only trust X-Forwarded-For when behind a verified proxy
-  if (process.env.CLAWCORE_TRUST_PROXY === "true") {
+  if (process.env.THREADCLAW_TRUST_PROXY === "true") {
     const forwarded = req.headers["x-forwarded-for"];
     if (typeof forwarded === "string") return forwarded.split(",")[0].trim();
   }

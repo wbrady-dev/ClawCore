@@ -3,7 +3,7 @@
  *
  * Creates infrastructure tables (evidence_log, scope_sequences, state_scopes,
  * branch_scopes, promotion_policies) and Horizon 1 tables (entities,
- * entity_mentions). All tables live in `clawcore-graph.db`.
+ * entity_mentions). All tables live in `threadclaw-graph.db`.
  */
 
 import { chmodSync } from "fs";

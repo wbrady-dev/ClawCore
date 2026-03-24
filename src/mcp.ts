@@ -1,16 +1,16 @@
 /**
- * ClawCore MCP Server
+ * ThreadClaw MCP Server
  *
- * Exposes ClawCore RAG as an MCP (Model Context Protocol) stdio server.
- * OpenClaw agents can call clawcore_query, clawcore_ingest, etc. as native tools
+ * Exposes ThreadClaw RAG as an MCP (Model Context Protocol) stdio server.
+ * OpenClaw agents can call threadclaw_query, threadclaw_ingest, etc. as native tools
  * instead of spawning CLI processes via exec.
  *
  * Usage:
  *   node --import tsx src/mcp.ts
  *
  * Or register in openclaw.json:
- *   plugins.entries.acpx.config.mcpServers.clawcore.command = "node"
- *   plugins.entries.acpx.config.mcpServers.clawcore.args = ["--import", "tsx", "src/mcp.ts"]
+ *   plugins.entries.acpx.config.mcpServers.threadclaw.command = "node"
+ *   plugins.entries.acpx.config.mcpServers.threadclaw.args = ["--import", "tsx", "src/mcp.ts"]
  */
 
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
@@ -26,19 +26,19 @@ import { ingestFile } from "./ingest/pipeline.js";
 import { validateIngestPath } from "./api/ingest.routes.js";
 
 // ── Bootstrap database ──────────────────────────────────────────────
-const dbPath = resolve(config.dataDir, "clawcore.db");
+const dbPath = resolve(config.dataDir, "threadclaw.db");
 const db = getDb(dbPath);
 runMigrations(db);
 
 // ── Create MCP server ───────────────────────────────────────────────
 const server = new McpServer({
-  name: "clawcore",
+  name: "threadclaw",
   version: getAppVersion(),
 });
 
-// ── clawcore_query ─────────────────────────────────────────────────────
+// ── threadclaw_query ─────────────────────────────────────────────────────
 server.tool(
-  "clawcore_query",
+  "threadclaw_query",
   "Search the knowledge base. Use mode='brief' by default (~200 tokens). Use 'titles' for exploration (~30 tokens). Use 'full' only when user asks to see a document.",
   {
     query: z.string().describe("Natural language search query"),
@@ -83,9 +83,9 @@ server.tool(
   },
 );
 
-// ── clawcore_ingest ────────────────────────────────────────────────────
+// ── threadclaw_ingest ────────────────────────────────────────────────────
 server.tool(
-  "clawcore_ingest",
+  "threadclaw_ingest",
   "Ingest a file into the knowledge base. The file watcher handles workspace files automatically — use this for files the user explicitly shares.",
   {
     path: z.string().describe("Absolute path to the file to ingest"),
@@ -121,9 +121,9 @@ server.tool(
   },
 );
 
-// ── clawcore_collections ───────────────────────────────────────────────
+// ── threadclaw_collections ───────────────────────────────────────────────
 server.tool(
-  "clawcore_collections",
+  "threadclaw_collections",
   "List all collections with document/chunk counts.",
   {},
   async () => {

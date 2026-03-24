@@ -81,10 +81,10 @@ export function createLcmGrepTool(input: {
 }): AnyAgentTool {
   return {
     name: "cc_grep",
-    label: "ClawCore Grep",
+    label: "ThreadClaw Grep",
     description:
       "Search compacted conversation history using regex or full-text search. " +
-      "Searches across messages and/or summaries stored by ClawCore Memory. " +
+      "Searches across messages and/or summaries stored by ThreadClaw Memory. " +
       "Use this to find specific content that may have been compacted away from " +
       "active context. Returns matching snippets with their summary/message IDs " +
       "for follow-up with cc_expand or cc_describe.",

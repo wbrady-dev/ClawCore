@@ -1,5 +1,5 @@
 /**
- * Type declarations for untyped npm packages used by ClawCore.
+ * Type declarations for untyped npm packages used by ThreadClaw.
  */
 
 declare module "prompts" {

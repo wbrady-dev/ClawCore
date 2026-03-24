@@ -2,9 +2,9 @@ import { describe, it, expect } from "vitest";
 import { Command } from "commander";
 
 /**
- * CLI tests for clawcore.
+ * CLI tests for threadclaw.
  *
- * We cannot import clawcore.ts directly because it calls program.parse() and
+ * We cannot import threadclaw.ts directly because it calls program.parse() and
  * launches the TUI at module scope. Instead we recreate the command tree to
  * verify that subcommands register and parse correctly, and test that key
  * modules import without error.
@@ -16,20 +16,20 @@ describe("CLI command structure", () => {
     expect(typeof Command).toBe("function");
   });
 
-  it("can create a clawcore-shaped program without error", () => {
+  it("can create a threadclaw-shaped program without error", () => {
     const program = new Command();
     program
-      .name("clawcore")
+      .name("threadclaw")
       .description("State-of-the-art RAG system for OpenClaw")
       .version("0.3.0");
 
-    expect(program.name()).toBe("clawcore");
+    expect(program.name()).toBe("threadclaw");
     expect(program.description()).toBe("State-of-the-art RAG system for OpenClaw");
   });
 
   it("registers subcommands", () => {
     const program = new Command();
-    program.name("clawcore").version("0.3.0");
+    program.name("threadclaw").version("0.3.0");
 
     const expectedCommands = [
       "query",
@@ -62,7 +62,7 @@ describe("CLI command structure", () => {
 
   it("--version outputs version string", () => {
     const program = new Command();
-    program.name("clawcore").version("0.3.0").exitOverride();
+    program.name("threadclaw").version("0.3.0").exitOverride();
 
     let output = "";
     program.configureOutput({
@@ -82,7 +82,7 @@ describe("CLI command structure", () => {
   it("--help outputs help text", () => {
     const program = new Command();
     program
-      .name("clawcore")
+      .name("threadclaw")
       .description("State-of-the-art RAG system for OpenClaw")
       .version("0.3.0")
       .exitOverride();
@@ -101,14 +101,14 @@ describe("CLI command structure", () => {
     } catch (e: any) {
       expect(e.exitCode).toBe(0);
     }
-    expect(output).toContain("clawcore");
+    expect(output).toContain("threadclaw");
     expect(output).toContain("query");
     expect(output).toContain("ingest");
   });
 
   it("parses subcommand without executing", () => {
     const program = new Command();
-    program.name("clawcore").version("0.3.0").exitOverride();
+    program.name("threadclaw").version("0.3.0").exitOverride();
 
     let called = false;
     program.addCommand(

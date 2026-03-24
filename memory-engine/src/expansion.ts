@@ -318,7 +318,7 @@ export function buildExpansionToolDefinition(options: {
   return {
     name: "cc_expand",
     description:
-      "Expand compacted conversation summaries from ClawCore Memory. " +
+      "Expand compacted conversation summaries from ThreadClaw Memory. " +
       "Traverses the summary DAG to retrieve children and source messages. " +
       "Use this to drill into previously-compacted context when you need detail " +
       "that was summarised away. Returns a compact text payload with cited IDs for follow-up.",

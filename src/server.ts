@@ -14,7 +14,7 @@ import { flushTokens } from "./utils/token-tracker.js";
 /**
  * Check OpenClaw integration on startup (read-only).
  * Logs warnings if the managed integration block has drifted.
- * Never writes — use 'clawcore integrate --apply' for fixes.
+ * Never writes — use 'threadclaw integrate --apply' for fixes.
  */
 async function checkIntegrationOnStartup(): Promise<void> {
   try {
@@ -23,7 +23,7 @@ async function checkIntegrationOnStartup(): Promise<void> {
     if (!status.openclawFound) return;
 
     if (!status.ok) {
-      logger.warn("OpenClaw integration drift detected. Run 'clawcore doctor' or 'clawcore integrate --apply' to fix.");
+      logger.warn("OpenClaw integration drift detected. Run 'threadclaw doctor' or 'threadclaw integrate --apply' to fix.");
       for (const drift of status.drifts) {
         logger.warn(`  ${drift.field}: expected ${JSON.stringify(drift.expected)}, got ${JSON.stringify(drift.actual)}`);
       }
@@ -41,9 +41,9 @@ function hardenPermissions(): void {
   if (process.platform === "win32") return;
 
   const targets = [
-    { path: resolve(config.dataDir, "clawcore.db"), mode: 0o600 },
-    { path: resolve(config.dataDir, "clawcore.db-wal"), mode: 0o600 },
-    { path: resolve(config.dataDir, "clawcore.db-shm"), mode: 0o600 },
+    { path: resolve(config.dataDir, "threadclaw.db"), mode: 0o600 },
+    { path: resolve(config.dataDir, "threadclaw.db-wal"), mode: 0o600 },
+    { path: resolve(config.dataDir, "threadclaw.db-shm"), mode: 0o600 },
     { path: config.relations.graphDbPath, mode: 0o600 },
   ];
 
@@ -54,7 +54,7 @@ function hardenPermissions(): void {
   }
 
   // Ensure staging dir exists with restricted permissions
-  const stagingDir = resolve(homedir(), ".clawcore", "staging");
+  const stagingDir = resolve(homedir(), ".threadclaw", "staging");
   try {
     mkdirSync(stagingDir, { recursive: true, mode: 0o700 });
   } catch {}
@@ -70,7 +70,7 @@ export async function startServer() {
   hardenPermissions();
 
   // Initialize database
-  const dbPath = resolve(config.dataDir, "clawcore.db");
+  const dbPath = resolve(config.dataDir, "threadclaw.db");
   const db = getDb(dbPath);
   runMigrations(db);
   ensureCollection(db, config.defaults.collection);
@@ -120,10 +120,10 @@ export async function startServer() {
   });
 
   // Start HTTP server
-  // Bind to localhost only — ClawCore serves local processes (OpenClaw, TUI)
-  // Set CLAWCORE_HOST=0.0.0.0 in .env to expose to the network if needed
+  // Bind to localhost only — ThreadClaw serves local processes (OpenClaw, TUI)
+  // Set THREADCLAW_HOST=0.0.0.0 in .env to expose to the network if needed
   await server.listen({ port: config.port, host: config.host });
-  logger.info({ port: config.port }, "ClawCore HTTP server running");
+  logger.info({ port: config.port }, "ThreadClaw HTTP server running");
 
   return server;
 }

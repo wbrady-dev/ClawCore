@@ -1,13 +1,13 @@
 /**
  * Local Directory Source Adapter
  *
- * Wraps ClawCore's existing chokidar file watcher as a SourceAdapter.
+ * Wraps ThreadClaw's existing chokidar file watcher as a SourceAdapter.
  * Real-time watching — no polling needed.
  */
 import { existsSync } from "fs";
 import { resolve } from "path";
 import { config } from "../../config.js";
-import { ClawCoreWatcher } from "../../watcher/index.js";
+import { ThreadClawWatcher } from "../../watcher/index.js";
 import type { SourceAdapter, SourceConfig, SourceStatus } from "../types.js";
 
 export class LocalAdapter implements SourceAdapter {
@@ -15,7 +15,7 @@ export class LocalAdapter implements SourceAdapter {
   name = "Local Directories";
   type = "realtime" as const;
 
-  private watcher: ClawCoreWatcher | null = null;
+  private watcher: ThreadClawWatcher | null = null;
   private status: SourceStatus = {
     state: "idle",
     docCount: 0,
@@ -64,7 +64,7 @@ export class LocalAdapter implements SourceAdapter {
       return;
     }
 
-    this.watcher = new ClawCoreWatcher(watchConfigs);
+    this.watcher = new ThreadClawWatcher(watchConfigs);
     await this.watcher.start();
     this.status = {
       state: "watching",

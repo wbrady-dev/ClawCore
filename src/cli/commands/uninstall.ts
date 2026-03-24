@@ -3,7 +3,7 @@ import { detectTerminalCapabilities, setTerminalCapabilities } from "../../tui/c
 import { performUninstall, runUninstall } from "../../tui/screens/uninstall.js";
 
 export const uninstallCommand = new Command("uninstall")
-  .description("Launch the guided ClawCore uninstaller")
+  .description("Launch the guided ThreadClaw uninstaller")
   .option("--plain", "Use the plain uninstaller instead of the Ink UI")
   .option("--yes", "Skip prompts and uninstall immediately")
   .option("--delete-data", "Also delete local data when used with --yes")
@@ -13,7 +13,7 @@ export const uninstallCommand = new Command("uninstall")
       return;
     }
 
-    if (options.plain) process.env.CLAWCORE_TUI_PLAIN = "true";
+    if (options.plain) process.env.THREADCLAW_TUI_PLAIN = "true";
 
     const capabilities = detectTerminalCapabilities();
     setTerminalCapabilities(capabilities);

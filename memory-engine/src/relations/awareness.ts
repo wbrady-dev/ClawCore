@@ -383,8 +383,8 @@ export function buildAwarenessNote(
       return null;
     }
 
-    // Reserve tokens for header "[ClawCore Awareness]\n"
-    const headerTokens = estimateTokens("[ClawCore Awareness]\n");
+    // Reserve tokens for header "[ThreadClaw Awareness]\n"
+    const headerTokens = estimateTokens("[ThreadClaw Awareness]\n");
     let tokenBudget = config.maxTokens - headerTokens;
 
     // Query 1: Mismatches (25ms guard)
@@ -451,7 +451,7 @@ export function buildAwarenessNote(
       tokensAdded,
     });
 
-    return `[ClawCore Awareness]\n${noteLines.join("\n")}`;
+    return `[ThreadClaw Awareness]\n${noteLines.join("\n")}`;
   } catch {
     recordAwarenessEvent({
       fired: false, noteCount: 0, noteTypes: [], latencyMs: Date.now() - start, terms: [], tokensAdded: 0,

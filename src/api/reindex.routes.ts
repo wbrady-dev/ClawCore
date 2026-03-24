@@ -32,7 +32,7 @@ export function registerReindexRoutes(server: FastifyInstance) {
       dry_run?: boolean;
     } ?? {};
 
-    const db = getDb(resolve(config.dataDir, "clawcore.db"));
+    const db = getDb(resolve(config.dataDir, "threadclaw.db"));
 
     // Get documents to reindex
     let docs: { id: string; source_path: string; collection_name: string }[];
@@ -110,7 +110,7 @@ export function registerReindexRoutes(server: FastifyInstance) {
     }
 
     const { collection } = req.body as { collection?: string } ?? {};
-    const db = getDb(resolve(config.dataDir, "clawcore.db"));
+    const db = getDb(resolve(config.dataDir, "threadclaw.db"));
     const { stat } = await import("fs/promises");
 
     let docs: { id: string; source_path: string; collection_name: string; file_mtime: string | null }[];

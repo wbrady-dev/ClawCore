@@ -70,7 +70,7 @@ export async function resolveLcmConversationScope(input: {
       return { conversationId: undefined, allConversations: true };
     }
     if (params.crossAgent === true) {
-      const allowed = process.env.CLAWCORE_MEMORY_ALLOW_CROSS_AGENT_SEARCH === "true";
+      const allowed = process.env.THREADCLAW_MEMORY_ALLOW_CROSS_AGENT_SEARCH === "true";
       if (allowed) {
         return { conversationId: undefined, allConversations: true };
       }

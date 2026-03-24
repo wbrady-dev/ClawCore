@@ -1,4 +1,4 @@
-import { getRootDir, startClawCoreApi, startModelServer, stopServices, forceKillByPort, getApiPort, getModelPort } from "./platform.js";
+import { getRootDir, startThreadClawApi, startModelServer, stopServices, forceKillByPort, getApiPort, getModelPort } from "./platform.js";
 import { clearServiceLogs, readLatestServiceLogLine, type ServiceLogName } from "./service-logs.js";
 
 function safeParseInt(value: string | undefined, fallback: number): number {
@@ -7,9 +7,9 @@ function safeParseInt(value: string | undefined, fallback: number): number {
   return Number.isFinite(n) && n > 0 ? n : fallback;
 }
 
-const MODEL_WAIT_TIMEOUT = safeParseInt(process.env.CLAWCORE_MODEL_TIMEOUT, 180000);
-const API_WAIT_TIMEOUT = safeParseInt(process.env.CLAWCORE_API_TIMEOUT, 30000);
-const STOP_WAIT_TIMEOUT = safeParseInt(process.env.CLAWCORE_STOP_TIMEOUT, 20000);
+const MODEL_WAIT_TIMEOUT = safeParseInt(process.env.THREADCLAW_MODEL_TIMEOUT, 180000);
+const API_WAIT_TIMEOUT = safeParseInt(process.env.THREADCLAW_API_TIMEOUT, 30000);
+const STOP_WAIT_TIMEOUT = safeParseInt(process.env.THREADCLAW_STOP_TIMEOUT, 20000);
 
 export type ServiceAction = "start" | "stop" | "restart";
 
@@ -88,13 +88,13 @@ export async function performServiceAction(
     return modelWait;
   }
 
-  options.onStatus?.("Launching ClawCore API...");
-  const apiResult = startClawCoreApi();
+  options.onStatus?.("Launching ThreadClaw API...");
+  const apiResult = startThreadClawApi();
   if (!apiResult.success) {
-    return { success: false, message: apiResult.error ?? "Failed to launch ClawCore API" };
+    return { success: false, message: apiResult.error ?? "Failed to launch ThreadClaw API" };
   }
 
-  const apiWait = await waitForHealthWithLogs(getApiPort(), API_WAIT_TIMEOUT, "clawcore", root, "Waiting for ClawCore API...", options.onStatus);
+  const apiWait = await waitForHealthWithLogs(getApiPort(), API_WAIT_TIMEOUT, "threadclaw", root, "Waiting for ThreadClaw API...", options.onStatus);
   if (!apiWait.success) {
     return apiWait;
   }

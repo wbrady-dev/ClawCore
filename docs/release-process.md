@@ -2,7 +2,7 @@
 
 ## Pre-Release Checklist
 
-1. All tests pass: `npx vitest run` in both clawcore (89 tests) and memory-engine (858 tests)
+1. All tests pass: `npx vitest run` in both threadclaw (89 tests) and memory-engine (858 tests)
 2. Type check clean: `npx tsc --noEmit` (no new errors)
 3. No stale references: `grep -r "lossless-claw" src/`
 4. Distribution synced: All source files, tests, and configs match
@@ -26,12 +26,12 @@
 
 All evidence features are opt-in via config flags:
 ```bash
-CLAWCORE_MEMORY_RELATIONS_ENABLED=false  # Disables everything
+THREADCLAW_MEMORY_RELATIONS_ENABLED=false  # Disables everything
 ```
 
 Database rollback:
 ```bash
-rm ~/.clawcore/data/graph.db  # Delete evidence data
+rm ~/.threadclaw/data/graph.db  # Delete evidence data
 # Schema recreates on next startup
 ```
 
@@ -51,7 +51,7 @@ Progressive enablement is recommended: start with awareness, add claims, then at
 
 ## Distribution
 
-Distribution directory: `~/Documents/clawcore/`
+Distribution directory: `~/Documents/threadclaw/`
 - Must contain all source files, tests, and configs
 - Must NOT contain `.env`, credentials, or personal data
 - `.env.example` serves as the configuration template

@@ -11,38 +11,38 @@ const execFileAsync = promisify(execFile);
 export async function checkServicesAsync(root = getRootDir()): Promise<ServiceStatus> {
   const result: ServiceStatus = {
     models: { running: false },
-    clawcore: { running: false },
+    threadclaw: { running: false },
   };
 
-  const [modelsHealthy, clawcoreHealthy] = await Promise.all([
+  const [modelsHealthy, threadclawHealthy] = await Promise.all([
     isPortReachable(getModelPort()),
     isPortReachable(getApiPort()),
   ]);
 
   if (modelsHealthy) result.models.running = true;
-  if (clawcoreHealthy) result.clawcore.running = true;
+  if (threadclawHealthy) result.threadclaw.running = true;
 
   const platform = getPlatform();
 
-  if (!result.models.running || !result.clawcore.running) {
+  if (!result.models.running || !result.threadclaw.running) {
     if (platform === "windows") {
       const [modelsState, ragState] = await Promise.all([
-        runCommand("schtasks", ["/query", "/tn", "ClawCore_Models", "/fo", "csv", "/nh"]),
-        runCommand("schtasks", ["/query", "/tn", "ClawCore_RAG", "/fo", "csv", "/nh"]),
+        runCommand("schtasks", ["/query", "/tn", "ThreadClaw_Models", "/fo", "csv", "/nh"]),
+        runCommand("schtasks", ["/query", "/tn", "ThreadClaw_RAG", "/fo", "csv", "/nh"]),
       ]);
       if (!result.models.running) result.models.running = modelsState?.includes('"Running"') ?? false;
-      if (!result.clawcore.running) result.clawcore.running = ragState?.includes('"Running"') ?? false;
+      if (!result.threadclaw.running) result.threadclaw.running = ragState?.includes('"Running"') ?? false;
     } else if (platform === "linux") {
-      const [modelsService, clawcoreService] = await Promise.all([
-        runCommand("systemctl", ["--user", "is-active", "clawcore-models"]),
-        runCommand("systemctl", ["--user", "is-active", "clawcore-rag"]),
+      const [modelsService, threadclawService] = await Promise.all([
+        runCommand("systemctl", ["--user", "is-active", "threadclaw-models"]),
+        runCommand("systemctl", ["--user", "is-active", "threadclaw-rag"]),
       ]);
       if (!result.models.running) result.models.running = modelsService === "active";
-      if (!result.clawcore.running) result.clawcore.running = clawcoreService === "active";
+      if (!result.threadclaw.running) result.threadclaw.running = threadclawService === "active";
     } else {
       const launchctl = await runCommand("launchctl", ["list"]);
-      if (!result.models.running) result.models.running = launchctl?.includes("com.clawcore.models") ?? false;
-      if (!result.clawcore.running) result.clawcore.running = launchctl?.includes("com.clawcore.rag") ?? false;
+      if (!result.models.running) result.models.running = launchctl?.includes("com.threadclaw.models") ?? false;
+      if (!result.threadclaw.running) result.threadclaw.running = launchctl?.includes("com.threadclaw.rag") ?? false;
     }
   }
 
@@ -50,13 +50,13 @@ export async function checkServicesAsync(root = getRootDir()): Promise<ServiceSt
     const pid = readPid(resolve(root, ".models.pid"));
     if (pid && isPidAlive(pid)) result.models = { running: true, pid };
   }
-  if (!result.clawcore.running) {
-    const pid = readPid(resolve(root, ".clawcore.pid"));
-    if (pid && isPidAlive(pid)) result.clawcore = { running: true, pid };
+  if (!result.threadclaw.running) {
+    const pid = readPid(resolve(root, ".threadclaw.pid"));
+    if (pid && isPidAlive(pid)) result.threadclaw = { running: true, pid };
   }
 
   if (!result.models.running) result.models.running = await isPortReachable(getModelPort());
-  if (!result.clawcore.running) result.clawcore.running = await isPortReachable(getApiPort());
+  if (!result.threadclaw.running) result.threadclaw.running = await isPortReachable(getApiPort());
 
   return result;
 }
@@ -65,16 +65,16 @@ export async function checkAutoStartupAsync(): Promise<boolean> {
   const platform = getPlatform();
 
   if (platform === "windows") {
-    const out = await runCommand("schtasks", ["/query", "/tn", "ClawCore_Models"]);
+    const out = await runCommand("schtasks", ["/query", "/tn", "ThreadClaw_Models"]);
     return out !== null; // task exists = auto-start registered
   }
 
   if (platform === "linux") {
-    const output = await runCommand("systemctl", ["--user", "is-enabled", "clawcore-models"]);
+    const output = await runCommand("systemctl", ["--user", "is-enabled", "threadclaw-models"]);
     return output === "enabled";
   }
 
-  return existsSync(resolve(homedir(), "Library", "LaunchAgents", "com.clawcore.models.plist"));
+  return existsSync(resolve(homedir(), "Library", "LaunchAgents", "com.threadclaw.models.plist"));
 }
 
 export async function detectGpuAsync(): Promise<GpuInfo> {

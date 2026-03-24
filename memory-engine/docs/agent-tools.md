@@ -1,6 +1,6 @@
 # Agent Tools
 
-ClawCore provides 12 agent tools: 4 core conversation tools and 8 evidence tools from the RSMA ontology.
+ThreadClaw provides 12 agent tools: 4 core conversation tools and 8 evidence tools from the RSMA ontology.
 
 ## Tool Summary
 
@@ -19,7 +19,7 @@ ClawCore provides 12 agent tools: 4 core conversation tools and 8 evidence tools
 | `cc_procedures` | Evidence | Learned success and failure patterns |
 | `cc_diagnostics` | Evidence | Internal RSMA health and observability |
 
-The 4 core tools are always available. The 8 evidence tools require Evidence OS (`CLAWCORE_MEMORY_RELATIONS_ENABLED=true`).
+The 4 core tools are always available. The 8 evidence tools require Evidence OS (`THREADCLAW_MEMORY_RELATIONS_ENABLED=true`).
 
 ## Usage Patterns
 

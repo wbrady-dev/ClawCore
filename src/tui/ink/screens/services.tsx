@@ -7,7 +7,7 @@ import { checkAutoStartupAsync, isPortReachable } from "../../runtime-status.js"
 import { subscribeTasks } from "../../tasks.js";
 
 // Module-level cache
-let cachedServicesSvc: ServiceStatus = { models: { running: false }, clawcore: { running: false } };
+let cachedServicesSvc: ServiceStatus = { models: { running: false }, threadclaw: { running: false } };
 let cachedServicesAutoStart = false;
 
 export function ServicesScreen({
@@ -27,7 +27,7 @@ export function ServicesScreen({
     let cancelled = false;
 
     (async () => {
-      const [modelsUp, clawcoreUp, autoStartState] = await Promise.all([
+      const [modelsUp, threadclawUp, autoStartState] = await Promise.all([
         isPortReachable(getModelPort()),
         isPortReachable(getApiPort()),
         checkAutoStartupAsync(),
@@ -36,7 +36,7 @@ export function ServicesScreen({
       if (cancelled) return;
       const serviceState: ServiceStatus = {
         models: { running: modelsUp },
-        clawcore: { running: clawcoreUp },
+        threadclaw: { running: threadclawUp },
       };
       cachedServicesSvc = serviceState;
       cachedServicesAutoStart = autoStartState;
@@ -56,11 +56,11 @@ export function ServicesScreen({
   const [apiLogLines, setApiLogLines] = useState<string[]>([]);
   useEffect(() => {
     try { setModelLogLines(readServiceLogTail("models", 3)); } catch {}
-    try { setApiLogLines(readServiceLogTail("clawcore", 3)); } catch {}
+    try { setApiLogLines(readServiceLogTail("threadclaw", 3)); } catch {}
   }, [tick]);
 
-  const gameModeOn = !services.models.running && !services.clawcore.running;
-  const anyRunning = services.models.running || services.clawcore.running;
+  const gameModeOn = !services.models.running && !services.threadclaw.running;
+  const anyRunning = services.models.running || services.threadclaw.running;
 
   const items: MenuItem[] = [];
   if (anyRunning) {
@@ -82,7 +82,7 @@ export function ServicesScreen({
     <Box flexDirection="column">
       <Section title="Services" />
       <Text>{"  " + (services.models.running ? t.ok("●") : t.err("○")) + ` Models (port ${getModelPort()})`}</Text>
-      <Text>{"  " + (services.clawcore.running ? t.ok("●") : t.err("○")) + ` ClawCore API (port ${getApiPort()})`}</Text>
+      <Text>{"  " + (services.threadclaw.running ? t.ok("●") : t.err("○")) + ` ThreadClaw API (port ${getApiPort()})`}</Text>
       <Text>{"  " + t.dim("Auto-start: ") + (autoStart ? t.ok("enabled") : t.dim("disabled"))}</Text>
       <Text>{"  " + t.dim("Game mode: ") + (gameModeOn ? t.warn("on") : t.dim("off"))}</Text>
 

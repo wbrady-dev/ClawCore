@@ -1,6 +1,6 @@
 # API Reference
 
-## HTTP Endpoints (ClawCore Server)
+## HTTP Endpoints (ThreadClaw Server)
 
 ### Health & Lifecycle
 - `GET /health` -- Health check (always accessible, bypasses API key auth)
@@ -47,7 +47,7 @@
   - Returns stats on what was cleared
 
 ### Authentication
-- When `CLAWCORE_API_KEY` is set, all endpoints except `/health` require `Authorization: Bearer <key>`
+- When `THREADCLAW_API_KEY` is set, all endpoints except `/health` require `Authorization: Bearer <key>`
 - Comparison uses timing-safe SHA-256 hash comparison (`crypto.timingSafeEqual`) to prevent timing attacks
 
 ## Agent Tools API

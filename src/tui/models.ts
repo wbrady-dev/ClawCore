@@ -1,5 +1,5 @@
 /**
- * Embedding and reranking model catalog for ClawCore RAG.
+ * Embedding and reranking model catalog for ThreadClaw RAG.
  * Every model verified on HuggingFace as of 2026-03-17.
  * Covers the full spectrum from Raspberry Pi to datacenter GPUs.
  */

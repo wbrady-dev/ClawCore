@@ -8,7 +8,7 @@
 
 The layers work together: RAG provides the knowledge base, DAG tracks conversation lineage, KG builds entity graphs, AL surfaces context, SL manages claims/decisions/loops, DE tracks state changes, AOM records tool outcomes, BSG handles speculative branches, EEL provides the audit trail, and CCL compiles it all into a token-budgeted system prompt.
 
-## ClawCore Evidence OS
+## ThreadClaw Evidence OS
 
 The implementation of RSMA's stateful layers. Tracks structured knowledge extracted from conversations, documents, and tool results. All knowledge is stored as **MemoryObjects** in a single `memory_objects` table with a `kind` discriminator. Cross-references live in `provenance_links`.
 
@@ -17,7 +17,7 @@ The implementation of RSMA's stateful layers. Tracks structured knowledge extrac
 All knowledge types are MemoryObjects with one of 13 kinds: event, chunk, message, summary, claim, decision, entity, loop, attempt, procedure, invariant, delta, conflict. This replaced 13 legacy tables with one unified store (migration v16-v18).
 
 ### Entities & Awareness
-**Entities** (kind='entity') are named concepts extracted from text (people, tools, projects). ClawCore tracks where each entity appears via provenance_links (predicate='mentioned_in') and entity-to-entity relationships via provenance_links (predicate='relates_to'). **Awareness notes** surface relevant entity information in the system prompt -- mismatches across sources, stale references, and connections between entities.
+**Entities** (kind='entity') are named concepts extracted from text (people, tools, projects). ThreadClaw tracks where each entity appears via provenance_links (predicate='mentioned_in') and entity-to-entity relationships via provenance_links (predicate='relates_to'). **Awareness notes** surface relevant entity information in the system prompt -- mismatches across sources, stale references, and connections between entities.
 
 ### Claims & Decisions
 **Claims** (kind='claim') are structured facts with StructuredClaim data: subject, predicate, objectText. Each claim has a confidence score, trust score, and evidence chain via provenance_links (predicate='supports' or 'contradicts'). **Decisions** (kind='decision') track active choices with automatic supersession -- when a new decision on the same topic is made, the old one is marked superseded.
@@ -71,13 +71,13 @@ MemoryObjects have a trust score based on their source_kind:
 ## Extraction & Provenance
 
 ### Extraction Modes
-ClawCore extracts structured knowledge from every message using one of two modes:
+ThreadClaw extracts structured knowledge from every message using one of two modes:
 
 **Smart mode** (default when deep extraction model is configured): A single structured LLM call classifies the message and extracts all memory events in one pass. The LLM understands natural language without magic prefixes — "We're going with Postgres" is recognized as a decision, "Actually no, use MySQL" as a correction, "I think it's port 8080" as an uncertain claim. Uses the same model configured for deep extraction. Falls back to fast mode if the LLM call fails.
 
 **Fast mode** (default when no model is configured): Regex-only extraction with no LLM calls, completing in <5ms. Detects structured signals: "Remember:" statements, heading+bullet patterns, YAML frontmatter, tool results, "We decided..." patterns, capitalized entity names, and correction/uncertainty/preference/temporal signals.
 
-Configure with: `CLAWCORE_MEMORY_RELATIONS_EXTRACTION_MODE=smart|fast`
+Configure with: `THREADCLAW_MEMORY_RELATIONS_EXTRACTION_MODE=smart|fast`
 
 ### Unified Ontology
 All extracted knowledge is represented as `MemoryObject` instances. There are 13 kinds: event, chunk, message, summary, claim, decision, entity, loop, attempt, procedure, invariant, delta, and conflict. Each MemoryObject carries provenance (where it came from), confidence, freshness, a lifecycle status, and an influence weight.

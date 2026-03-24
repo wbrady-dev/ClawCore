@@ -52,7 +52,7 @@ const hotConfig = {
   // Feature flags
   audioTranscriptionEnabled: envBool("AUDIO_TRANSCRIPTION_ENABLED", false),
   whisperModel: env("WHISPER_MODEL", "base"),
-  relationsEnabled: envBool("CLAWCORE_RELATIONS_ENABLED", false),
+  relationsEnabled: envBool("THREADCLAW_RELATIONS_ENABLED", false),
   queryExpansionEnabled: envBool("QUERY_EXPANSION_ENABLED", false),
 };
 
@@ -90,7 +90,7 @@ function reloadHotConfig(): void {
     hotConfig.batchSize = getInt("EMBEDDING_BATCH_SIZE", 32);
     hotConfig.audioTranscriptionEnabled = getBool("AUDIO_TRANSCRIPTION_ENABLED", false);
     hotConfig.whisperModel = get("WHISPER_MODEL", "base");
-    hotConfig.relationsEnabled = getBool("CLAWCORE_RELATIONS_ENABLED", false);
+    hotConfig.relationsEnabled = getBool("THREADCLAW_RELATIONS_ENABLED", false);
     hotConfig.queryExpansionEnabled = getBool("QUERY_EXPANSION_ENABLED", false);
 
     // Sync changed keys back to process.env so downstream code that reads process.env directly stays consistent
@@ -116,10 +116,10 @@ if (existsSync(envPath)) {
 // ── Main config (frozen at startup for model/port/path settings) ──
 
 export const config = {
-  port: envInt("CLAWCORE_PORT", 18800),
-  host: env("CLAWCORE_HOST", "127.0.0.1"),
-  apiKey: env("CLAWCORE_API_KEY", ""),
-  dataDir: resolve(env("CLAWCORE_DATA_DIR", resolve(homedir(), ".clawcore", "data"))),
+  port: envInt("THREADCLAW_PORT", 18800),
+  host: env("THREADCLAW_HOST", "127.0.0.1"),
+  apiKey: env("THREADCLAW_API_KEY", ""),
+  dataDir: resolve(env("THREADCLAW_DATA_DIR", resolve(homedir(), ".threadclaw", "data"))),
   rootDir,
 
   embedding: {
@@ -162,9 +162,9 @@ export const config = {
   relations: {
     get enabled() { return hotConfig.relationsEnabled; },
     graphDbPath: env(
-      "CLAWCORE_RELATIONS_GRAPH_DB_PATH",
-      env("CLAWCORE_MEMORY_RELATIONS_GRAPH_DB_PATH",
-        resolve(homedir(), ".clawcore", "data", "graph.db")),
+      "THREADCLAW_RELATIONS_GRAPH_DB_PATH",
+      env("THREADCLAW_MEMORY_RELATIONS_GRAPH_DB_PATH",
+        resolve(homedir(), ".threadclaw", "data", "graph.db")),
     ),
   },
 

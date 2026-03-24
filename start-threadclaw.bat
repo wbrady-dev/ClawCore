@@ -1,6 +1,6 @@
 @echo off
-REM ClawCore startup wrapper
-REM Usage: start-clawcore.bat [--with-openclaw]
+REM ThreadClaw startup wrapper
+REM Usage: start-threadclaw.bat [--with-openclaw]
 
 setlocal EnableDelayedExpansion
 set "SCRIPT_DIR=%~dp0"
@@ -14,50 +14,50 @@ for %%a in (%*) do (
 
 curl -s http://127.0.0.1:8012/health >nul 2>&1 && curl -s http://127.0.0.1:18800/health >nul 2>&1
 if %errorlevel%==0 (
-  echo [clawcore] ClawCore already running ^(models :8012, API :18800^)
+  echo [threadclaw] ThreadClaw already running ^(models :8012, API :18800^)
   goto :start_openclaw
 )
 
-if not exist "%SCRIPT_DIR%\node_modules" if not exist "%SCRIPT_DIR%\dist\cli\clawcore.js" (
-  echo [clawcore] ERROR: ClawCore runtime files are missing. Run install.bat first.
+if not exist "%SCRIPT_DIR%\node_modules" if not exist "%SCRIPT_DIR%\dist\cli\threadclaw.js" (
+  echo [threadclaw] ERROR: ThreadClaw runtime files are missing. Run install.bat first.
   exit /b 1
 )
 
-echo [clawcore] Starting ClawCore services...
-start /min "ClawCore" node "%SCRIPT_DIR%\bin\clawcore.mjs" serve
+echo [threadclaw] Starting ThreadClaw services...
+start /min "ThreadClaw" node "%SCRIPT_DIR%\bin\threadclaw.mjs" serve
 
-echo [clawcore] Waiting for model server ^(may take 30-60s on first load^)...
+echo [threadclaw] Waiting for model server ^(may take 30-60s on first load^)...
 call :wait_for_port 8012 120
 if errorlevel 1 (
-  echo [clawcore] ERROR: Model server failed to start within 120s
+  echo [threadclaw] ERROR: Model server failed to start within 120s
   exit /b 1
 )
-echo [clawcore] Model server ready.
+echo [threadclaw] Model server ready.
 
-echo [clawcore] Waiting for ClawCore API...
+echo [threadclaw] Waiting for ThreadClaw API...
 call :wait_for_port 18800 30
 if errorlevel 1 (
-  echo [clawcore] ERROR: ClawCore API failed to start within 30s
+  echo [threadclaw] ERROR: ThreadClaw API failed to start within 30s
   exit /b 1
 )
-echo [clawcore] ClawCore API ready.
+echo [threadclaw] ThreadClaw API ready.
 
 :start_openclaw
 if "%WITH_OPENCLAW%"=="true" (
-  echo [clawcore] Starting OpenClaw gateway...
+  echo [threadclaw] Starting OpenClaw gateway...
   start /min "OpenClaw" openclaw
   timeout /t 3 /nobreak >nul
-  echo [clawcore] OpenClaw started.
+  echo [threadclaw] OpenClaw started.
 )
 
 echo.
 echo   Model Server:  http://127.0.0.1:8012/health
-echo   ClawCore API:  http://127.0.0.1:18800/health
+echo   ThreadClaw API:  http://127.0.0.1:18800/health
 if "%WITH_OPENCLAW%"=="true" (
   echo   OpenClaw:      http://127.0.0.1:18789
 )
 echo.
-echo [clawcore] All services running.
+echo [threadclaw] All services running.
 exit /b 0
 
 :wait_for_port

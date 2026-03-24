@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-// Global launcher for ClawCore
+// Global launcher for ThreadClaw
 // Runs the built CLI from dist/. Falls back to tsx + src/ for development.
 
 import { spawn, execSync } from "node:child_process";
@@ -12,8 +12,8 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const root = resolve(__dirname, "..");
 
 const distEntries = [
-  resolve(root, "dist", "cli", "clawcore.js"),
-  resolve(root, "dist", "cli", "clawcore.mjs"),
+  resolve(root, "dist", "cli", "threadclaw.js"),
+  resolve(root, "dist", "cli", "threadclaw.mjs"),
 ];
 const distEntry = distEntries.find((entry) => existsSync(entry));
 
@@ -28,7 +28,7 @@ if (distEntry) {
 } else {
   // Development fallback: use tsx to run TypeScript source directly
   const tsxCli = resolve(root, "node_modules", "tsx", "dist", "cli.mjs");
-  const srcEntry = resolve(root, "src", "cli", "clawcore.ts");
+  const srcEntry = resolve(root, "src", "cli", "threadclaw.ts");
 
   if (!existsSync(tsxCli)) {
     console.error("Error: dist/ not built and tsx not available.");

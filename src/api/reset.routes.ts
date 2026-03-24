@@ -8,7 +8,7 @@ import { logger } from "../utils/logger.js";
 import { isLocalRequest } from "./guards.js";
 
 function db() {
-  return getDb(resolve(config.dataDir, "clawcore.db"));
+  return getDb(resolve(config.dataDir, "threadclaw.db"));
 }
 
 export function registerResetRoutes(server: FastifyInstance) {

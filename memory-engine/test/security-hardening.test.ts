@@ -14,15 +14,15 @@ import { execSync } from "child_process";
 import { resolve } from "path";
 import { readdirSync, readFileSync, existsSync } from "fs";
 
-const CLAWCORE_ROOT = resolve(__dirname, "..", "..");
-const CLAWCORE_SRC = resolve(CLAWCORE_ROOT, "src");
+const THREADCLAW_ROOT = resolve(__dirname, "..", "..");
+const THREADCLAW_SRC = resolve(THREADCLAW_ROOT, "src");
 const MEMORY_SRC = resolve(__dirname, "..", "src");
 
 /**
  * Find the Python model server (server/server.py).
  */
 function findModelServer(): string | null {
-  const p = resolve(CLAWCORE_ROOT, "server", "server.py");
+  const p = resolve(THREADCLAW_ROOT, "server", "server.py");
   return existsSync(p) ? p : null;
 }
 
@@ -31,7 +31,7 @@ function findModelServer(): string | null {
 describe("contentHashBytes", () => {
   it("returns identical hash for identical byte arrays", async () => {
     // Dynamic import to handle ESM (file outside memory-engine rootDir — resolved at runtime)
-    // @ts-ignore TS6059: hash.ts is in parent ClawCore src/, not memory-engine
+    // @ts-ignore TS6059: hash.ts is in parent ThreadClaw src/, not memory-engine
     const { contentHashBytes } = await import("../../src/utils/hash.js");
     const data = new Uint8Array([0x50, 0x4b, 0x03, 0x04, 0xff, 0x00, 0xab]);
     const hash1 = await contentHashBytes(data);
@@ -54,7 +54,7 @@ describe("query parameter clamping", () => {
   it("clamps top_k to MAX_TOP_K (100)", async () => {
     // Read the route file and verify constants exist
     const { readFileSync } = await import("fs");
-    const routeCode = readFileSync(resolve(CLAWCORE_SRC, "api", "query.routes.ts"), "utf-8");
+    const routeCode = readFileSync(resolve(THREADCLAW_SRC, "api", "query.routes.ts"), "utf-8");
     expect(routeCode).toContain("MAX_TOP_K = 100");
     expect(routeCode).toContain("MAX_TOKEN_BUDGET = 50000");
     expect(routeCode).toContain("clampTopK(top_k)");
@@ -63,7 +63,7 @@ describe("query parameter clamping", () => {
 
   it("pipeline has defense-in-depth clamp", async () => {
     const { readFileSync } = await import("fs");
-    const pipelineCode = readFileSync(resolve(CLAWCORE_SRC, "query", "pipeline.ts"), "utf-8");
+    const pipelineCode = readFileSync(resolve(THREADCLAW_SRC, "query", "pipeline.ts"), "utf-8");
     expect(pipelineCode).toContain("Math.min(options.topK ?? config.defaults.queryTopK, 100)");
     expect(pipelineCode).toContain("Math.min(options.tokenBudget ?? config.defaults.queryTokenBudget, 50000)");
   });
@@ -76,7 +76,7 @@ describe("lint guards", () => {
     // Only check server-side code where logger should be used.
     // CLI, TUI, and adapters legitimately use console.error for user-facing output.
     const dirs = ["api", "ingest", "query", "storage", "watcher", "utils"].map(
-      (d) => `"${resolve(CLAWCORE_SRC, d)}"`,
+      (d) => `"${resolve(THREADCLAW_SRC, d)}"`,
     );
     const result = execSync(
       `grep -rn "console\\.error" ${dirs.join(" ")} --include="*.ts" || true`,
@@ -95,7 +95,7 @@ describe("lint guards", () => {
   it("no execSync with template literals in src/ (use execFileSync)", () => {
     // Match execSync(` — template literal = shell injection risk
     const result = execSync(
-      `grep -rn "execSync(\\\`" "${CLAWCORE_SRC}" --include="*.ts" --include="*.tsx" || true`,
+      `grep -rn "execSync(\\\`" "${THREADCLAW_SRC}" --include="*.ts" --include="*.tsx" || true`,
       { stdio: "pipe" },
     ).toString().trim();
 
@@ -112,7 +112,7 @@ describe("lint guards", () => {
   });
   it("no spawn with { shell: true } in src/ (bypasses execFileSync safety)", () => {
     const result = execSync(
-      `grep -rn "shell:\\s*true" "${CLAWCORE_SRC}" --include="*.ts" --include="*.tsx" || true`,
+      `grep -rn "shell:\\s*true" "${THREADCLAW_SRC}" --include="*.ts" --include="*.tsx" || true`,
       { stdio: "pipe" },
     ).toString().trim();
 
@@ -142,8 +142,8 @@ describe("network binding", () => {
   it("no hardcoded 0.0.0.0 in Python service files", () => {
     // Check both possible locations for Python service files
     const dirs = [
-      resolve(CLAWCORE_ROOT, ".."),         // live install: services/
-      resolve(CLAWCORE_ROOT, "server"),      // distribution: server/
+      resolve(THREADCLAW_ROOT, ".."),         // live install: services/
+      resolve(THREADCLAW_ROOT, "server"),      // distribution: server/
     ].filter((d) => existsSync(d));
     let checked = 0;
     for (const dir of dirs) {
@@ -158,7 +158,7 @@ describe("network binding", () => {
   });
 
   it("no hardcoded 0.0.0.0 in Node server startup", () => {
-    const serverTs = readFileSync(resolve(CLAWCORE_SRC, "server.ts"), "utf-8");
+    const serverTs = readFileSync(resolve(THREADCLAW_SRC, "server.ts"), "utf-8");
     expect(serverTs).not.toContain('host: "0.0.0.0"');
   });
 });
@@ -180,7 +180,7 @@ describe("python server binding", () => {
 describe("temp file naming", () => {
   it("ingest route uses randomUUID for temp files", async () => {
     const { readFileSync } = await import("fs");
-    const ingestCode = readFileSync(resolve(CLAWCORE_SRC, "api", "ingest.routes.ts"), "utf-8");
+    const ingestCode = readFileSync(resolve(THREADCLAW_SRC, "api", "ingest.routes.ts"), "utf-8");
     expect(ingestCode).toContain("randomUUID()");
     expect(ingestCode).not.toContain("_tmp_${Date.now()}");
   });
@@ -191,7 +191,7 @@ describe("temp file naming", () => {
 describe("epub spine ordering", () => {
   it("epub parser reads OPF spine for reading order", async () => {
     const { readFileSync } = await import("fs");
-    const epubCode = readFileSync(resolve(CLAWCORE_SRC, "ingest", "parsers", "epub.ts"), "utf-8");
+    const epubCode = readFileSync(resolve(THREADCLAW_SRC, "ingest", "parsers", "epub.ts"), "utf-8");
     expect(epubCode).toContain("spineOrder");
     expect(epubCode).toContain("itemref");
     expect(epubCode).toContain("manifestItems");

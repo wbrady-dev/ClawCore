@@ -110,7 +110,7 @@ function createTestDeps(config: LcmConfig): LcmDependencies {
 function createEngine(): LcmContextEngine {
   const tempDir = mkdtempSync(join(tmpdir(), "lossless-claw-engine-"));
   tempDirs.push(tempDir);
-  const config = createTestConfig(join(tempDir, "clawcore-memory.db"));
+  const config = createTestConfig(join(tempDir, "threadclaw-memory.db"));
   return new LcmContextEngine(createTestDeps(config));
 }
 
@@ -129,7 +129,7 @@ function createEngineWithConfig(overrides: Partial<LcmConfig>): LcmContextEngine
   const tempDir = mkdtempSync(join(tmpdir(), "lossless-claw-engine-"));
   tempDirs.push(tempDir);
   const config = {
-    ...createTestConfig(join(tempDir, "clawcore-memory.db")),
+    ...createTestConfig(join(tempDir, "threadclaw-memory.db")),
     ...overrides,
   };
   return new LcmContextEngine(createTestDeps(config));
@@ -338,7 +338,7 @@ describe("LcmContextEngine.ingest content extraction", () => {
       expect(storedFile).not.toBeNull();
       expect(storedFile!.fileName).toBe("lcm-paper.md");
       expect(storedFile!.mimeType).toBe("text/markdown");
-      const expectedPathFragment = `.openclaw${sep}clawcore-files${sep}${conversation!.conversationId}${sep}`;
+      const expectedPathFragment = `.openclaw${sep}threadclaw-files${sep}${conversation!.conversationId}${sep}`;
       expect(storedFile!.storageUri).toContain(expectedPathFragment);
       expect(readFileSync(storedFile!.storageUri, "utf8")).toBe(fileText);
 
@@ -383,7 +383,7 @@ describe("LcmContextEngine connection lifecycle", () => {
   it("keeps shared sqlite handle open while another engine instance is active", async () => {
     const tempDir = mkdtempSync(join(tmpdir(), "lossless-claw-shared-db-"));
     tempDirs.push(tempDir);
-    const dbPath = join(tempDir, "clawcore-memory.db");
+    const dbPath = join(tempDir, "threadclaw-memory.db");
 
     const engineA = createEngineAtDatabasePath(dbPath);
     const engineB = createEngineAtDatabasePath(dbPath);
@@ -1005,7 +1005,7 @@ describe("LcmContextEngine.assemble canonical path", () => {
     // Core recall section
     expect(promptAddition).toContain("## LCM Recall");
     expect(promptAddition).toContain("maps to details, not the details themselves");
-    expect(promptAddition).toContain("**Recall priority:** ClawCore memory tools first");
+    expect(promptAddition).toContain("**Recall priority:** ThreadClaw memory tools first");
     // Tool escalation
     expect(promptAddition).toContain("1. `cc_grep`");
     expect(promptAddition).toContain("2. `cc_describe`");

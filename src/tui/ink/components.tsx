@@ -25,7 +25,7 @@ export function Banner() {
   if (!caps.unicode) {
     return (
       <Box flexDirection="column" marginBottom={1}>
-        <Text>{r("  CLAWCORE")}</Text>
+        <Text>{r("  THREADCLAW")}</Text>
         <Text>{w("  Premium RAG for OpenClaw")}</Text>
       </Box>
     );
@@ -33,7 +33,7 @@ export function Banner() {
 
   return (
     <Box flexDirection="column" marginBottom={1}>
-      <Text>{"              "}{r("🦞")} {w("CLAWCORE")} {r("🦞")}</Text>
+      <Text>{"              "}{r("🦞")} {w("THREADCLAW")} {r("🦞")}</Text>
       <Text>{"          "}{chalk.dim("RSMA So Good It Pinches")}</Text>
     </Box>
   );

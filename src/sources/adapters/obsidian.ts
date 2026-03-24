@@ -8,7 +8,7 @@
 import { existsSync, readdirSync } from "fs";
 import { resolve, join } from "path";
 import { homedir } from "os";
-import { ClawCoreWatcher } from "../../watcher/index.js";
+import { ThreadClawWatcher } from "../../watcher/index.js";
 import type { SourceAdapter, SourceConfig, SourceStatus } from "../types.js";
 
 /** Common vault locations by platform */
@@ -81,7 +81,7 @@ export class ObsidianAdapter implements SourceAdapter {
   name = "Obsidian Vault";
   type = "realtime" as const;
 
-  private watcher: ClawCoreWatcher | null = null;
+  private watcher: ThreadClawWatcher | null = null;
   private detectedVaults: string[] = [];
   private status: SourceStatus = {
     state: "idle",
@@ -130,7 +130,7 @@ export class ObsidianAdapter implements SourceAdapter {
       return;
     }
 
-    this.watcher = new ClawCoreWatcher(watchConfigs);
+    this.watcher = new ThreadClawWatcher(watchConfigs);
     await this.watcher.start();
     this.status = { state: "watching", docCount: 0 };
   }

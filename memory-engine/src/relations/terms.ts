@@ -1,7 +1,7 @@
 /**
  * Terms list loader for entity extraction.
  *
- * Loads and validates `~/.clawcore/relations-terms.json`.
+ * Loads and validates `~/.threadclaw/relations-terms.json`.
  * Terms are cached for 60 seconds. Missing file returns [].
  */
 
@@ -42,11 +42,11 @@ let cachedPath: string | null = null;
 /**
  * Load terms from the terms file. Cached for 60 seconds.
  *
- * @param termsPath - Override path (defaults to `~/.clawcore/relations-terms.json`).
+ * @param termsPath - Override path (defaults to `~/.threadclaw/relations-terms.json`).
  * @returns Array of validated terms (may be empty).
  */
 export function loadTerms(termsPath?: string): string[] {
-  const resolvedPath = termsPath ?? join(homedir(), ".clawcore", "relations-terms.json");
+  const resolvedPath = termsPath ?? join(homedir(), ".threadclaw", "relations-terms.json");
 
   // Return cache if valid
   if (

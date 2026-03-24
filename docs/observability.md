@@ -41,7 +41,7 @@ function isConnectionHealthy(db): boolean {
 ### Evidence Graph Status
 ```bash
 # Via CLI
-clawcore relations stats
+threadclaw relations stats
 # Shows: entity count, mention count, evidence log events, top entities
 ```
 

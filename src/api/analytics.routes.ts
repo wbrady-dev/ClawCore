@@ -107,7 +107,7 @@ export function registerAnalyticsRoutes(server: FastifyInstance) {
    * GET /analytics/awareness — awareness layer stats.
    *
    * Awareness stats are tracked in the memory-engine process (OpenClaw plugin),
-   * not in the ClawCore HTTP server. This endpoint returns stats if the awareness
+   * not in the ThreadClaw HTTP server. This endpoint returns stats if the awareness
    * module has been loaded into this process, or a fallback otherwise.
    *
    * For full awareness metrics, use the eval harness via the OpenClaw plugin API.
@@ -122,7 +122,7 @@ export function registerAnalyticsRoutes(server: FastifyInstance) {
       return awarenessStatsGetter(windowMs);
     }
     return {
-      message: "Awareness stats are tracked in the OpenClaw agent process, not the ClawCore HTTP server.",
+      message: "Awareness stats are tracked in the OpenClaw agent process, not the ThreadClaw HTTP server.",
       totalTurns: 0,
       firedCount: 0,
       fireRate: 0,
@@ -171,7 +171,7 @@ export function registerDiagnosticsRoute(server: FastifyInstance) {
 
     const result: Record<string, unknown> = {};
 
-    // Graph DB stats (use getGraphDb singleton — same driver as rest of ClawCore)
+    // Graph DB stats (use getGraphDb singleton — same driver as rest of ThreadClaw)
     const graphDbPath = config.relations.graphDbPath;
     if (existsSync(graphDbPath)) {
       try {
@@ -195,7 +195,7 @@ export function registerDiagnosticsRoute(server: FastifyInstance) {
     }
 
     // Memory DB stats (temporary connection — not the main DB singleton)
-    const memDbPath = resolve(homedir(), ".clawcore", "data", "memory.db");
+    const memDbPath = resolve(homedir(), ".threadclaw", "data", "memory.db");
     if (existsSync(memDbPath)) {
       try {
         const Database = (await import("better-sqlite3")).default;

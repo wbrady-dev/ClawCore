@@ -3,8 +3,8 @@
 ## Project Structure
 
 ```
-clawcore/
-  src/              # Main ClawCore (HTTP server, CLI, TUI, ingest, query)
+threadclaw/
+  src/              # Main ThreadClaw (HTTP server, CLI, TUI, ingest, query)
   memory-engine/    # Memory engine plugin (conversation memory + Evidence OS)
     src/
       ontology/     # Unified ontology (MemoryObject, mo-store, TruthEngine, extraction)
@@ -19,8 +19,8 @@ clawcore/
 ## Development Setup
 
 ```bash
-git clone https://github.com/openclaw/clawcore.git
-cd clawcore && npm install
+git clone https://github.com/openclaw/threadclaw.git
+cd threadclaw && npm install
 cd memory-engine && npm install
 ```
 

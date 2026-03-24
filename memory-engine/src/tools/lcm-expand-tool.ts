@@ -136,9 +136,9 @@ export function createLcmExpandTool(input: {
 }): AnyAgentTool {
   return {
     name: "cc_expand",
-    label: "ClawCore Expand",
+    label: "ThreadClaw Expand",
     description:
-      "Expand compacted conversation summaries from ClawCore Memory. " +
+      "Expand compacted conversation summaries from ThreadClaw Memory. " +
       "Traverses the summary DAG to retrieve children and source messages. " +
       "Use this to drill into previously-compacted context when you need detail " +
       "that was summarised away. Provide either summaryIds (direct expansion) or " +

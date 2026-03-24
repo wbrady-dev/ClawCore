@@ -70,7 +70,7 @@ await runTest("runStreamedCommand captures output and emits streamed lines", asy
 });
 
 await runTest("service log helpers clear and read log files", () => {
-  const root = mkdtempSync(join(tmpdir(), "clawcore-tui-"));
+  const root = mkdtempSync(join(tmpdir(), "threadclaw-tui-"));
 
   clearServiceLogs(root);
   assert.equal(readLatestServiceLogLine("models", root), "");
@@ -83,7 +83,7 @@ await runTest("service log helpers clear and read log files", () => {
 });
 
 await runTest("configure helpers summarize parser mode and watch paths", () => {
-  const root = mkdtempSync(join(tmpdir(), "clawcore-config-"));
+  const root = mkdtempSync(join(tmpdir(), "threadclaw-config-"));
   writeFileSync(
     join(root, ".env"),
     [
@@ -101,11 +101,11 @@ await runTest("configure helpers summarize parser mode and watch paths", () => {
 });
 
 await runTest("env updates preserve existing content and append new keys", () => {
-  const root = mkdtempSync(join(tmpdir(), "clawcore-env-"));
+  const root = mkdtempSync(join(tmpdir(), "threadclaw-env-"));
   writeFileSync(
     join(root, ".env"),
     [
-      "# ClawCore Configuration",
+      "# ThreadClaw Configuration",
       "QUERY_TOP_K=10",
       "WATCH_DEBOUNCE_MS=3000",
     ].join("\n"),
@@ -123,7 +123,7 @@ await runTest("env updates preserve existing content and append new keys", () =>
 
 await runTest("root override switches the active TUI root", () => {
   const originalRoot = getRootDir();
-  const overriddenRoot = mkdtempSync(join(tmpdir(), "clawcore-root-"));
+  const overriddenRoot = mkdtempSync(join(tmpdir(), "threadclaw-root-"));
 
   setRootDirOverride(overriddenRoot);
   assert.equal(getRootDir(), overriddenRoot);

@@ -5,12 +5,12 @@
  * No external CLI dependency required.
  *
  * Auth flow:
- * 1. User provides a Google Cloud OAuth client ID/secret (or uses ClawCore's default)
+ * 1. User provides a Google Cloud OAuth client ID/secret (or uses ThreadClaw's default)
  * 2. First-time: opens browser for OAuth consent, saves refresh token
  * 3. Subsequent: uses saved refresh token (auto-refreshes access tokens)
  *
  * Polling-based: checks for changes on a configurable interval.
- * Read-only: ClawCore NEVER writes, modifies, or deletes Drive files.
+ * Read-only: ThreadClaw NEVER writes, modifies, or deletes Drive files.
  */
 import { google, type drive_v3 } from "googleapis";
 import { existsSync, readFileSync, writeFileSync, mkdirSync, unlinkSync, createWriteStream } from "fs";
@@ -25,11 +25,11 @@ import { deleteDocument } from "../../storage/collections.js";
 import type { SourceAdapter, SourceConfig, SourceStatus, ChangeSet, StagedFile } from "../types.js";
 
 // ── Constants ──
-const CREDENTIALS_DIR = resolve(homedir(), ".clawcore", "credentials");
+const CREDENTIALS_DIR = resolve(homedir(), ".threadclaw", "credentials");
 const CREDENTIALS_FILE = resolve(CREDENTIALS_DIR, "gdrive-tokens.json");
-const STAGING_DIR = resolve(homedir(), ".clawcore", "staging", "gdrive");
+const STAGING_DIR = resolve(homedir(), ".threadclaw", "staging", "gdrive");
 
-// ClawCore's OAuth client — read-only Drive scope
+// ThreadClaw's OAuth client — read-only Drive scope
 const DEFAULT_CLIENT_ID = ""; // Set during setup or via env
 const SCOPES = ["https://www.googleapis.com/auth/drive.readonly"];
 const REDIRECT_PORT = 18801;
@@ -305,7 +305,7 @@ export class GDriveAdapter implements SourceAdapter {
         // Use LIKE with staging dir prefix + fileId OR file name to match
         // regardless of which download path was used during ingestion.
         try {
-          const db = getDb(resolve(config.dataDir, "clawcore.db"));
+          const db = getDb(resolve(config.dataDir, "threadclaw.db"));
           const stagingPrefix = STAGING_DIR.replace(/\\/g, "/");
           const docs = db.prepare(
             "SELECT id FROM documents WHERE source_path LIKE ? OR source_path LIKE ?",
@@ -555,7 +555,7 @@ function waitForOAuthCallback(): Promise<string | null> {
 
       if (code) {
         res.writeHead(200, { "Content-Type": "text/html" });
-        res.end("<h1>ClawCore connected to Google Drive!</h1><p>You can close this window and return to the TUI.</p>");
+        res.end("<h1>ThreadClaw connected to Google Drive!</h1><p>You can close this window and return to the TUI.</p>");
         server.close();
         resolve(code);
         return;

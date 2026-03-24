@@ -19,16 +19,16 @@ export interface SkillSyncResult {
   reason?: string;
 }
 
-/** Shipped skill files relative to the skills/ directory in ClawCore. */
+/** Shipped skill files relative to the skills/ directory in ThreadClaw. */
 const SHIPPED_SKILLS = [
-  "clawcore-evidence/SKILL.md",
-  "clawcore-knowledge/SKILL.md",
+  "threadclaw-evidence/SKILL.md",
+  "threadclaw-knowledge/SKILL.md",
 ];
 
 /**
  * Sync shipped skill files to the OpenClaw workspace.
  *
- * @param shippedDir - Path to ClawCore's skills/ directory (source)
+ * @param shippedDir - Path to ThreadClaw's skills/ directory (source)
  * @param workspaceSkillsDir - Path to OpenClaw workspace/skills/ (target)
  * @param manifestHashes - Hashes from the last install (from manifest.skills)
  * @param dryRun - If true, don't write files, just report what would happen

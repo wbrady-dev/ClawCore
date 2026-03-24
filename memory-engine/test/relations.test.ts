@@ -138,8 +138,8 @@ describe("Relations: Entity Extraction", () => {
 
   it("records co-occurring terms as contextTerms", () => {
     const results = extractFast(
-      "OpenClaw uses ClawCore for memory management.",
-      ["OpenClaw", "ClawCore"],
+      "OpenClaw uses ThreadClaw for memory management.",
+      ["OpenClaw", "ThreadClaw"],
     );
     for (const r of results) {
       expect(r.contextTerms).toBeDefined();
@@ -293,14 +293,14 @@ describe("Relations: Graph Store", () => {
       entityId,
       sourceType: "document",
       sourceId: "doc-1",
-      contextTerms: ["OpenClaw", "ClawCore"],
+      contextTerms: ["OpenClaw", "ThreadClaw"],
     });
     const entityMo = db.prepare("SELECT composite_id FROM memory_objects WHERE id = ?").get(entityId) as { composite_id: string };
     const row = db.prepare(
       "SELECT metadata FROM provenance_links WHERE subject_id = ? AND predicate = 'mentioned_in'",
     ).get(entityMo.composite_id) as { metadata: string };
     const meta = JSON.parse(row.metadata);
-    expect(JSON.parse(meta.context_terms)).toEqual(["OpenClaw", "ClawCore"]);
+    expect(JSON.parse(meta.context_terms)).toEqual(["OpenClaw", "ThreadClaw"]);
   });
 
   it("deleteGraphDataForSource removes mentions", () => {
@@ -461,8 +461,8 @@ describe("Relations: reExtractGraphForDocument", () => {
 
     // Re-extraction with different content — old mentions should be gone
     reExtractGraphForDocument(db, "doc-1", [
-      { text: "ClawCore is a memory engine.", position: 0 },
-    ], { termsListEntries: ["ClawCore"] });
+      { text: "ThreadClaw is a memory engine.", position: 0 },
+    ], { termsListEntries: ["ThreadClaw"] });
 
     const mentionsAfter = db.prepare(
       "SELECT * FROM provenance_links WHERE predicate = 'mentioned_in' AND object_id = 'document:doc-1'",
@@ -470,7 +470,7 @@ describe("Relations: reExtractGraphForDocument", () => {
     // Old mentions for doc-1 should be replaced with new ones
     expect(mentionsAfter.length).toBeGreaterThan(0);
 
-    // "OpenClaw" mention from doc-1 should be gone (only ClawCore remains from doc-1)
+    // "OpenClaw" mention from doc-1 should be gone (only ThreadClaw remains from doc-1)
     const openclawMentions = db.prepare(`
       SELECT pl.* FROM provenance_links pl
       JOIN memory_objects mo ON pl.subject_id = 'entity:' || mo.id
@@ -559,7 +559,7 @@ describe("Relations: Awareness notes", () => {
     );
 
     expect(result).not.toBeNull();
-    expect(result).toContain("ClawCore Awareness");
+    expect(result).toContain("ThreadClaw Awareness");
     expect(result!.toLowerCase()).toContain("mismatch");
   });
 

@@ -1,6 +1,6 @@
-# ClawCore RSMA — Technical Reference
+# ThreadClaw RSMA — Technical Reference
 
-Complete technical documentation for ClawCore's **RSMA (Reconciled Semantic Memory Architecture)** — a multi-layer agent architecture that combines retrieval, summary lineage, knowledge graphs, awareness, evidence-backed state, delta tracking, attempt memory, branch governance, and low-token context compilation.
+Complete technical documentation for ThreadClaw's **RSMA (Reconciled Semantic Memory Architecture)** — a multi-layer agent architecture that combines retrieval, summary lineage, knowledge graphs, awareness, evidence-backed state, delta tracking, attempt memory, branch governance, and low-token context compilation.
 
 > `RSMA = RAG + DAG + KG + AL + SL + DE + AOM + BSG + EEL + CCL`
 
@@ -12,11 +12,11 @@ Covers architecture, query pipeline, ingestion, storage, evidence store, source 
 
 ```
 ┌──────────────────────────────────────────────────────────┐
-│                         ClawCore                         │
+│                         ThreadClaw                         │
 │                                                          │
 │  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌──────────┐  │
 │  │ CLI/TUI  │  │ HTTP API │  │   MCP    │  │ Watcher  │  │
-│  │ clawcore │  │  :18800  │  │  stdio   │  │ chokidar │  │
+│  │ threadclaw │  │  :18800  │  │  stdio   │  │ chokidar │  │
 │  └────┬─────┘  └────┬─────┘  └────┬─────┘  └────┬─────┘  │
 │       │             │             │             │        │
 │       └─────────────┴──────┬──────┴─────────────┘        │
@@ -51,7 +51,7 @@ Covers architecture, query pipeline, ingestion, storage, evidence store, source 
           └─────────────────────────────────────┘
 ```
 
-ClawCore runs as two processes:
+ThreadClaw runs as two processes:
 1. **Node.js** — query pipeline, ingestion, HTTP API, CLI/TUI, file watcher, source adapters
 2. **Python** — embedding model, reranking model, optional Docling parser (threaded Flask, float16 inference, model warmup)
 
@@ -227,7 +227,7 @@ After ingesting documents with 50+ chunks, an explicit WAL checkpoint runs to pr
 
 ## Semantic Extraction Pipeline
 
-Every message processed by ClawCore passes through the RSMA extraction pipeline. The pipeline has two modes, controlled by `CLAWCORE_MEMORY_RELATIONS_EXTRACTION_MODE`:
+Every message processed by ThreadClaw passes through the RSMA extraction pipeline. The pipeline has two modes, controlled by `THREADCLAW_MEMORY_RELATIONS_EXTRACTION_MODE`:
 
 ### Smart Mode (default)
 LLM-based semantic extraction. A single structured LLM call classifies the message and extracts all memory-relevant objects in one pass. The LLM understands natural language without magic prefixes:
@@ -236,7 +236,7 @@ LLM-based semantic extraction. A single structured LLM call classifies the messa
 - "I think it's port 8080" is understood as an uncertain claim
 - "Need to rotate the API key" is understood as a task
 
-Uses the same model as deep extraction (`CLAWCORE_MEMORY_RELATIONS_DEEP_EXTRACTION_MODEL`). Falls back to regex extraction if the LLM call fails.
+Uses the same model as deep extraction (`THREADCLAW_MEMORY_RELATIONS_DEEP_EXTRACTION_MODEL`). Falls back to regex extraction if the LLM call fails.
 
 ### Fast Mode
 Regex-only extraction. No LLM calls. <5ms per message. Detects:
@@ -281,8 +281,8 @@ The `mo-store.ts` module provides unified CRUD for `memory_objects`:
 
 ## Storage Layer
 
-SQLite with sqlite-vec for vectors and FTS5 for full-text search. Three databases in `~/.clawcore/data/`:
-- `clawcore.db` — Document store (RAG: collections, documents, chunks, vectors)
+SQLite with sqlite-vec for vectors and FTS5 for full-text search. Three databases in `~/.threadclaw/data/`:
+- `threadclaw.db` — Document store (RAG: collections, documents, chunks, vectors)
 - `memory.db` — Conversation memory (DAG summaries, context items, messages)
 - `graph.db` — Evidence graph, now unified under the **One True Ontology**: `memory_objects` (all knowledge kinds) + `provenance_links` (all relationships). Legacy tables (entities, claims, decisions, etc.) renamed to `_legacy_*` by migration v18
 
@@ -312,7 +312,7 @@ Registry reads `.env` configuration, starts/stops adapters. Hot-reload via `POST
 - Local HTTP callback on port 18801 for consent flow
 - Auto-exports Docs/Sheets/Slides to Markdown/CSV/text
 - Folder browser in TUI Sources screen
-- Credentials at `~/.clawcore/credentials/gdrive-tokens.json`
+- Credentials at `~/.threadclaw/credentials/gdrive-tokens.json`
 
 ### Notion
 - @notionhq/client + REST API
@@ -380,7 +380,7 @@ Powered by spaCy `en_core_web_sm`. Auto-installed during setup. Falls back to re
 
 ## Memory Engine
 
-DAG-based lossless conversation context, forked from lossless-claw. Surface rebranded (plugin ID `clawcore-memory`). Internal filenames kept as `lcm-*.ts` for upstream compatibility.
+DAG-based lossless conversation context, forked from lossless-claw. Surface rebranded (plugin ID `threadclaw-memory`). Internal filenames kept as `lcm-*.ts` for upstream compatibility.
 
 12 agent tools registered: 4 core (`cc_grep`, `cc_describe`, `cc_expand`, `cc_recall`) + 8 evidence (`cc_memory`, `cc_claims`, `cc_decisions`, `cc_loops`, `cc_attempts`, `cc_branch`, `cc_procedures`, `cc_diagnostics`).
 
@@ -389,7 +389,7 @@ Extraction mode is transparent to tools — the same 12 tools work regardless of
 Evidence tools (`cc_diagnostics`, `cc_memory`) now query `memory_objects` and `provenance_links` directly instead of legacy tables. The diagnostic tool counts entities, claims, decisions, loops, attempts, runbooks, and anti-runbooks all from `memory_objects` with kind-based filtering.
 
 Integrates as an OpenClaw plugin:
-- `plugins.slots.contextEngine = "clawcore-memory"`
+- `plugins.slots.contextEngine = "threadclaw-memory"`
 - `plugins.slots.memory = "none"` (disables built-in memory-core)
 
 ---
@@ -397,10 +397,10 @@ Integrates as an OpenClaw plugin:
 ## OpenClaw Integration
 
 ### What It Does
-1. Installs skill definitions to `~/.openclaw/workspace/skills/clawcore-knowledge/` and `clawcore-evidence/`
-2. Loads memory-engine plugin from `~/.openclaw/services/clawcore/memory-engine`
+1. Installs skill definitions to `~/.openclaw/workspace/skills/threadclaw-knowledge/` and `threadclaw-evidence/`
+2. Loads memory-engine plugin from `~/.openclaw/services/threadclaw/memory-engine`
 3. Disables built-in `memory-core` and `memorySearch` (prevents duplicate searches)
-4. Configuration is validated during install via `applyOpenClawIntegration()` and can be verified with `clawcore status`
+4. Configuration is validated during install via `applyOpenClawIntegration()` and can be verified with `threadclaw status`
 
 ### Uninstall Reversal
 The TUI uninstall screen reverts all OpenClaw changes:
@@ -413,7 +413,7 @@ The TUI uninstall screen reverts all OpenClaw changes:
 
 ## Security
 
-- **API bound to localhost** (`127.0.0.1`) by default. Set `CLAWCORE_HOST=0.0.0.0` to expose.
+- **API bound to localhost** (`127.0.0.1`) by default. Set `THREADCLAW_HOST=0.0.0.0` to expose.
 - **Localhost-only endpoints** — `/shutdown`, `/reset`, `/reindex`, `/reindex/stale`, `/sources/reload`, `/graph/*`, `/analytics/diagnostics` restricted to `127.0.0.1`/`::1` via shared `isLocalRequest` guard.
 - **Rate limiting** — 300 requests/minute per IP (configurable via `RATE_LIMIT_MAX`). `/health` exempt.
 - **Path validation** — ingest endpoint blocks `.env`, credentials, `.git`, SSH keys. Error responses do not disclose file paths.
@@ -427,7 +427,7 @@ The TUI uninstall screen reverts all OpenClaw changes:
 
 ## Token Tracking
 
-File-backed counter at `~/.clawcore/token-counts.json`. Tracks tokens across 4 categories:
+File-backed counter at `~/.threadclaw/token-counts.json`. Tracks tokens across 4 categories:
 - **Ingest** — total tokens in ingested chunks
 - **Embed** — tokens sent to embedding model
 - **Rerank** — tokens sent to reranker (query + candidates)
@@ -440,15 +440,15 @@ Writes buffered in memory, flushed every 5 seconds. Flushed on shutdown. Display
 ## CLI Reference
 
 ```
-clawcore                           Launch interactive TUI
-clawcore query "question" [opts]   Search knowledge base
-clawcore search "terms" [opts]     Simple search (no reranking)
-clawcore ingest <path> [opts]      Ingest file or folder
-clawcore collections [list|create|delete|stats]
-clawcore delete [--source|--id]    Delete documents
-clawcore status                    System health
-clawcore serve                     Run services in terminal
-clawcore watch                     Start file watcher
+threadclaw                           Launch interactive TUI
+threadclaw query "question" [opts]   Search knowledge base
+threadclaw search "terms" [opts]     Simple search (no reranking)
+threadclaw ingest <path> [opts]      Ingest file or folder
+threadclaw collections [list|create|delete|stats]
+threadclaw delete [--source|--id]    Delete documents
+threadclaw status                    System health
+threadclaw serve                     Run services in terminal
+threadclaw watch                     Start file watcher
 ```
 
 ### Query Options
@@ -508,9 +508,9 @@ clawcore watch                     Start file watcher
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `CLAWCORE_PORT` | 18800 | HTTP API port |
-| `CLAWCORE_HOST` | 127.0.0.1 | Bind address (0.0.0.0 for network) |
-| `CLAWCORE_DATA_DIR` | ~/.clawcore/data | Data directory |
+| `THREADCLAW_PORT` | 18800 | HTTP API port |
+| `THREADCLAW_HOST` | 127.0.0.1 | Bind address (0.0.0.0 for network) |
+| `THREADCLAW_DATA_DIR` | ~/.threadclaw/data | Data directory |
 | `EMBEDDING_URL` | http://127.0.0.1:8012/v1 | Embedding endpoint |
 | `EMBEDDING_MODEL` | BAAI/bge-large-en-v1.5 | Model ID |
 | `EMBEDDING_DIMENSIONS` | 1024 | Vector dimensions |
@@ -538,14 +538,14 @@ clawcore watch                     Start file watcher
 | `NOTION_ENABLED` | false | Enable Notion adapter |
 | `OBSIDIAN_ENABLED` | false | Enable Obsidian adapter |
 | `APPLE_NOTES_ENABLED` | false | Enable Apple Notes (macOS) |
-| `CLAWCORE_MEMORY_RELATIONS_EXTRACTION_MODE` | smart | Extraction mode: `smart` (LLM) or `fast` (regex-only, <5ms) |
+| `THREADCLAW_MEMORY_RELATIONS_EXTRACTION_MODE` | smart | Extraction mode: `smart` (LLM) or `fast` (regex-only, <5ms) |
 
 ---
 
 ## Error Handling
 
 ```
-ClawCoreError (base)
+ThreadClawError (base)
 ├── ParseError — file parsing failed
 ├── EmbeddingError — embedding server unavailable (retries 3x with backoff)
 ├── StorageError — database error

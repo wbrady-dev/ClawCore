@@ -564,7 +564,7 @@ function isSensitiveClaim(claim: ClaimExtractionResult): boolean {
 
 // Subjects that are meta/self-referential and should not become claims
 const META_SUBJECTS = new Set([
-  "document", "clawcore", "openclaw", "copper", "agent", "bot",
+  "document", "threadclaw", "openclaw", "copper", "agent", "bot",
   "environment", "user_note", "system", "model", "plugin",
 ]);
 

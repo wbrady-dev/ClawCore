@@ -1,5 +1,5 @@
 /**
- * API route tests for ClawCore.
+ * API route tests for ThreadClaw.
  *
  * Uses Fastify's app.inject() for in-process HTTP testing.
  * Mocks heavy dependencies (embedding server, query pipeline, ingest pipeline,
@@ -116,7 +116,7 @@ vi.mock("../../src/config.js", async () => {
   const { tmpdir } = await import("os");
   const { resolve } = await import("path");
   const { mkdirSync } = await import("fs");
-  const dataDir = resolve(tmpdir(), "clawcore-test-" + process.pid);
+  const dataDir = resolve(tmpdir(), "threadclaw-test-" + process.pid);
   mkdirSync(dataDir, { recursive: true });
   return { config: {
     port: 18800,

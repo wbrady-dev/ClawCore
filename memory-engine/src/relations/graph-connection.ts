@@ -2,7 +2,7 @@
  * Graph database connection manager using node:sqlite DatabaseSync.
  *
  * Mirrors the pattern from memory-engine/src/db/connection.ts but manages
- * connections to the separate clawcore-graph.db file.
+ * connections to the separate threadclaw-graph.db file.
  */
 
 import { DatabaseSync } from "node:sqlite";

@@ -1,6 +1,6 @@
 #!/bin/bash
-# ClawCore startup wrapper
-# Usage: ./start-clawcore.sh [--with-openclaw]
+# ThreadClaw startup wrapper
+# Usage: ./start-threadclaw.sh [--with-openclaw]
 
 set -e
 
@@ -18,8 +18,8 @@ GREEN='\033[0;32m'
 RED='\033[0;31m'
 NC='\033[0m'
 
-log() { echo -e "${GREEN}[clawcore]${NC} $1"; }
-err() { echo -e "${RED}[clawcore]${NC} $1"; }
+log() { echo -e "${GREEN}[threadclaw]${NC} $1"; }
+err() { echo -e "${RED}[threadclaw]${NC} $1"; }
 
 wait_for_port() {
   local port=$1
@@ -47,22 +47,22 @@ curl -s http://127.0.0.1:8012/health > /dev/null 2>&1 && MODELS_UP=true
 curl -s http://127.0.0.1:18800/health > /dev/null 2>&1 && API_UP=true
 
 if [ "$MODELS_UP" = true ] && [ "$API_UP" = true ]; then
-  log "ClawCore already running (models :8012, API :18800)"
+  log "ThreadClaw already running (models :8012, API :18800)"
 else
-  if [ ! -d "$SCRIPT_DIR/node_modules" ] && [ ! -f "$SCRIPT_DIR/dist/cli/clawcore.js" ]; then
-    err "ClawCore runtime files are missing. Run ./install.sh first."
+  if [ ! -d "$SCRIPT_DIR/node_modules" ] && [ ! -f "$SCRIPT_DIR/dist/cli/threadclaw.js" ]; then
+    err "ThreadClaw runtime files are missing. Run ./install.sh first."
     exit 1
   fi
 
-  log "Starting ClawCore services..."
-  node "$SCRIPT_DIR/bin/clawcore.mjs" serve &
-  CLAWCORE_PID=$!
+  log "Starting ThreadClaw services..."
+  node "$SCRIPT_DIR/bin/threadclaw.mjs" serve &
+  THREADCLAW_PID=$!
 
   log "Waiting for model server (this may take 30-60s on first load)..."
   wait_for_port 8012 "Model server" 120
 
-  log "Waiting for ClawCore API..."
-  wait_for_port 18800 "ClawCore API" 30
+  log "Waiting for ThreadClaw API..."
+  wait_for_port 18800 "ThreadClaw API" 30
 fi
 
 if [ "$WITH_OPENCLAW" = true ]; then
@@ -76,7 +76,7 @@ fi
 log "All services running."
 echo ""
 echo "  Model Server:  http://127.0.0.1:8012/health"
-echo "  ClawCore API:  http://127.0.0.1:18800/health"
+echo "  ThreadClaw API:  http://127.0.0.1:18800/health"
 if [ "$WITH_OPENCLAW" = true ]; then
   echo "  OpenClaw:      http://127.0.0.1:18789"
 fi

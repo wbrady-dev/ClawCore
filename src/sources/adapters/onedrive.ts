@@ -6,11 +6,11 @@
  * 2. Cloud API — Microsoft Graph API with OAuth for cloud-only files
  *
  * Auth flow (cloud mode):
- * 1. User registers an Azure AD app (or uses ClawCore's default)
+ * 1. User registers an Azure AD app (or uses ThreadClaw's default)
  * 2. First-time: opens browser for OAuth consent, saves refresh token
  * 3. Subsequent: uses saved refresh token (auto-refreshes access tokens)
  *
- * Read-only: ClawCore NEVER writes, modifies, or deletes OneDrive files.
+ * Read-only: ThreadClaw NEVER writes, modifies, or deletes OneDrive files.
  */
 
 import { existsSync, readFileSync, writeFileSync, mkdirSync, readdirSync, unlinkSync, createWriteStream } from "fs";
@@ -22,9 +22,9 @@ import { logger } from "../../utils/logger.js";
 import type { SourceAdapter, SourceConfig, SourceStatus, ChangeSet, StagedFile } from "../types.js";
 
 // ── Constants ──
-const CREDENTIALS_DIR = resolve(homedir(), ".clawcore", "credentials");
+const CREDENTIALS_DIR = resolve(homedir(), ".threadclaw", "credentials");
 const CREDENTIALS_FILE = resolve(CREDENTIALS_DIR, "onedrive-tokens.json");
-const STAGING_DIR = resolve(homedir(), ".clawcore", "staging", "onedrive");
+const STAGING_DIR = resolve(homedir(), ".threadclaw", "staging", "onedrive");
 
 const GRAPH_API_BASE = "https://graph.microsoft.com/v1.0";
 const AUTH_URL = "https://login.microsoftonline.com/common/oauth2/v2.0/authorize";

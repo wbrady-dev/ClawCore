@@ -28,7 +28,7 @@ export function registerHealthRoutes(server: FastifyInstance, onShutdown?: () =>
 
     // Check database
     try {
-      const dbPath = resolve(config.dataDir, "clawcore.db");
+      const dbPath = resolve(config.dataDir, "threadclaw.db");
       statSync(dbPath);
       checks.database = { status: "ok" };
     } catch {
@@ -57,7 +57,7 @@ export function registerHealthRoutes(server: FastifyInstance, onShutdown?: () =>
   });
 
   server.get("/stats", async () => {
-    const db = getDb(resolve(config.dataDir, "clawcore.db"));
+    const db = getDb(resolve(config.dataDir, "threadclaw.db"));
 
     const collections = listCollections(db);
 
@@ -71,7 +71,7 @@ export function registerHealthRoutes(server: FastifyInstance, onShutdown?: () =>
     `).get() as { documents: number; chunks: number; tokens: number };
 
     // Use SQLite's internal page accounting for accurate size (not affected by WAL bloat)
-    const dbPath = resolve(config.dataDir, "clawcore.db");
+    const dbPath = resolve(config.dataDir, "threadclaw.db");
     let dbSizeMB = 0;
     try {
       const pageCount = (db.pragma("page_count") as { page_count: number }[])[0]?.page_count ?? 0;

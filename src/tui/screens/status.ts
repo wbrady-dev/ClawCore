@@ -18,29 +18,29 @@ export async function showStatus(): Promise<void> {
   // ── Services ──
   console.log(section("Services"));
   console.log(status("Models", svc.models.running, `port ${getModelPort()}`));
-  console.log(status("ClawCore RAG API", svc.clawcore.running, `port ${getApiPort()}`));
+  console.log(status("ThreadClaw RAG API", svc.threadclaw.running, `port ${getApiPort()}`));
 
   // Auto-startup (cross-platform)
   let autoStart = false;
   const plat = getPlatform();
   if (plat === "windows") {
     try {
-      execFileSync("schtasks", ["/query", "/tn", "ClawCore_Models"], { stdio: "pipe", timeout: 5000 });
+      execFileSync("schtasks", ["/query", "/tn", "ThreadClaw_Models"], { stdio: "pipe", timeout: 5000 });
       autoStart = true;
     } catch {}
   } else if (plat === "linux") {
     try {
-      const out = execFileSync("systemctl", ["--user", "is-enabled", "clawcore-models"], { stdio: "pipe", timeout: 5000 }).toString().trim();
+      const out = execFileSync("systemctl", ["--user", "is-enabled", "threadclaw-models"], { stdio: "pipe", timeout: 5000 }).toString().trim();
       autoStart = out === "enabled";
     } catch {}
   } else if (plat === "mac") {
-    const plistPath = resolve(homedir(), "Library", "LaunchAgents", "com.clawcore.models.plist");
+    const plistPath = resolve(homedir(), "Library", "LaunchAgents", "com.threadclaw.models.plist");
     autoStart = existsSync(plistPath);
   }
   console.log(status("Auto-Startup", autoStart));
 
   // Game mode
-  const gameModeOn = !svc.models.running && !svc.clawcore.running;
+  const gameModeOn = !svc.models.running && !svc.threadclaw.running;
   console.log(kvLine("Game Mode", gameModeOn ? t.warn("on (VRAM freed)") : t.dim("off")));
 
   // ── Models ──
@@ -124,7 +124,7 @@ export async function showStatus(): Promise<void> {
   }
 
   // ── Database ──
-  const dbPath = resolve(getDataDir(), "clawcore.db");
+  const dbPath = resolve(getDataDir(), "threadclaw.db");
   console.log(section("Database"));
   if (existsSync(dbPath)) {
     const size = statSync(dbPath).size;
@@ -158,11 +158,11 @@ export async function showStatus(): Promise<void> {
 
   // ── Network ──
   console.log(section("Network"));
-  console.log(kvLine("ClawCore API", getApiBaseUrl()));
+  console.log(kvLine("ThreadClaw API", getApiBaseUrl()));
   console.log(kvLine("Model Server", getModelBaseUrl()));
 
   // ── Evidence OS ──
-  const graphDbPath = resolve(homedir(), ".clawcore", "data", "graph.db");
+  const graphDbPath = resolve(homedir(), ".threadclaw", "data", "graph.db");
   console.log(section("Evidence OS"));
 
   // Check config
@@ -172,8 +172,8 @@ export async function showStatus(): Promise<void> {
     const envPath = resolve(getRootDir(), ".env");
     if (existsSync(envPath)) {
       const env = readFileSync(envPath, "utf-8");
-      evidenceEnabled = env.includes("CLAWCORE_MEMORY_RELATIONS_ENABLED=true");
-      awarenessEnabled = env.includes("CLAWCORE_MEMORY_RELATIONS_AWARENESS_ENABLED=true");
+      evidenceEnabled = env.includes("THREADCLAW_MEMORY_RELATIONS_ENABLED=true");
+      awarenessEnabled = env.includes("THREADCLAW_MEMORY_RELATIONS_AWARENESS_ENABLED=true");
     }
   } catch {}
 
@@ -208,7 +208,7 @@ export async function showStatus(): Promise<void> {
       if (events >= 0) console.log(kvLine("Evidence Events", events.toLocaleString()));
 
       if (entities < 0 && events < 0) {
-        console.log(t.dim("  (graph DB exists but schema not fully migrated — run 'clawcore upgrade')"));
+        console.log(t.dim("  (graph DB exists but schema not fully migrated — run 'threadclaw upgrade')"));
       }
     } catch {
       console.log(t.dim("  (unable to read graph DB)"));

@@ -1,17 +1,17 @@
 /**
  * RSMA Core Types — Reconciled Semantic Memory Architecture.
  *
- * Every piece of knowledge in ClawCore is a MemoryObject with a uniform
+ * Every piece of knowledge in ThreadClaw is a MemoryObject with a uniform
  * metadata envelope. Physical stores remain specialized; the ontology
  * unifies the semantic model above them.
  */
 
 // ── Memory Object Kinds ─────────────────────────────────────────────────────
 
-/** All durable knowledge types in ClawCore. */
+/** All durable knowledge types in ThreadClaw. */
 export type MemoryKind =
   | "event"      // raw semantic event (internal: pipeline input before materialization)
-  | "chunk"      // document chunks (projected to clawcore.db)
+  | "chunk"      // document chunks (projected to threadclaw.db)
   | "message"    // conversation messages (projected to memory.db)
   | "summary"    // compacted summaries (projected to memory.db)
   | "claim"      // factual assertions (projected to graph.db)
@@ -107,7 +107,7 @@ export interface Provenance {
 
 // ── MemoryObject ────────────────────────────────────────────────────────────
 
-/** The unified type for all knowledge in ClawCore. */
+/** The unified type for all knowledge in ThreadClaw. */
 export interface MemoryObject {
   id: string;
   kind: MemoryKind;

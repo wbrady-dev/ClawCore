@@ -13,7 +13,7 @@ export function getDb(dbPath: string): Database.Database {
     if (storedPath && storedPath !== normalized) {
       throw new Error(
         `getDb called with path "${normalized}" but already connected to "${storedPath}". ` +
-        `ClawCore uses a singleton DB connection — cannot open two databases.`,
+        `ThreadClaw uses a singleton DB connection — cannot open two databases.`,
       );
     }
     return db;

@@ -8,7 +8,7 @@
  * - macOS only (process.platform === "darwin")
  * - Automation permissions granted in System Settings
  *
- * Read-only: ClawCore never writes to Apple Notes.
+ * Read-only: ThreadClaw never writes to Apple Notes.
  */
 import { execFileSync } from "child_process";
 import { writeFileSync, mkdirSync, unlinkSync, existsSync } from "fs";
@@ -21,7 +21,7 @@ import { getDb } from "../../storage/index.js";
 import { deleteDocument } from "../../storage/collections.js";
 import type { SourceAdapter, SourceConfig, SourceStatus, ChangeSet, StagedFile } from "../types.js";
 
-const STAGING_DIR = resolve(homedir(), ".clawcore", "staging", "apple-notes");
+const STAGING_DIR = resolve(homedir(), ".threadclaw", "staging", "apple-notes");
 
 interface ManifestEntry {
   noteId: string;
@@ -233,7 +233,7 @@ export class AppleNotesAdapter implements SourceAdapter {
 
       // Clean up DB documents/chunks/vectors to prevent orphans
       try {
-        const db = getDb(resolve(config.dataDir, "clawcore.db"));
+        const db = getDb(resolve(config.dataDir, "threadclaw.db"));
         const doc = db.prepare("SELECT id FROM documents WHERE source_path = ?").get(stagingPath) as { id: string } | undefined;
         if (doc) {
           deleteDocument(db, doc.id);

@@ -24,7 +24,7 @@ let windowsAnsiEnabled = false;
 let windowsAnsiTried = false;
 
 function hasAnsiSupport(interactive: boolean): boolean {
-  if (process.env.CLAWCORE_TUI_PLAIN === "true") return false;
+  if (process.env.THREADCLAW_TUI_PLAIN === "true") return false;
   if (process.env.NO_COLOR) return false;
   if (process.stdout.isTTY !== true) return false;
 
@@ -58,7 +58,7 @@ function hasAnsiSupport(interactive: boolean): boolean {
 }
 
 function hasUnicodeSupport(interactive: boolean): boolean {
-  if (process.env.CLAWCORE_TUI_ASCII === "true") return false;
+  if (process.env.THREADCLAW_TUI_ASCII === "true") return false;
   if (!interactive) return false;
 
   if (process.platform !== "win32") return true;
@@ -73,10 +73,10 @@ function hasUnicodeSupport(interactive: boolean): boolean {
 export function detectTerminalCapabilities(): TerminalCapabilities {
   const interactive = process.stdin.isTTY === true && process.stdout.isTTY === true;
   const rawMode = interactive && typeof process.stdin.setRawMode === "function";
-  const forceRich = process.env.CLAWCORE_TUI_FORCE_RICH === "1";
+  const forceRich = process.env.THREADCLAW_TUI_FORCE_RICH === "1";
   const ansi = forceRich ? true : hasAnsiSupport(interactive);
   const unicode = hasUnicodeSupport(interactive);
-  const rich = interactive && rawMode && ansi && process.env.CLAWCORE_TUI_PLAIN !== "true";
+  const rich = interactive && rawMode && ansi && process.env.THREADCLAW_TUI_PLAIN !== "true";
 
   return {
     interactive,

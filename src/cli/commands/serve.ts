@@ -7,11 +7,11 @@ import { config } from "../../config.js";
 import { getApiPort, getModelPort, getPythonCmd, findModelsScript } from "../../tui/platform.js";
 
 /**
- * Run both model server and ClawCore RAG API in a single terminal.
+ * Run both model server and ThreadClaw RAG API in a single terminal.
  * Shows live status and logs. Ctrl+C stops everything cleanly.
  */
 export const serveCommand = new Command("serve")
-  .description("Run ClawCore services in this terminal (model server + RAG API)")
+  .description("Run ThreadClaw services in this terminal (model server + RAG API)")
   .action(async () => {
     const root = config.rootDir;
     const serverScript = findModelsScript(root);
@@ -27,7 +27,7 @@ export const serveCommand = new Command("serve")
 
     const prefix = {
       nem: chalk.magenta("[models]  "),
-      tal: chalk.green("[clawcore]"),
+      tal: chalk.green("[threadclaw]"),
       sys: chalk.dim("[system]  "),
     };
 
@@ -102,8 +102,8 @@ export const serveCommand = new Command("serve")
     console.log(`${prefix.sys} ${chalk.green("●")} Model server ready on port ${getModelPort()}`);
     console.log("");
 
-    // Start ClawCore
-    console.log(`${prefix.sys} Starting ClawCore RAG API...`);
+    // Start ThreadClaw
+    console.log(`${prefix.sys} Starting ThreadClaw RAG API...`);
     const distIndex = resolve(root, "dist", "index.js");
     const tsxCli = resolve(root, "node_modules", "tsx", "dist", "cli.mjs");
     const srcEntry = resolve(root, "src", "index.ts");
@@ -131,13 +131,13 @@ export const serveCommand = new Command("serve")
     try {
       await waitForPort(getApiPort(), 30000);
     } catch {
-      console.error(`${prefix.sys} ${chalk.red("✗")} ClawCore API failed to start within 30s`);
+      console.error(`${prefix.sys} ${chalk.red("✗")} ThreadClaw API failed to start within 30s`);
       console.error(`${prefix.sys}   Check logs above for errors.`);
       talProcess.kill();
       nemProcess.kill();
       process.exit(1);
     }
-    console.log(`${prefix.sys} ${chalk.green("●")} ClawCore RAG API ready on port ${getApiPort()}`);
+    console.log(`${prefix.sys} ${chalk.green("●")} ThreadClaw RAG API ready on port ${getApiPort()}`);
     console.log("");
     console.log(`${prefix.sys} ${chalk.bold.green("All services running.")}`);
     console.log(`${prefix.sys} ${chalk.dim("Press Ctrl+C to stop.")}`);

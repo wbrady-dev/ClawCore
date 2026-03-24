@@ -5,7 +5,7 @@ import { existsSync } from "fs";
 import { getRootDir } from "../../tui/platform.js";
 
 export const updateCommand = new Command("update")
-  .description("Update ClawCore from GitHub (pull, deps, build, migrate)")
+  .description("Update ThreadClaw from GitHub (pull, deps, build, migrate)")
   .action(() => {
     const root = getRootDir();
     const isWindows = process.platform === "win32";
