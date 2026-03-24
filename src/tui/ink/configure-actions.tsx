@@ -30,8 +30,10 @@ interface FieldDef {
   label: string;
   fallback: string;
   message: string;
+  description?: string;
   type: "number" | "string" | "url";
   requiresRestart?: boolean;
+  mask?: string;
 }
 
 function validateField(value: string, type: FieldDef["type"]): string | null {
@@ -52,29 +54,63 @@ const WHISPER_MODELS = [
 ];
 
 const GENERAL_FIELDS: FieldDef[] = [
-  { key: "RERANKER_URL", label: "Model Server URL", fallback: "http://127.0.0.1:8012", message: "Base URL for the local or remote model server.", type: "url", requiresRestart: true },
-  { key: "THREADCLAW_PORT", label: "ThreadClaw API Port", fallback: "18800", message: "HTTP port for the ThreadClaw API.", type: "number", requiresRestart: true },
-  { key: "QUERY_EXPANSION_URL", label: "Expansion LLM URL", fallback: "http://127.0.0.1:1234/v1", message: "Chat endpoint used for query expansion.", type: "url" },
-  { key: "THREADCLAW_DATA_DIR", label: "Data Directory", fallback: "./data", message: "Where ingested data and databases live.", type: "string", requiresRestart: true },
-  { key: "DEFAULT_COLLECTION", label: "Default Collection", fallback: "default", message: "Collection used when none is provided.", type: "string" },
-  { key: "QUERY_TOP_K", label: "Results Per Query", fallback: "10", message: "How many chunks to return before context compilation.", type: "number" },
-  { key: "QUERY_TOKEN_BUDGET", label: "Token Budget", fallback: "4000", message: "Max token budget for response context.", type: "number" },
-  { key: "CHUNK_MAX_TOKENS", label: "Max Chunk Size", fallback: "1024", message: "Hard upper bound for ingestion chunks.", type: "number" },
-  { key: "CHUNK_TARGET_TOKENS", label: "Target Chunk Size", fallback: "512", message: "Preferred chunk size for prose splitting.", type: "number" },
-  { key: "CHUNK_MIN_TOKENS", label: "Min Chunk Size", fallback: "100", message: "Chunks smaller than this get merged.", type: "number" },
-  { key: "WATCH_DEBOUNCE_MS", label: "Watch Debounce", fallback: "3000", message: "Delay before auto-ingesting changed files.", type: "number" },
+  { key: "RERANKER_URL", label: "Model Server URL", fallback: "http://127.0.0.1:8012", message: "Base URL for the local or remote model server.", description: "Model server URL for reranking (default: http://127.0.0.1:8012)", type: "url", requiresRestart: true },
+  { key: "THREADCLAW_PORT", label: "ThreadClaw API Port", fallback: "18800", message: "HTTP port for the ThreadClaw API.", description: "API server port (default: 18800)", type: "number", requiresRestart: true },
+  { key: "QUERY_EXPANSION_URL", label: "Expansion LLM URL", fallback: "http://127.0.0.1:1234/v1", message: "Chat endpoint used for query expansion.", description: "LLM endpoint for query expansion (default: http://127.0.0.1:1234/v1)", type: "url" },
+  { key: "THREADCLAW_DATA_DIR", label: "Data Directory", fallback: "./data", message: "Where ingested data and databases live.", description: "Data directory for databases and indexes (default: ~/.threadclaw/data)", type: "string", requiresRestart: true },
+  { key: "DEFAULT_COLLECTION", label: "Default Collection", fallback: "default", message: "Collection used when none is provided.", description: "Default collection for new documents (default: default)", type: "string" },
+  { key: "QUERY_TOP_K", label: "Results Per Query", fallback: "10", message: "How many chunks to return before context compilation.", description: "Default number of results per query (default: 10)", type: "number" },
+  { key: "QUERY_TOKEN_BUDGET", label: "Token Budget", fallback: "4000", message: "Max token budget for response context.", description: "Token budget for query responses (default: 4000)", type: "number" },
+  { key: "CHUNK_MAX_TOKENS", label: "Max Chunk Size", fallback: "1024", message: "Hard upper bound for ingestion chunks.", description: "Maximum tokens per chunk (default: 1024)", type: "number" },
+  { key: "CHUNK_TARGET_TOKENS", label: "Target Chunk Size", fallback: "512", message: "Preferred chunk size for prose splitting.", description: "Target tokens per chunk (default: 512)", type: "number" },
+  { key: "CHUNK_MIN_TOKENS", label: "Min Chunk Size", fallback: "100", message: "Chunks smaller than this get merged.", description: "Minimum tokens per chunk (default: 100)", type: "number" },
+  { key: "WATCH_DEBOUNCE_MS", label: "Watch Debounce", fallback: "3000", message: "Delay before auto-ingesting changed files.", description: "Delay before processing file changes (ms) (default: 3000)", type: "number" },
 ];
 
 const SEARCH_FIELDS: FieldDef[] = [
-  { key: "RERANK_SCORE_THRESHOLD", label: "Rerank Threshold", fallback: "0.0", message: "Minimum rerank score to keep a result.", type: "number" },
-  { key: "RERANK_TOP_K", label: "Rerank Candidates", fallback: "20", message: "How many chunks go through the reranker.", type: "number" },
-  { key: "RERANK_SMART_SKIP", label: "Smart Skip", fallback: "true", message: "Auto-skip reranking when vector results are decisive.", type: "string" },
-  { key: "RERANK_DISABLED", label: "Reranking Disabled", fallback: "false", message: "Set true to disable reranking entirely.", type: "string" },
-  { key: "EMBEDDING_SIMILARITY_THRESHOLD", label: "Similarity Gate", fallback: "1.05", message: "Max L2 distance to consider a vector match.", type: "number" },
-  { key: "EMBEDDING_PREFIX_MODE", label: "Prefix Mode", fallback: "auto", message: "auto, always, or never for query:/passage: prefixes.", type: "string" },
-  { key: "EMBEDDING_BATCH_SIZE", label: "Embed Batch Size", fallback: "32", message: "Texts per embedding batch during ingestion.", type: "number" },
+  { key: "RERANK_SCORE_THRESHOLD", label: "Rerank Threshold", fallback: "0.0", message: "Minimum rerank score to keep a result.", description: "Minimum reranker score to keep (default: 0.0)", type: "number" },
+  { key: "RERANK_TOP_K", label: "Rerank Candidates", fallback: "20", message: "How many chunks go through the reranker.", description: "Candidates sent to reranker (default: 20)", type: "number" },
+  { key: "RERANK_SMART_SKIP", label: "Smart Skip", fallback: "true", message: "Auto-skip reranking when vector results are decisive.", description: "Skip reranking when top result dominates (default: true)", type: "string" },
+  { key: "RERANK_DISABLED", label: "Reranking Disabled", fallback: "false", message: "Set true to disable reranking entirely.", description: "Disable reranking entirely (default: false)", type: "string" },
+  { key: "EMBEDDING_SIMILARITY_THRESHOLD", label: "Similarity Gate", fallback: "1.05", message: "Max L2 distance to consider a vector match.", description: "Max L2 distance for vector match (default: 1.05)", type: "number" },
+  { key: "EMBEDDING_PREFIX_MODE", label: "Prefix Mode", fallback: "auto", message: "auto, always, or never for query:/passage: prefixes.", description: "Embedding prefix: auto, always, or never (default: auto)", type: "string" },
+  { key: "EMBEDDING_BATCH_SIZE", label: "Embed Batch Size", fallback: "32", message: "Texts per embedding batch during ingestion.", description: "Batch size for bulk embedding (default: 32)", type: "number" },
 ];
 
+const EMBEDDING_TUNING_FIELDS: FieldDef[] = [
+  { key: "EMBEDDING_API_KEY", label: "Embedding API Key", fallback: "", message: "API key for cloud embedding provider", type: "string", mask: "*" },
+  { key: "EMBEDDING_MAX_RETRIES", label: "Max Retries", fallback: "3", message: "Retry count for failed embedding calls", type: "number" },
+  { key: "EMBEDDING_CIRCUIT_COOLDOWN_MS", label: "Circuit Cooldown", fallback: "30000", message: "Cooldown after embedding failures (ms)", type: "number" },
+  { key: "EMBEDDING_CACHE_MAX", label: "Cache Max", fallback: "200", message: "Max cached query embeddings", type: "number" },
+];
+
+const WATCH_TUNING_FIELDS: FieldDef[] = [
+  { key: "WATCH_EXCLUDE_PATTERNS", label: "Exclude Patterns", fallback: "", message: "Comma-separated glob patterns to exclude", type: "string" },
+  { key: "WATCH_MAX_CONCURRENT", label: "Max Concurrent", fallback: "5", message: "Max concurrent file ingestions", type: "number" },
+  { key: "WATCH_MAX_QUEUE", label: "Max Queue", fallback: "1000", message: "Max queued files before dropping", type: "number" },
+];
+
+const RATE_LIMITING_FIELDS: FieldDef[] = [
+  { key: "RATE_LIMIT_ENABLED", label: "Enabled", fallback: "true", message: "Enable API rate limiting (true/false)", type: "string" },
+  { key: "RATE_LIMIT_MAX", label: "Max Requests", fallback: "300", message: "Max requests per window", type: "number" },
+  { key: "RATE_LIMIT_WINDOW", label: "Window (ms)", fallback: "60000", message: "Rate limit window (ms)", type: "number" },
+];
+
+const EXTRACTION_TUNING_FIELDS: FieldDef[] = [
+  { key: "THREADCLAW_MEMORY_RELATIONS_EXTRACTION_MODE", label: "Extraction Mode", fallback: "smart", message: "Extraction method: smart (LLM) or fast (regex, <5ms)", type: "string" },
+  { key: "THREADCLAW_MEMORY_RELATIONS_MIN_MENTIONS", label: "Min Mentions", fallback: "2", message: "Min entity mentions before surfacing", type: "number" },
+  { key: "THREADCLAW_MEMORY_RELATIONS_STALE_DAYS", label: "Stale Days", fallback: "30", message: "Days before entity is stale", type: "number" },
+  { key: "THREADCLAW_MEMORY_RELATIONS_DECAY_INTERVAL_DAYS", label: "Decay Interval Days", fallback: "90", message: "Days between decay cycles", type: "number" },
+  { key: "THREADCLAW_MEMORY_RELATIONS_USER_CLAIM_EXTRACTION_ENABLED", label: "User Claim Extraction", fallback: "false", message: "Extract claims from user messages too", type: "string" },
+];
+
+const AWARENESS_TUNING_FIELDS: FieldDef[] = [
+  { key: "THREADCLAW_MEMORY_RELATIONS_AWARENESS_MAX_NOTES", label: "Max Notes Per Turn", fallback: "3", message: "Max awareness notes per turn", type: "number" },
+  { key: "THREADCLAW_MEMORY_RELATIONS_AWARENESS_MAX_TOKENS", label: "Max Tokens", fallback: "100", message: "Max tokens for awareness context", type: "number" },
+  { key: "THREADCLAW_MEMORY_RELATIONS_AWARENESS_DOC_SURFACING", label: "Doc Surfacing", fallback: "false", message: "Surface relevant docs as fallback", type: "string" },
+];
+
+const SUMMARY_MODEL_FIELDS: FieldDef[] = [  { key: "THREADCLAW_MEMORY_SUMMARY_PROVIDER", label: "Summary Provider", fallback: "", message: "LLM provider for memory compaction (openai, anthropic, ollama, lmstudio)", type: "string" },  { key: "THREADCLAW_MEMORY_SUMMARY_MODEL", label: "Summary Model", fallback: "", message: "Model for memory summaries", type: "string" },  { key: "THREADCLAW_MEMORY_LARGE_FILE_SUMMARY_PROVIDER", label: "Large File Summary Provider", fallback: "", message: "Provider for large file summaries", type: "string" },  { key: "THREADCLAW_MEMORY_LARGE_FILE_SUMMARY_MODEL", label: "Large File Summary Model", fallback: "", message: "Model for large file summaries", type: "string" },];const QUERY_TUNING_FIELDS: FieldDef[] = [  { key: "QUERY_EXPANSION_TEMPERATURE", label: "Expansion Temperature", fallback: "0.3", message: "LLM temperature for query expansion", type: "number" },  { key: "QUERY_EXPANSION_MAX_TOKENS", label: "Expansion Max Tokens", fallback: "512", message: "Max tokens for expanded queries", type: "number" },  { key: "QUERY_EXPANSION_TIMEOUT_MS", label: "Expansion Timeout", fallback: "15000", message: "Timeout for expansion LLM call (ms)", type: "number" },  { key: "HYBRID_VECTOR_WEIGHT", label: "Hybrid Vector Weight", fallback: "1.0", message: "Weight for semantic search in hybrid mode", type: "number" },  { key: "HYBRID_BM25_WEIGHT", label: "Hybrid BM25 Weight", fallback: "1.0", message: "Weight for keyword search in hybrid mode", type: "number" },  { key: "QUERY_CACHE_MAX_ENTRIES", label: "Cache Max Entries", fallback: "50", message: "Max cached query results", type: "number" },  { key: "QUERY_CACHE_TTL_MS", label: "Cache TTL", fallback: "300000", message: "Cache entry lifetime (ms)", type: "number" },  { key: "QUERY_RETRIEVE_MULTIPLIER", label: "Retrieve Multiplier", fallback: "2", message: "Over-retrieve factor before reranking", type: "number" },];const INGESTION_TUNING_FIELDS: FieldDef[] = [  { key: "CHUNK_OVERLAP_RATIO", label: "Chunk Overlap Ratio", fallback: "0.2", message: "Chunk overlap as fraction of target", type: "number" },  { key: "DEDUP_SIMILARITY_THRESHOLD", label: "Dedup Threshold", fallback: "0.95", message: "Cosine similarity for dedup", type: "number" },  { key: "OCR_LANGUAGE", label: "OCR Language", fallback: "eng", message: "Tesseract OCR language code", type: "string" },  { key: "INGEST_MAX_FILE_SIZE_MB", label: "Max File Size (MB)", fallback: "100", message: "Max file size to ingest (MB)", type: "number" },  { key: "EMBEDDING_MAX_CONCURRENT", label: "Embedding Concurrency", fallback: "2", message: "Concurrent embedding requests", type: "number" },  { key: "EMBEDDING_TIMEOUT_MS", label: "Embedding Timeout", fallback: "30000", message: "Embedding API timeout (ms)", type: "number" },];export async function configureSummaryModel(): Promise<void> {  await configureFieldGroup("Summary Model", SUMMARY_MODEL_FIELDS);  await showNotice("Summary Model", "Summary model configured. Changes take effect on next compaction cycle.");}export async function configureQueryTuning(): Promise<void> {  await configureFieldGroup("Query Tuning", QUERY_TUNING_FIELDS);}export async function configureIngestionTuning(): Promise<void> {  await configureFieldGroup("Ingestion Tuning", INGESTION_TUNING_FIELDS);}
 export async function runInkConfigureAction(action: ConfigureAction): Promise<void> {
   if (action === "embed") await configureModel("embed");
   else if (action === "rerank") await configureModel("rerank");
@@ -87,6 +123,21 @@ export async function runInkConfigureAction(action: ConfigureAction): Promise<vo
   else if (action === "evidence") await configureEvidence();
   else if (action === "watch") await configureWatchPaths();
   else if (action === "general") await configureFieldGroup("Ports & Defaults", GENERAL_FIELDS);
+  else if (action === "embedding-tuning") await configureEmbeddingTuning();
+  else if (action === "watch-tuning") await configureWatchTuning();
+  else if (action === "rate-limiting") await configureRateLimiting();
+}
+
+export async function configureEmbeddingTuning(): Promise<void> {
+  await configureFieldGroup("Embedding Tuning", EMBEDDING_TUNING_FIELDS);
+}
+
+export async function configureWatchTuning(): Promise<void> {
+  await configureFieldGroup("Watch Tuning", WATCH_TUNING_FIELDS);
+}
+
+export async function configureRateLimiting(): Promise<void> {
+  await configureFieldGroup("Rate Limiting", RATE_LIMITING_FIELDS);
 }
 
 async function configureModel(type: "embed" | "rerank"): Promise<void> {
@@ -423,11 +474,15 @@ async function configureFieldGroup(
       title,
       message: "Select a setting to edit. Values save immediately.",
       items: [
-        ...fields.map((field) => ({
-          label: `${field.label}: ${env[field.key] ?? field.fallback}`,
-          value: field.key,
-          description: field.message,
-        })),
+        ...fields.map((field) => {
+          const currentValue = env[field.key] ?? field.fallback;
+          const desc = field.description ? ` ${t.dim(`— ${field.description}`)}` : "";
+          return {
+            label: `${field.label}${desc} ${t.dim(`(current: ${currentValue})`)}`,
+            value: field.key,
+            description: field.message,
+          };
+        }),
         { label: "Reset all to defaults", value: "__reset__", color: t.warn },
         { label: "Back", value: "__back__", color: t.dim },
       ],
@@ -456,10 +511,12 @@ async function configureFieldGroup(
     const newValue = await promptText({
       title,
       message: field.message,
+      description: field.description,
       label: field.label,
       initial: env[field.key] ?? field.fallback,
       allowEmpty: false,
       validate: (v) => validateField(v, field.type),
+      ...(field.mask ? { mask: field.mask } : {}),
     });
     if (newValue == null) continue;
 
@@ -718,11 +775,40 @@ async function configureEvidence(): Promise<void> {
       });
       if (model == null) return;
 
+      const apiKey = await promptText({
+        title: "Deep Extraction API Key",
+        message: "API key for the extraction LLM provider (default: none — uses OpenClaw auth)",
+        label: "API Key",
+        initial: env.THREADCLAW_MEMORY_RELATIONS_DEEP_EXTRACTION_API_KEY || "",
+        allowEmpty: true,
+        mask: "*",
+      });
+      if (apiKey !== null) {
+        updateEnvValues(root, { THREADCLAW_MEMORY_RELATIONS_DEEP_EXTRACTION_API_KEY: apiKey });
+      }
+
+      const baseUrl = await promptText({
+        title: "Deep Extraction Base URL",
+        message: "Custom API endpoint for Ollama/LM Studio/compatible (default: auto-detected from provider)",
+        label: "Base URL",
+        initial: env.THREADCLAW_MEMORY_RELATIONS_DEEP_EXTRACTION_BASE_URL || "",
+        allowEmpty: true,
+      });
+      if (baseUrl !== null) {
+        updateEnvValues(root, { THREADCLAW_MEMORY_RELATIONS_DEEP_EXTRACTION_BASE_URL: baseUrl });
+      }
+
       updateEnvValues(root, {
         THREADCLAW_MEMORY_RELATIONS_DEEP_EXTRACTION_PROVIDER: provider,
         THREADCLAW_MEMORY_RELATIONS_DEEP_EXTRACTION_MODEL: model,
       });
     }
+
+    await configureFieldGroup("Extraction Tuning", EXTRACTION_TUNING_FIELDS);
+    await showNotice("Extraction Tuning", "Extraction tuning settings saved.");
+
+    await configureFieldGroup("Awareness Tuning", AWARENESS_TUNING_FIELDS);
+    await showNotice("Awareness Tuning", "Awareness tuning settings saved.");
   }
 
   await showNotice("Evidence OS", "Evidence OS settings saved.");
