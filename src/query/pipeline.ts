@@ -364,7 +364,7 @@ export async function query(
   let rankedChunks: PackedChunk[];
   let fallbackScores = false; // true when reranker scores are synthetic
   const noGoodVectors = goodVectorResults.length === 0;
-  const shouldSkipRerank = useReranker && config.reranker.smartSkip && chunkData.length >= 2 && shouldSkipReranking(goodVectorResults);
+  const shouldSkipRerank = useReranker && config.reranker.smartSkip && chunkData.length >= 2 && shouldSkipReranking(dedupedVectorResults);
 
   if (useReranker && chunkData.length > 0 && !shouldSkipRerank && !noGoodVectors) {
     // Include contextPrefix (heading chain) so reranker sees same context as embedder

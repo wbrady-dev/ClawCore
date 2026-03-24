@@ -23,7 +23,7 @@ const cache = new Map<string, CacheEntry>();
  */
 export function cacheKey(query: string, collection: string, options: Record<string, unknown> = {}): string {
   const sorted = Object.keys(options).sort().reduce<Record<string, unknown>>((acc, k) => { acc[k] = options[k]; return acc; }, {});
-  return createHash("sha256").update(`${query}|${collection}|${JSON.stringify(sorted)}`).digest("hex");
+  return createHash("sha256").update(`${query}|${collection}|${config.embedding.model}|${JSON.stringify(sorted)}`).digest("hex");
 }
 
 /**

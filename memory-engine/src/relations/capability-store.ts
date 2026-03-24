@@ -96,7 +96,7 @@ export function getCapabilities(
   opts?: { type?: string; status?: string; limit?: number },
 ): CapabilityRow[] {
   const limit = opts?.limit ?? 50;
-  const where = ["scope_id = ?", "kind = 'capability'", "status = 'active'"];
+  const where = ["scope_id = ?", "kind = 'capability'"];
   const args: unknown[] = [scopeId];
 
   if (opts?.type) {
