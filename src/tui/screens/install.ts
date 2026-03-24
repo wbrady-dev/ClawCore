@@ -818,17 +818,23 @@ export async function loginHuggingFace(
 async function warmModel(python: string, model: ModelInfo, trustRemoteCode: boolean, loader: "SentenceTransformer" | "CrossEncoder"): Promise<void> {
   const trustArg = trustRemoteCode ? ", trust_remote_code=True" : "";
   const sp = ora(`Downloading ${model.name}...`).start();
-  const command = loader === "SentenceTransformer"
-    ? `from sentence_transformers import SentenceTransformer; SentenceTransformer('${model.id}'${trustArg})`
-    : `from sentence_transformers import CrossEncoder; CrossEncoder('${model.id}'${trustArg})`;
+  // Write Python code to temp file instead of using -c flag.
+  // On Windows, spawn with shell:false and long -c strings can cause EINVAL.
+  const script = loader === "SentenceTransformer"
+    ? `import sys\nfrom sentence_transformers import SentenceTransformer\nSentenceTransformer(sys.argv[1]${trustArg})`
+    : `import sys\nfrom sentence_transformers import CrossEncoder\nCrossEncoder(sys.argv[1]${trustArg})`;
+  const tmpScript = resolve(tmpdir(), `threadclaw_warm_${randomUUID()}.py`);
+  writeFileSync(tmpScript, script);
   try {
-    await runCommandWithSpinner(sp, `Downloading ${model.name}...`, python, ["-c", command], {
+    await runCommandWithSpinner(sp, `Downloading ${model.name}...`, python, [tmpScript, model.id], {
       timeoutMs: 900000,
     });
     sp.succeed(`${model.name} ready`);
   } catch (error) {
     sp.fail(`${model.name} download failed.`);
     throw new Error(`Model download failed for ${model.name}: ${String(error).slice(0, 200)}`);
+  } finally {
+    try { unlinkSync(tmpScript); } catch {}
   }
 }
 
