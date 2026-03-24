@@ -53,7 +53,7 @@ jobs:
       - run: npm run build
       - name: Verify dist output exists
         run: |
-          test -f dist/index.mjs || (echo "dist/index.mjs missing" && exit 1)
-          test -f dist/cli/clawcore.mjs || (echo "dist/cli/clawcore.mjs missing" && exit 1)
+          test -f dist/index.js || (echo "dist/index.js missing" && exit 1)
+          test -f dist/cli/clawcore.js || (echo "dist/cli/clawcore.js missing" && exit 1)
       - name: Smoke test (binary runs)
         run: node bin/clawcore.mjs --version
