@@ -1550,6 +1550,7 @@ export class LcmContextEngine implements ContextEngine {
     // NOTE: withWriteTransaction is synchronous and runs inside the
     // fire-and-forget async IIFE. Reconciliation runs before store writes
     // so supersession actions apply to the latest objects.
+    console.info(`[rsma] gate: rsmaWillRun=${rsmaWillRun}, graphDb=${!!this.graphDb}, relationsEnabled=${this.config.relationsEnabled}, role=${stored.role}, contentLen=${stored.content.length}, extractionMode=${this.config.relationsExtractionMode}, deepEnabled=${this.config.relationsDeepExtractionEnabled}, model=${this.config.relationsDeepExtractionModel}`);
     if (rsmaWillRun) {
       const _graphDb = this.graphDb!;
       const _content = stored.content;
@@ -1607,6 +1608,7 @@ export class LcmContextEngine implements ContextEngine {
           writerResult = await understandMessage(_content, _messageId, role);
         }
 
+        console.info(`[rsma] extraction produced ${writerResult.objects.length} objects: ${writerResult.objects.map(o => o.kind).join(", ")}`);
         if (writerResult.objects.length > 0) {
           const { reconcile } = await import("./ontology/truth.js");
           const { projectProvenance, recordSupersession, recordConflict, recordEvidence } = await import("./ontology/projector.js");
@@ -1618,8 +1620,10 @@ export class LcmContextEngine implements ContextEngine {
             correctionSignal: writerResult.signals.correctionSignal ?? undefined,
           });
 
+          console.info(`[rsma] reconciliation produced ${reconciled.actions.length} actions: ${reconciled.actions.map(a => a.type).join(", ")}`);
           for (const action of reconciled.actions) {
             if (action.type === "insert") {
+              console.info(`[rsma] inserting ${action.object.kind}: ${action.object.content?.substring(0, 60)}`);
               upsertMemoryObject(graphDb, action.object);
               projectProvenance(graphDb, action.object);
             } else if (action.type === "supersede") {
