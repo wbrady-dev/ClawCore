@@ -62,7 +62,12 @@ export type ConfigureAction =
   | "ingestion-tuning"
   | "embedding-tuning"
   | "watch-tuning"
-  | "rate-limiting";
+  | "rate-limiting"
+  | "search-ranking"
+  | "chunking"
+  | "ocr-media"
+  | "memory-summary"
+  | "network";
 
 export async function runConfigure(): Promise<void> {
   const root = getRootDir();

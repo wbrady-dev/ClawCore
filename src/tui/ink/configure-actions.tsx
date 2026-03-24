@@ -168,6 +168,11 @@ export async function runInkConfigureAction(action: ConfigureAction): Promise<vo
   else if (action === "summary-model") await configureSummaryModel();
   else if (action === "query-tuning") await configureQueryTuning();
   else if (action === "ingestion-tuning") await configureIngestionTuning();
+  else if (action === "search-ranking") await configureSearchAndRanking();
+  else if (action === "chunking") await configureChunkingAndParsing();
+  else if (action === "ocr-media") await configureOcrAndMedia();
+  else if (action === "memory-summary") await configureMemoryAndSummary();
+  else if (action === "network") await configureNetworkAndPorts();
 }
 
 export async function configureEmbeddingTuning(): Promise<void> {
@@ -180,6 +185,92 @@ export async function configureWatchTuning(): Promise<void> {
 
 export async function configureRateLimiting(): Promise<void> {
   await configureFieldGroup("Rate Limiting", RATE_LIMITING_FIELDS);
+}
+
+const SEARCH_AND_RANKING_FIELDS: FieldDef[] = [
+  ...SEARCH_FIELDS,
+  ...QUERY_TUNING_FIELDS,
+];
+
+const CHUNKING_AND_PARSING_FIELDS: FieldDef[] = [
+  { key: "CHUNK_MAX_TOKENS", label: "Max Chunk Size", fallback: "1024", message: "Hard upper bound for ingestion chunks.", description: "Maximum tokens per chunk (default: 1024)", type: "number" },
+  { key: "CHUNK_TARGET_TOKENS", label: "Target Chunk Size", fallback: "512", message: "Preferred chunk size for prose splitting.", description: "Target tokens per chunk (default: 512)", type: "number" },
+  { key: "CHUNK_MIN_TOKENS", label: "Min Chunk Size", fallback: "100", message: "Chunks smaller than this get merged.", description: "Minimum tokens per chunk (default: 100)", type: "number" },
+  { key: "CHUNK_OVERLAP_RATIO", label: "Chunk Overlap Ratio", fallback: "0.2", message: "Chunk overlap as fraction of target", description: "Overlap ratio between chunks (default: 0.2)", type: "number" },
+  { key: "DEDUP_SIMILARITY_THRESHOLD", label: "Dedup Threshold", fallback: "0.95", message: "Cosine similarity for dedup", description: "Cosine similarity to deduplicate chunks (default: 0.95)", type: "number" },
+  { key: "INGEST_MAX_FILE_SIZE_MB", label: "Max File Size (MB)", fallback: "100", message: "Max file size to ingest (MB)", description: "Maximum file size to ingest (default: 100 MB)", type: "number" },
+  { key: "OCR_LANGUAGE", label: "OCR Language", fallback: "eng", message: "Tesseract OCR language code", description: "OCR language code (default: eng)", type: "string" },
+  { key: "EMBEDDING_MAX_CONCURRENT", label: "Embedding Concurrency", fallback: "2", message: "Concurrent embedding requests", description: "Concurrent embedding requests during ingest (default: 2)", type: "number" },
+  { key: "EMBEDDING_TIMEOUT_MS", label: "Embedding Timeout", fallback: "30000", message: "Embedding API timeout (ms)", description: "Embedding call timeout in ms (default: 30000)", type: "number" },
+];
+
+const NETWORK_AND_PORTS_FIELDS: FieldDef[] = [
+  { key: "THREADCLAW_PORT", label: "ThreadClaw API Port", fallback: "18800", message: "HTTP port for the ThreadClaw API.", description: "API server port (default: 18800)", type: "number", requiresRestart: true },
+  { key: "RERANKER_URL", label: "Model Server URL", fallback: "http://127.0.0.1:8012", message: "Base URL for the local or remote model server.", description: "Model server URL for reranking (default: http://127.0.0.1:8012)", type: "url", requiresRestart: true },
+  { key: "QUERY_EXPANSION_URL", label: "Expansion LLM URL", fallback: "http://127.0.0.1:1234/v1", message: "Chat endpoint used for query expansion.", description: "LLM endpoint for query expansion", type: "url" },
+  { key: "THREADCLAW_DATA_DIR", label: "Data Directory", fallback: "./data", message: "Where ingested data and databases live.", description: "Data directory for databases and indexes", type: "string", requiresRestart: true },
+  { key: "DEFAULT_COLLECTION", label: "Default Collection", fallback: "default", message: "Collection used when none is provided.", description: "Default collection for new documents (default: default)", type: "string" },
+  { key: "QUERY_TOP_K", label: "Results Per Query", fallback: "10", message: "How many chunks to return before context compilation.", description: "Default number of results per query (default: 10)", type: "number" },
+  { key: "QUERY_TOKEN_BUDGET", label: "Token Budget", fallback: "4000", message: "Max token budget for response context.", description: "Token budget for query responses (default: 4000)", type: "number" },
+  { key: "WATCH_DEBOUNCE_MS", label: "Watch Debounce", fallback: "3000", message: "Delay before auto-ingesting changed files.", description: "Delay before processing file changes (ms)", type: "number" },
+];
+
+export async function configureSearchAndRanking(): Promise<void> {
+  await configureFieldGroup("Search & Ranking", SEARCH_AND_RANKING_FIELDS);
+}
+
+export async function configureChunkingAndParsing(): Promise<void> {
+  await configureFieldGroup("Chunking & Parsing", CHUNKING_AND_PARSING_FIELDS);
+}
+
+export async function configureOcrAndMedia(): Promise<void> {
+  const action = await promptMenu({
+    title: "OCR & Media",
+    message: "Install or configure OCR, audio transcription, and NER.",
+    items: [
+      { label: "Image OCR (Tesseract)", value: "ocr", description: "Install or check Tesseract status" },
+      { label: "Audio transcription (Whisper)", value: "audio", description: "Enable/disable and choose model" },
+      { label: "NER (spaCy)", value: "ner", description: "Install spaCy entity recognition model" },
+      { label: "Back", value: "__back__", color: t.dim },
+    ],
+  });
+
+  if (!action || action === "__back__") return;
+  if (action === "ocr") await configureOcr();
+  else if (action === "audio") await configureAudio();
+  else if (action === "ner") await configureNer();
+}
+
+export async function configureMemoryAndSummary(): Promise<void> {
+  const root = getRootDir();
+  const env = readEnvMap(root);
+  const relationsEnabled = env.THREADCLAW_MEMORY_RELATIONS_ENABLED === "true";
+
+  // Summary model fields first
+  await configureFieldGroup("Memory & Summary — Compaction Model", SUMMARY_MODEL_FIELDS);
+  await showNotice("Summary Model", "Summary model configured. Changes take effect on next compaction cycle.");
+
+  // Context tier selection if Evidence OS is active
+  if (relationsEnabled) {
+    const tier = await promptMenu({
+      title: "Context Tier",
+      message: "Choose how much Evidence OS context to compile into prompts.",
+      items: [
+        { label: "Lite (110 tokens)", value: "lite" },
+        { label: "Standard (190 tokens)", value: "standard" },
+        { label: "Premium (280 tokens)", value: "premium" },
+        { label: "Keep current", value: "__keep__", color: t.dim },
+      ],
+    });
+    if (tier && tier !== "__keep__") {
+      updateEnvValues(root, { THREADCLAW_MEMORY_RELATIONS_CONTEXT_TIER: tier });
+      await showNotice("Context Tier", `Context tier set to ${tier}.`);
+    }
+  }
+}
+
+export async function configureNetworkAndPorts(): Promise<void> {
+  await configureFieldGroup("Network & Ports", NETWORK_AND_PORTS_FIELDS);
 }
 
 async function configureModel(type: "embed" | "rerank"): Promise<void> {

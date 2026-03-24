@@ -34,24 +34,42 @@ export function ConfigureScreen({
     );
 
   const menuItems: MenuItem[] = [
-    { label: "Embedding model", value: "configure-embed", description: "Change vector model and rebuild requirements" },
-    { label: "Reranker model", value: "configure-rerank", description: "Change reranking model" },
-    { label: "Query expansion", value: "configure-expansion", description: "Local or cloud chat expansion" },
-    { label: "Search tuning", value: "configure-search", description: "Top-K, token budget, chunking" },
-    { label: "Document parser", value: "configure-parser", description: "Docling off, CPU, or GPU" },
-    { label: "Image OCR", value: "configure-ocr", description: "Tesseract install and status" },
-    { label: "Audio transcription", value: "configure-audio", description: "Whisper model and enablement" },
-    { label: "NER (Entity Extraction)", value: "configure-ner", description: "spaCy model for named entity recognition" },
-    { label: "Evidence OS", value: "configure-evidence", description: "Relations, awareness, claims, deep extraction" },
-    { label: "Watch paths", value: "configure-watch", description: "Auto-ingest folders and collections" },
-    { label: "Embedding tuning", value: "configure-embedding-tuning", description: "API key, retries, circuit cooldown, cache" },
-    { label: "Watch tuning", value: "configure-watch-tuning", description: "Exclude patterns, concurrency, queue limits" },
-    { label: "Rate limiting", value: "configure-rate-limiting", description: "Enable/disable, max requests, window" },
-    { label: "Summary Model", value: "configure-summary-model", description: "LLM provider and model for memory compaction" },
-    { label: "Query Tuning", value: "configure-query-tuning", description: "Expansion, hybrid weights, cache, retrieval" },
-    { label: "Ingestion Tuning", value: "configure-ingestion-tuning", description: "Overlap, dedup, OCR, file size, embedding concurrency" },
-    { label: "Ports & defaults", value: "configure-general", description: "Ports, collection, data path" },
-    { label: "Back", value: "__back__", color: t.dim },
+    // ── Models (required) ──
+    { label: "── Models (required) ──────────────", value: "__sep_models__", color: t.dim },
+    { label: "  Embedding model", value: "configure-embed", description: "Vector model for search" },
+    { label: "  Reranker model", value: "configure-rerank", description: "Cross-encoder for result ranking" },
+
+    // ── Retrieval ──
+    { label: "", value: "__sep_blank1__" },
+    { label: "── Retrieval ─────────────────────", value: "__sep_retrieval__", color: t.dim },
+    { label: "  Search & ranking", value: "configure-search-ranking", description: "Reranking thresholds, hybrid weights, caching" },
+    { label: "  Query expansion", value: "configure-expansion", description: "LLM-powered query rewriting (optional)" },
+
+    // ── Ingestion ──
+    { label: "", value: "__sep_blank2__" },
+    { label: "── Ingestion ─────────────────────", value: "__sep_ingestion__", color: t.dim },
+    { label: "  Watch paths", value: "configure-watch", description: "Folders to auto-index" },
+    { label: "  Chunking & parsing", value: "configure-chunking", description: "Chunk sizes, overlap, dedup, file limits" },
+    { label: "  Document parser", value: "configure-parser", description: "Docling off/CPU/GPU" },
+    { label: "  OCR & media", value: "configure-ocr-media", description: "Tesseract, Whisper, spaCy NER" },
+
+    // ── Knowledge Graph ──
+    { label: "", value: "__sep_blank3__" },
+    { label: "── Knowledge Graph ───────────────", value: "__sep_graph__", color: t.dim },
+    { label: "  Evidence OS", value: "configure-evidence", description: "Relations, awareness, extraction, claims" },
+    { label: "  Memory & summary", value: "configure-memory-summary", description: "Compaction model, context tier" },
+
+    // ── Advanced ──
+    { label: "", value: "__sep_blank4__" },
+    { label: "── Advanced ──────────────────────", value: "__sep_advanced__", color: t.dim },
+    { label: "  Embedding tuning", value: "configure-embedding-tuning", description: "API key, retries, circuit breaker, cache" },
+    { label: "  Watch tuning", value: "configure-watch-tuning", description: "Exclude patterns, concurrency, queue" },
+    { label: "  Rate limiting", value: "configure-rate-limiting", description: "API rate limits" },
+    { label: "  Network & ports", value: "configure-network", description: "API port, model server URL, data directory" },
+
+    // ── Back ──
+    { label: "", value: "__sep_blank5__" },
+    { label: "  Back", value: "__back__", color: t.dim },
   ];
 
   return (
@@ -102,4 +120,3 @@ export function ConfigureScreen({
     </Box>
   );
 }
-
