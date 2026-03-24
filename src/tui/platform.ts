@@ -51,7 +51,9 @@ export function getPlatform(): Platform {
 
 export function getRootDir(): string {
   if (rootDirOverride) return rootDirOverride;
-  return resolve(dirname(new URL(import.meta.url).pathname.replace(/^\/([A-Z]:)/, "$1")), "../..");
+  const raw = decodeURIComponent(new URL(import.meta.url).pathname);
+  const filePath = raw.replace(/^\/([A-Z]:)/, "$1");
+  return resolve(dirname(filePath), "../..");
 }
 
 export function setRootDirOverride(root: string | null): void {

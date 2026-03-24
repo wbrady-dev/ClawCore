@@ -792,7 +792,11 @@ async function promptEvidenceSettings(): Promise<EvidenceConfig> {
 async function maybeLoginHuggingFace(python: string, embedChoice: ModelInfo, rerankChoice: ModelInfo): Promise<void> {
   console.log(section("HuggingFace Login"));
   try {
-    execFileSync(python, ["-c", "from huggingface_hub import whoami; whoami()"], { stdio: "pipe" });
+    const whoamiScript = resolve(tmpdir(), `threadclaw_whoami_${randomUUID()}.py`);
+    writeFileSync(whoamiScript, "from huggingface_hub import whoami\nwhoami()");
+    try {
+      execFileSync(python, [whoamiScript], { stdio: "pipe" });
+    } finally { try { unlinkSync(whoamiScript); } catch {} }
     console.log(t.ok("  Already logged in to HuggingFace.\n"));
     return;
   } catch {}
@@ -808,7 +812,11 @@ export async function loginHuggingFace(
   rerankChoice: ModelInfo,
 ): Promise<void> {
   try {
-    execFileSync(python, ["-c", "import os; from huggingface_hub import login; login(token=os.environ['HF_TOKEN'])"], { stdio: "pipe", env: { ...process.env, HF_TOKEN: String(token) } });
+    const loginScript = resolve(tmpdir(), `threadclaw_login_${randomUUID()}.py`);
+    writeFileSync(loginScript, "import os\nfrom huggingface_hub import login\nlogin(token=os.environ['HF_TOKEN'])");
+    try {
+      execFileSync(python, [loginScript], { stdio: "pipe", env: { ...process.env, HF_TOKEN: String(token) } });
+    } finally { try { unlinkSync(loginScript); } catch {} }
     console.log(t.ok("  Logged in to HuggingFace.\n"));
   } catch {
     console.log(t.warn(`  Login failed for ${embedChoice.id} / ${rerankChoice.id}.\n`));

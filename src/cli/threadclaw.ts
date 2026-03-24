@@ -25,7 +25,7 @@ import { getAppVersion } from "../version.js";
 
 // If no arguments provided, launch the interactive TUI
 if (process.argv.length <= 2) {
-  import("../tui/index.js").catch((err) => {
+  await import("../tui/index.js").catch((err) => {
     console.error("Failed to launch TUI:", err.message);
     process.exit(1);
   });
