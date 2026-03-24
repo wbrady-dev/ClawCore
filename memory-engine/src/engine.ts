@@ -1598,12 +1598,16 @@ export class LcmContextEngine implements ContextEngine {
               provider: extractionProvider,
               maxInputChars: 4000,
             });
-          } catch {
+            console.info(`[rsma] LLM extraction succeeded: ${writerResult.objects.length} objects (${writerResult.objects.map(o => o.kind).join(", ")})`);
+          } catch (llmErr) {
             // LLM unavailable — fall back to regex
+            console.warn("[rsma] LLM extraction failed, falling back to regex:", llmErr instanceof Error ? llmErr.message : String(llmErr));
             const { understandMessage } = await import("./ontology/writer.js");
             writerResult = await understandMessage(_content, _messageId, role);
+            console.info("[rsma] used REGEX fallback");
           }
         } else {
+          console.info("[rsma] using REGEX extraction (LLM not configured)");
           const { understandMessage } = await import("./ontology/writer.js");
           writerResult = await understandMessage(_content, _messageId, role);
         }

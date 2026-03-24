@@ -361,7 +361,10 @@ function convertToWriterResult(
     const kind = eventTypeToMemoryKind(event.type);
 
     // Filter junk claims before creating MemoryObjects
-    if (kind === "claim" && isJunkClaim(event)) continue;
+    if (kind === "claim" && isJunkClaim(event)) {
+      console.debug(`[rsma] filtered junk claim: subject="${event.subject}", predicate="${event.predicate}", value="${event.value}", confidence=${event.confidence}`);
+      continue;
+    }
 
     const eventType = eventTypeToEventType(event.type);
     eventTypes.push(eventType);
