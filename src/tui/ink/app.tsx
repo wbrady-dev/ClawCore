@@ -539,10 +539,9 @@ function HomeScreen({ onAction }: { onAction: (action: string) => void }) {
     return () => { serviceActionListeners.delete(listener); };
   }, []);
 
-  // Detect OCR once (truly async — no event loop blocking)
+  // Detect OCR periodically (truly async — no event loop blocking)
   const [ocrInstalled, setOcrInstalled] = useState(cachedOcrInstalled ?? false);
   useEffect(() => {
-    if (cachedOcrInstalled !== null) return;
     let cancelled = false;
     const tryExec = (cmd: string): Promise<boolean> =>
       new Promise((res) => execFile(cmd, ["--version"], { timeout: 3000 }, (err) => res(!err)));
@@ -561,7 +560,7 @@ function HomeScreen({ onAction }: { onAction: (action: string) => void }) {
       }
     })();
     return () => { cancelled = true; };
-  }, []);
+  }, [tick]);
 
   const refresh = async () => { try {
     const [mUp, cUp, gpuState, autoStartState, statsRes, sourcesRes, healthRes] = await Promise.all([
