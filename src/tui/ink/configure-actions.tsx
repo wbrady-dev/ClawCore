@@ -275,83 +275,171 @@ export async function configureNetworkAndPorts(): Promise<void> {
 
 async function configureModel(type: "embed" | "rerank"): Promise<void> {
   const root = getRootDir();
-  const config = readConfig(root);
   const python = getPythonCmd();
   const catalog = type === "embed" ? EMBED_MODELS : RERANK_MODELS;
-  const currentId = type === "embed" ? config?.embed_model : config?.rerank_model;
   const providers = type === "embed" ? CLOUD_EMBED_PROVIDERS : CLOUD_RERANK_PROVIDERS;
+  const title = type === "embed" ? "Embedding Model" : "Reranker Model";
 
-  const items: MenuItem[] = catalog.map((model) => ({
-    label: `${model.name}${model.id === currentId ? " (current)" : ""}`,
-    value: model.id,
-    description: `${model.tier} | ~${model.vramMb >= 1000 ? `${(model.vramMb / 1000).toFixed(1)}GB` : `${model.vramMb}MB`} VRAM | ${model.languages} | ${model.notes}`,
-  }));
-  items.push({ label: "── Other ──────────────────────", value: "__sep__", color: t.dim });
-  items.push({ label: "Cloud provider", value: "__cloud__", color: t.ok, description: "OpenAI, Cohere, Voyage AI, or other API-compatible provider." });
-  items.push({ label: "Custom HuggingFace model", value: "__custom__", color: t.ok, description: "Enter any model ID from HuggingFace." });
-  items.push({ label: "Back", value: "__back__", color: t.dim });
+  while (true) {
+    const config = readConfig(root);
+    const env = readEnvMap(root);
+    const currentId = type === "embed" ? config?.embed_model : config?.rerank_model;
+    const currentModel = catalog.find((m) => m.id === currentId);
+    const trustRemote = config?.trust_remote_code ?? false;
 
-  const selected = await promptMenu({
-    title: type === "embed" ? "Embedding Model" : "Reranker Model",
-    message: type === "embed"
-      ? "Changing the embedding model requires rebuilding vectors."
-      : "Choose the cross-encoder used for final reranking.",
-    items,
-  });
+    // Build current model summary for the header
+    const currentName = currentModel?.name ?? currentId ?? "not set";
+    const dimsInfo = type === "embed"
+      ? ` | ${currentModel?.dims ?? env.EMBEDDING_DIMENSIONS ?? "?"} dims`
+      : "";
+    const vramInfo = currentModel
+      ? ` | ~${currentModel.vramMb >= 1000 ? `${(currentModel.vramMb / 1000).toFixed(1)}GB` : `${currentModel.vramMb}MB`} VRAM`
+      : "";
+    const apiKeyEnv = type === "embed" ? env.EMBEDDING_API_KEY : env.RERANKER_API_KEY;
+    const apiKeyDisplay = apiKeyEnv
+      ? `${apiKeyEnv.slice(0, 4)}${"*".repeat(Math.min(apiKeyEnv.length - 4, 12))}`
+      : "not set";
 
-  if (!selected || selected === "__back__" || selected === "__sep__") return;
-
-  if (selected === "__cloud__") {
-    await configureCloudModel(type, providers);
-    return;
-  }
-
-  if (selected === "__custom__") {
-    await configureCustomModel(type, python);
-    return;
-  }
-
-  const choice = catalog.find((model) => model.id === selected);
-  if (!choice) return;
-
-  if (type === "embed") {
-    const confirmed = await promptConfirm({
-      title: "Rebuild Required",
-      message: "Changing the embedding model deletes the current vector DB. Continue?",
-      confirmLabel: "Delete DB and apply",
-      cancelLabel: "Cancel",
+    const items: MenuItem[] = [
+      { label: "── Model Selection ────────────", value: "__sep1__", color: t.dim },
+      { label: "Browse catalog", value: "__catalog__", description: `${catalog.length} models available` },
+      { label: "Use cloud provider", value: "__cloud__", color: t.ok, description: "OpenAI, Cohere, Voyage AI, or other API-compatible provider." },
+      { label: "Use custom HuggingFace", value: "__custom__", color: t.ok, description: "Enter any model ID from HuggingFace." },
+      { label: "── Current Settings ───────────", value: "__sep2__", color: t.dim },
+      { label: `Model                   ${currentName}`, value: "__readonly_model__", color: t.dim },
+    ];
+    if (type === "embed") {
+      items.push({
+        label: `Dimensions              ${currentModel?.dims ?? env.EMBEDDING_DIMENSIONS ?? "?"}`,
+        value: "__readonly_dims__",
+        color: t.dim,
+      });
+    }
+    items.push({
+      label: `API Key                 ${apiKeyDisplay}`,
+      value: "__apikey__",
+      description: "Edit API key for cloud providers",
     });
-    if (!confirmed) return;
+    items.push({
+      label: `Trust Remote Code       ${trustRemote}`,
+      value: "__trust__",
+      description: "Toggle trust_remote_code",
+    });
+    items.push({ label: "Back", value: "__back__", color: t.dim });
 
-    const dbPath = resolve(getDataDir(root), "threadclaw.db");
-    if (existsSync(dbPath)) unlinkSync(dbPath);
-
-    writeConfig({
-      embed_model: choice.id,
-      rerank_model: config?.rerank_model ?? "",
-      trust_remote_code: choice.trustRemoteCode || (config?.trust_remote_code ?? false),
-      docling_device: config?.docling_device ?? "off",
-    }, root);
-
-    updateEnvValues(root, {
-      EMBEDDING_MODEL: choice.id,
-      EMBEDDING_DIMENSIONS: String(choice.dims),
+    const selected = await promptMenu({
+      title,
+      message: `Current: ${currentName}${dimsInfo}${vramInfo}`,
+      items,
     });
 
-    await warmModel(choice, python, "embed");
-    await showNotice("Embedding Updated", `${choice.name} is configured. Re-ingest documents after restart.`);
-    return;
+    if (!selected || selected === "__back__") return;
+    if (selected.startsWith("__sep") || selected.startsWith("__readonly")) continue;
+
+    // ── Browse catalog ──
+    if (selected === "__catalog__") {
+      const catalogItems: MenuItem[] = catalog.map((model) => ({
+        label: `${model.name}${model.id === currentId ? " (current)" : ""}`,
+        value: model.id,
+        description: `${model.tier} | ~${model.vramMb >= 1000 ? `${(model.vramMb / 1000).toFixed(1)}GB` : `${model.vramMb}MB`} VRAM | ${model.languages} | ${model.notes}`,
+      }));
+      catalogItems.push({ label: "Back", value: "__back__", color: t.dim });
+
+      const catalogChoice = await promptMenu({
+        title: `${title} Catalog`,
+        message: type === "embed"
+          ? "Select an embedding model. This will require rebuilding vectors."
+          : "Select a cross-encoder model for reranking.",
+        items: catalogItems,
+      });
+
+      if (!catalogChoice || catalogChoice === "__back__") continue;
+
+      const choice = catalog.find((model) => model.id === catalogChoice);
+      if (!choice) continue;
+
+      if (type === "embed") {
+        const confirmed = await promptConfirm({
+          title: "Rebuild Required",
+          message: `Switch to ${choice.name} (${choice.dims} dims, ~${choice.vramMb >= 1000 ? `${(choice.vramMb / 1000).toFixed(1)}GB` : `${choice.vramMb}MB`} VRAM)?\n\nThis deletes the current vector DB. You must re-ingest all documents.`,
+          confirmLabel: "Delete DB and apply",
+          cancelLabel: "Cancel",
+        });
+        if (!confirmed) continue;
+
+        const dbPath = resolve(getDataDir(root), "threadclaw.db");
+        if (existsSync(dbPath)) unlinkSync(dbPath);
+
+        writeConfig({
+          embed_model: choice.id,
+          rerank_model: config?.rerank_model ?? "",
+          trust_remote_code: choice.trustRemoteCode || trustRemote,
+          docling_device: config?.docling_device ?? "off",
+        }, root);
+
+        updateEnvValues(root, {
+          EMBEDDING_MODEL: choice.id,
+          EMBEDDING_DIMENSIONS: String(choice.dims),
+        });
+
+        await warmModel(choice, python, "embed");
+        await showNotice("Embedding Updated", `${choice.name} is configured. Re-ingest documents after restart.`);
+      } else {
+        writeConfig({
+          embed_model: config?.embed_model ?? "",
+          rerank_model: choice.id,
+          trust_remote_code: choice.trustRemoteCode || trustRemote,
+          docling_device: config?.docling_device ?? "off",
+        }, root);
+
+        await warmModel(choice, python, "rerank");
+        await showNotice("Reranker Updated", `${choice.name} is configured. Restart services to apply.`);
+      }
+      continue;
+    }
+
+    // ── Cloud provider ──
+    if (selected === "__cloud__") {
+      await configureCloudModel(type, providers);
+      continue;
+    }
+
+    // ── Custom HuggingFace ──
+    if (selected === "__custom__") {
+      await configureCustomModel(type, python);
+      continue;
+    }
+
+    // ── Edit API Key ──
+    if (selected === "__apikey__") {
+      const envKey = type === "embed" ? "EMBEDDING_API_KEY" : "RERANKER_API_KEY";
+      const newKey = await promptText({
+        title: "API Key",
+        message: `Current: ${apiKeyDisplay}. Leave blank to clear.`,
+        label: "API Key",
+        mask: "*",
+        initial: apiKeyEnv ?? "",
+      });
+      if (newKey != null) {
+        updateEnvValues(root, { [envKey]: newKey });
+        await showNotice("API Key Updated", newKey ? "API key saved." : "API key cleared.");
+      }
+      continue;
+    }
+
+    // ── Toggle Trust Remote Code ──
+    if (selected === "__trust__") {
+      const newTrust = !trustRemote;
+      writeConfig({
+        embed_model: config?.embed_model ?? "",
+        rerank_model: config?.rerank_model ?? "",
+        trust_remote_code: newTrust,
+        docling_device: config?.docling_device ?? "off",
+      }, root);
+      await showNotice("Trust Remote Code", `trust_remote_code set to ${newTrust}. Restart services to apply.`);
+      continue;
+    }
   }
-
-  writeConfig({
-    embed_model: config?.embed_model ?? "",
-    rerank_model: choice.id,
-    trust_remote_code: choice.trustRemoteCode || (config?.trust_remote_code ?? false),
-    docling_device: config?.docling_device ?? "off",
-  }, root);
-
-  await warmModel(choice, python, "rerank");
-  await showNotice("Reranker Updated", `${choice.name} is configured. Restart services to apply.`);
 }
 
 async function configureCloudModel(
