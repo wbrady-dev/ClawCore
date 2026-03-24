@@ -15,7 +15,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - run: npm ci
+      - run: npm install
       - run: npx tsc --noEmit
 
   test:
@@ -30,9 +30,9 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ matrix.node }}
-      - run: npm ci
+      - run: npm install
       - name: Memory Engine Tests
-        run: cd memory-engine && npm ci && npx vitest run
+        run: cd memory-engine && npm install && npx vitest run
       - name: Stress Test
         run: cd memory-engine && npx vitest run test/rsma-stress.test.ts
       - name: Failure Injection Tests
@@ -49,7 +49,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - run: npm ci
+      - run: npm install
       - run: npm run build
       - name: Verify dist output exists
         run: |
