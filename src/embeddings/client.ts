@@ -82,23 +82,23 @@ export async function embed(
     }
 
     let response: Response;
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 30_000); // 30s timeout
     try {
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 30_000); // 30s timeout
-
       response = await fetch(url, {
         method: "POST",
         headers,
         body,
         signal: controller.signal,
       });
-      clearTimeout(timeout);
     } catch (err) {
+      clearTimeout(timeout);
       lastError = new EmbeddingError(
         `Failed to connect to embedding server at ${url}: ${err}`,
       );
       continue; // retry
     }
+    clearTimeout(timeout);
 
     if (response.status === 429 || response.status >= 500) {
       const text = await response.text().catch(() => "");

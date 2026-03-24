@@ -44,6 +44,18 @@ export type ExpansionRecursionGuardDecision =
 
 const delegatedContextBySessionKey = new Map<string, DelegatedExpansionContext>();
 const blockedRequestIdsBySessionKey = new Map<string, Set<string>>();
+const MAP_SIZE_CAP = 1000;
+
+/** Evict oldest entries when a map exceeds the size cap. */
+function evictOldest<V>(map: Map<string, V>, cap: number): void {
+  if (map.size <= cap) return;
+  const excess = map.size - cap;
+  const iter = map.keys();
+  for (let i = 0; i < excess; i++) {
+    const key = iter.next().value;
+    if (key !== undefined) map.delete(key);
+  }
+}
 
 function normalizeSessionKey(sessionKey?: string): string {
   return typeof sessionKey === "string" ? sessionKey.trim() : "";
@@ -56,6 +68,7 @@ function getOrInitBlockedRequestIds(sessionKey: string): Set<string> {
   }
   const created = new Set<string>();
   blockedRequestIdsBySessionKey.set(sessionKey, created);
+  evictOldest(blockedRequestIdsBySessionKey, MAP_SIZE_CAP);
   return created;
 }
 
@@ -143,6 +156,7 @@ export function stampDelegatedExpansionContext(params: {
   };
   if (sessionKey) {
     delegatedContextBySessionKey.set(sessionKey, context);
+    evictOldest(delegatedContextBySessionKey, MAP_SIZE_CAP);
   }
   return context;
 }

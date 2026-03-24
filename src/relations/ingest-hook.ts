@@ -52,6 +52,9 @@ const CAPITALIZED_RE = /\b([A-Z][a-z]+(?:\s+[A-Z][a-z]+)+)\b/g;
 const QUOTED_RE = /[""\u201C]([^""\u201D]{2,50})[""\u201D]/g;
 const VALID_TERM_RE = /^[\p{L}\p{N}\s\-_.'"]+$/u;
 
+/** Cache compiled word-boundary regexes for terms to avoid re-creation per chunk. */
+const termRegexCache = new Map<string, RegExp>();
+
 function extractFast(text: string, terms: string[]): ExtractionResult[] {
   if (!text) return [];
   const deduped = new Map<string, ExtractionResult>();
@@ -77,9 +80,14 @@ function extractFast(text: string, terms: string[]): ExtractionResult[] {
     if (lt.length === 0) continue;
     // Quick substring pre-check before regex (fast path for non-matches)
     if (!lowerText.includes(lt)) continue;
-    // Word-boundary check to avoid substring false positives
-    const escaped = lt.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    if (new RegExp("\\b" + escaped + "\\b", "i").test(text)) {
+    // Word-boundary check to avoid substring false positives (cached regex)
+    let re = termRegexCache.get(lt);
+    if (!re) {
+      const escaped = lt.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      re = new RegExp("\\b" + escaped + "\\b", "i");
+      termRegexCache.set(lt, re);
+    }
+    if (re.test(text)) {
       presentTerms.push(term);
       const key = lt;
       if (!deduped.has(key) || 0.9 > (deduped.get(key)?.confidence ?? 0)) {
@@ -120,6 +128,7 @@ let cachedAt = 0;
 
 function loadTerms(): string[] {
   if (cachedTerms !== null && Date.now() - cachedAt < 60_000) return cachedTerms;
+  termRegexCache.clear();
   try {
     const raw = readFileSync(join(homedir(), ".threadclaw", "relations-terms.json"), "utf-8");
     const parsed = JSON.parse(raw);

@@ -102,6 +102,7 @@ export class ThreadClawWatcher {
   private ingestQueue: { filePath: string; wc: WatchConfig }[] = [];
   private activeIngests = 0;
   private retryPending = false;
+  private retryTimer: ReturnType<typeof setTimeout> | null = null;
 
   private handleFile(filePath: string, wc: WatchConfig): void {
     const ext = extname(filePath).toLowerCase();
@@ -162,10 +163,12 @@ export class ThreadClawWatcher {
       // Single retry timer — prevents unbounded setTimeout chains during outages
       if (!this.retryPending) {
         this.retryPending = true;
-        setTimeout(() => {
+        this.retryTimer = setTimeout(() => {
+          this.retryTimer = null;
           this.retryPending = false;
           this.drainQueue();
         }, 5000);
+        this.retryTimer.unref();
       }
       return;
     }
@@ -210,6 +213,13 @@ export class ThreadClawWatcher {
   }
 
   async stop(): Promise<void> {
+    // Cancel pending circuit-breaker retry
+    if (this.retryTimer) {
+      clearTimeout(this.retryTimer);
+      this.retryTimer = null;
+      this.retryPending = false;
+    }
+
     // Drain the ingest queue (discard pending items)
     this.ingestQueue.length = 0;
 
