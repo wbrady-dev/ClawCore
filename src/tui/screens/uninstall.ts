@@ -1,6 +1,7 @@
 import prompts from "prompts";
 import ora from "ora";
 import { existsSync, readFileSync, writeFileSync, rmSync } from "fs";
+import { execFileSync } from "child_process";
 import { resolve } from "path";
 import { homedir } from "os";
 import { section, t, clearScreen } from "../theme.js";
@@ -265,6 +266,21 @@ export async function performUninstall(options: { deleteData: boolean }): Promis
     if (existsSync(cmdDir)) {
       try { rmSync(cmdDir, { recursive: true, force: true }); } catch {}
     }
+    // Remove ThreadClaw from user PATH registry entry
+    try {
+      const regOut = execFileSync("reg", ["query", "HKCU\\Environment", "/v", "PATH"], { stdio: "pipe", timeout: 5000 }).toString();
+      const match = regOut.match(/PATH\s+REG_(?:EXPAND_)?SZ\s+(.*)/i);
+      if (match) {
+        const currentPath = match[1].trim();
+        const cleaned = currentPath
+          .split(";")
+          .filter((p) => !p.toLowerCase().includes("threadclaw"))
+          .join(";");
+        if (cleaned !== currentPath) {
+          execFileSync("setx", ["PATH", cleaned], { stdio: "pipe", timeout: 5000 });
+        }
+      }
+    } catch {}
   } else {
     const symlink = resolve(homedir(), ".local", "bin", "threadclaw");
     if (existsSync(symlink)) {
