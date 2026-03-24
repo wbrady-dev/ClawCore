@@ -413,7 +413,7 @@ export async function performInstallPlan(plan: InstallPlan): Promise<void> {
   const {
     sourceRoot,
     root,
-    python,
+    python: pythonFromPlan,
     platform,
     openclawDir,
     isRecommended,
@@ -428,6 +428,14 @@ export async function performInstallPlan(plan: InstallPlan): Promise<void> {
     installWindowsServices: shouldInstallWindowsServices,
     huggingFaceToken,
   } = plan;
+
+  // Point all operations at the install root from the start, so getPythonCmd(),
+  // getRootDir(), etc. resolve relative to the install location, not the clone.
+  setRootDirOverride(root);
+
+  // python may point to the source location's .venv; will be re-resolved after
+  // we create a .venv at the install root (see Step 2c below).
+  let python = pythonFromPlan;
 
   clearScreen();
   console.log(section("Installing Dependencies"));
@@ -522,9 +530,33 @@ export async function performInstallPlan(plan: InstallPlan): Promise<void> {
     failures.push("Build: npm run build failed. Run: npm run build");
   }
 
+  // ── Step 2c: Create Python venv at install root ──
+  // install.bat creates a .venv at the clone location, but if we copied files
+  // to a different directory (e.g. .openclaw/services/threadclaw), there is no
+  // .venv there.  Create one so all Python deps live inside the install root.
+  const venvDir = resolve(root, ".venv");
+  const venvPython = platform === "windows"
+    ? resolve(venvDir, "Scripts", "python.exe")
+    : resolve(venvDir, "bin", "python3");
+  if (!existsSync(venvPython)) {
+    sp = ora("Creating Python virtual environment...").start();
+    try {
+      // Use system python (not the plan's python which may be the source .venv)
+      const sysPython = platform === "windows" ? "python" : "python3";
+      await runCommandWithSpinner(sp, "Creating .venv...", sysPython,
+        ["-m", "venv", venvDir], { timeoutMs: 60000 });
+      sp.succeed("Python virtual environment created");
+    } catch (error) {
+      sp.fail(`Failed to create .venv: ${String(error).slice(0, 200)}`);
+      failures.push("Python: venv creation failed. Run: python -m venv .venv");
+    }
+  }
+  // Re-resolve python to use the install root's .venv
+  if (existsSync(venvPython)) {
+    python = venvPython;
+  }
+
   // ── Step 3: Python dependencies ──
-  // install.bat/install.sh handle venv creation and pinned pip installs.
-  // If running directly (not via install script), install deps here.
   // Force progress output for pip and HuggingFace downloads so the spinner
   // shows download progress instead of appearing frozen.
   const pipEnv = { ...process.env, PIP_PROGRESS_BAR: "on", PYTHONUNBUFFERED: "1" };
@@ -768,8 +800,6 @@ export async function performInstallPlan(plan: InstallPlan): Promise<void> {
   } catch {
     sp.warn(`Global command not registered. Run: node ${resolve(root, "bin", "threadclaw.mjs")}`);
   }
-
-  setRootDirOverride(root);
 
   // ── Run schema migrations + write manifest (same as `threadclaw upgrade`) ──
   // Fresh installs need this for DB init, schema creation, and manifest.
