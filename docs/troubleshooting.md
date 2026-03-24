@@ -100,10 +100,23 @@ Smart extraction uses the same model as deep extraction — no extra model to co
 - Awareness eval ring buffer is capped at 2,000 events
 - Context compiler uses token budgets (110-280 tokens)
 
-## Rollback
+## Reset Options
 
+### Via API (localhost only)
 ```bash
-# Disable evidence OS features (keeps RSMA)
+# KB only (documents + evidence graph)
+curl -X POST http://127.0.0.1:18800/reset -H "Content-Type: application/json" -d '{"clearGraph": true}'
+
+# KB + conversation memory
+curl -X POST http://127.0.0.1:18800/reset -H "Content-Type: application/json" -d '{"clearGraph": true, "clearMemory": true}'
+```
+
+### Via TUI
+The TUI provides 3 reset options: KB only, KB + Evidence, and Full wipe.
+
+### Via file deletion
+```bash
+# Disable evidence OS features (keeps core working)
 CLAWCORE_MEMORY_RELATIONS_ENABLED=false
 
 # Delete evidence data only
@@ -114,6 +127,8 @@ rm ~/.clawcore/data/memory.db
 rm ~/.clawcore/data/graph.db
 rm ~/.clawcore/data/clawcore.db
 ```
+
+All databases rebuild automatically on next startup.
 
 ## OpenClaw Integration Issues
 

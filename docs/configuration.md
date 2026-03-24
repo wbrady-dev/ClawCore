@@ -7,6 +7,8 @@ All configuration is via environment variables. Copy `.env.example` to `.env` an
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `CLAWCORE_PORT` | `18800` | HTTP API port |
+| `CLAWCORE_HOST` | `127.0.0.1` | HTTP API bind address |
+| `CLAWCORE_API_KEY` | `` | API key for authentication (timing-safe comparison). When set, all endpoints except /health require `Authorization: Bearer <key>` |
 | `CLAWCORE_DATA_DIR` | `~/.clawcore/data/` | Path to all ClawCore databases |
 
 ## Embedding
@@ -51,7 +53,7 @@ All configuration is via environment variables. Copy `.env.example` to `.env` an
 | `CHUNK_MAX_TOKENS` | `1024` | Maximum chunk size (tokens) |
 | `CHUNK_TARGET_TOKENS` | `512` | Target chunk size (tokens) |
 | `QUERY_TOP_K` | `10` | Default result count |
-| `QUERY_TOKEN_BUDGET` | `2000` | Token budget per query |
+| `QUERY_TOKEN_BUDGET` | `4000` | Token budget per query |
 
 ## Evidence Graph (Relations)
 
@@ -103,6 +105,16 @@ All configuration is via environment variables. Copy `.env.example` to `.env` an
 | `CLAWCORE_MEMORY_RELATIONS_DEEP_EXTRACTION_MODEL` | `` | Model for deep extraction (falls back to summary model) |
 | `CLAWCORE_MEMORY_RELATIONS_DEEP_EXTRACTION_PROVIDER` | `` | Provider for deep extraction |
 | `CLAWCORE_MEMORY_RELATIONS_EXTRACTION_MODE` | `smart` | Extraction mode: `smart` (LLM-based semantic extraction) or `fast` (regex-only, no LLM, <5ms). Smart mode uses the same model as deep extraction. |
+
+### Extraction Quality Filters
+
+These are built-in (not configurable) quality controls applied during extraction:
+
+- **Code block stripping**: Fenced code blocks (```) are removed before extraction to prevent code from being misinterpreted as facts
+- **Junk claim rejection**: Claims about message metadata (sender, timestamp, attachment), file paths, URLs, and generic predicates (states, user_i) are automatically filtered
+- **Confidence floor**: Claims with confidence < 0.35 are rejected
+- **Event cap**: Maximum 15 events extracted per message (prevents runaway extraction)
+- **Error demotion**: Claims from low-quality patterns are demoted or filtered
 
 ## Source Adapters
 

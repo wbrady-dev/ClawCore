@@ -51,10 +51,19 @@ The installer will:
 
 ## Database Initialization
 
-All databases are created automatically on first run. Schema migrations run idempotently on every startup — safe to upgrade in place.
+All databases are created automatically on first run. Schema migrations run idempotently on every startup -- safe to upgrade in place.
 
 - Memory engine: 1 migration (conversation tables)
-- Evidence graph: 6 migrations (v1: infrastructure + entities, v2: claims/decisions, v3: attempts/runbooks, v4: leases, v5: runbook evidence, v6: entity relations)
+- Evidence graph: 19 migrations (v1-v9: legacy tables + indexes, v10-v11: provenance_links, v12-v15: canonical key fixes, v16: memory_objects table, v17: data migration, v18: legacy table rename, v19: UNIQUE constraints)
+
+## Cross-Platform Services
+
+ClawCore services can be managed as background processes:
+
+- **Windows**: Task Scheduler XML tasks (no admin required)
+- **Linux**: systemd --user units (no sudo required)
+- **macOS**: launchd user agents
+- All platforms use HTTP `/shutdown` endpoint for graceful stop
 
 ## Configuration
 

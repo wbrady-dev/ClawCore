@@ -4,7 +4,18 @@
 
 Vitest with in-memory SQLite databases for isolation. No external dependencies needed.
 
-## Test Inventory
+## Test Suites
+
+### ClawCore (src/) -- 89 tests
+
+| File | Tests | Coverage |
+|------|-------|----------|
+| routes.test.ts | 28 | API route tests (health, collections, query, ingest, analytics, rate limiting) |
+| parsers.test.ts | 39 | File parser tests (plaintext, markdown, CSV, JSON, code) + registry |
+| chunker.test.ts | 14 | Chunking strategy tests (prose, markdown, merging, context prefix) |
+| cli.test.ts | 8 | CLI command structure, subcommand registration, version/help output |
+
+### Memory Engine (memory-engine/) -- 858 tests (43 test files)
 
 | File | Tests | Coverage |
 |------|-------|----------|
@@ -24,12 +35,9 @@ Vitest with in-memory SQLite databases for isolation. No external dependencies n
 | security-hardening.test.ts | 14 | Security regression guards (v0.2.1) |
 | relations-h5.test.ts | 13 | H5: entity relations, deep extraction (mocked LLM) |
 | fts5-sanitize.test.ts | 13 | FTS5 query sanitization |
-| routes.test.ts | 28 | API route tests (health, collections, query, ingest, analytics, rate limiting) |
-| parsers.test.ts | 39 | File parser tests (plaintext, markdown, CSV, JSON, code) + registry |
-| chunker.test.ts | 14 | Chunking strategy tests (prose, markdown, merging, context prefix) |
-| cli.test.ts | 8 | CLI command structure, subcommand registration, version/help output |
-| + 15 other test files | 56 | Config, tools, expand, migration, fallback, etc. |
-| **Total** | **1,197** | |
+| + other test files | ~380 | Config, tools, expand, migration, fallback, ontology, mo-store, truth engine, etc. |
+
+### Combined Total: 89 + 858 = **947 tests**
 
 ## Writing Tests
 
@@ -66,6 +74,24 @@ const events = db.prepare(
   "SELECT * FROM evidence_log WHERE object_type = 'claim'"
 ).all();
 expect(events.length).toBeGreaterThan(0);
+```
+
+### Testing mo-store (Unified CRUD)
+
+```typescript
+import { upsertMemoryObject, getMemoryObject, queryMemoryObjects } from "../src/ontology/mo-store.js";
+
+const { moId, isNew } = upsertMemoryObject(db, {
+  id: "claim:test-1",
+  kind: "claim",
+  content: "Redis is a cache",
+  confidence: 0.8,
+  // ...
+});
+expect(isNew).toBe(true);
+
+const obj = getMemoryObject(db, "claim:test-1");
+expect(obj?.kind).toBe("claim");
 ```
 
 ### Testing Semantic Extraction (Smart Mode)
@@ -119,8 +145,18 @@ const objects = readMemoryObjects(db, { kinds: ["claim"], keyword: "postgres" })
 ## Running
 
 ```bash
-npx vitest run                    # All tests
-npx vitest run --reporter=verbose # Detailed output
-npx vitest watch                  # Watch mode
-npx tsc --noEmit                  # Type check only
+# ClawCore src tests (89)
+cd clawcore && npx vitest run
+
+# Memory engine tests (858)
+cd memory-engine && npx vitest run
+
+# Verbose output
+npx vitest run --reporter=verbose
+
+# Watch mode
+npx vitest watch
+
+# Type check only
+npx tsc --noEmit
 ```

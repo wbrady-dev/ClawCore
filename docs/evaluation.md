@@ -54,5 +54,6 @@ const stats = getAwarenessStats(86_400_000); // 24-hour window
 
 ### Claim Extraction
 - Fast extraction only processes structured signals (no free-text parsing)
+- Smart extraction additionally filters junk claims (message metadata, file paths, confidence < 0.35, code blocks stripped)
 - Source trust hierarchy weights claims by origin quality
-- Deduplication by canonical key prevents duplicates
+- Deduplication by canonical key prevents duplicates in memory_objects

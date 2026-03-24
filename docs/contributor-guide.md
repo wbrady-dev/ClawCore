@@ -7,11 +7,12 @@ clawcore/
   src/              # Main ClawCore (HTTP server, CLI, TUI, ingest, query)
   memory-engine/    # Memory engine plugin (conversation memory + Evidence OS)
     src/
-      relations/    # Evidence OS module (all 5 horizons)
+      ontology/     # Unified ontology (MemoryObject, mo-store, TruthEngine, extraction)
+      relations/    # Evidence OS stores, schema, tools
       store/        # Conversation/summary stores
       db/           # Config, connection, migration
       tools/        # Memory engine tools (cc_grep, cc_describe, etc.)
-    test/           # All tests
+    test/           # All tests (858 tests)
   docs/             # Documentation
 ```
 
@@ -23,18 +24,20 @@ cd clawcore && npm install
 cd memory-engine && npm install
 ```
 
-## Adding a New Evidence Store
+## Adding a New Knowledge Kind
 
-Follow the existing pattern:
+All knowledge is stored as MemoryObjects in the unified `memory_objects` table. To add a new kind:
 
-1. **Types** (`types.ts`): Add input/output interfaces
-2. **Store** (new file): Implement CRUD with `logEvidence()` calls
-3. **Schema** (`schema.ts`): Add migration if new table needed
-4. **Tools** (`tools.ts`): Add tool factory function
-5. **Exports** (`index.ts`): Export all public APIs
+1. **Types** (`ontology/types.ts`): Add the new kind to `MemoryKind` union type
+2. **Structured interface** (`ontology/types.ts`): Add a `Structured*` interface for the kind's JSON payload
+3. **Canonical key** (`ontology/canonical.ts`): Add a canonical key strategy for dedup
+4. **Extraction** (`ontology/writer.ts` or `semantic-extractor.ts`): Add extraction logic for fast and/or smart mode
+5. **Tools** (`relations/tools.ts`): Add tool factory function if agent needs direct access
 6. **Registration** (`memory-engine/index.ts`): Register tool in plugin
 7. **Config** (`config.ts`): Add config fields if needed
-8. **Tests**: Write tests with `:memory:` SQLite
+8. **Tests**: Write tests with `:memory:` SQLite using `runGraphMigrations()`
+
+The `mo-store.ts` CRUD layer handles all kinds uniformly -- no new store module is needed.
 
 ## Key Patterns
 

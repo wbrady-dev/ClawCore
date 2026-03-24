@@ -57,7 +57,7 @@ clawcore relations stats
 
 ## Stale Detection
 
-- **Entities**: `last_seen_at` tracked per entity; awareness queries flag stale references
-- **Anti-runbooks**: Lazy decay marks items as `under_review` when confidence drops below 0.2
-- **Runbooks**: Marked `stale` if unused for 180 days
+- **Entities** (kind='entity' in memory_objects): `last_observed_at` tracked per entity; awareness queries flag stale references
+- **Anti-runbooks** (kind='procedure', isNegative=true): Lazy decay marks items as `needs_confirmation` when confidence drops below 0.2
+- **Runbooks** (kind='procedure', isNegative=false): Marked `stale` if unused for 180 days
 - **Leases**: `cleanExpiredLeases()` removes expired leases lazily

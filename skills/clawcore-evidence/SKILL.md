@@ -5,7 +5,7 @@ description: ClawCore Evidence OS — structured memory for agents. Use cc_memor
 
 # ClawCore Evidence OS
 
-ClawCore automatically extracts and tracks structured knowledge from conversations. Claims, decisions, relationships, and awareness notes are created and injected without tool calls.
+ClawCore automatically extracts and tracks structured knowledge from conversations. All knowledge is stored as `MemoryObject` instances in the unified `memory_objects` table with 8 agent-facing kinds (claim, decision, entity, loop, attempt, procedure, invariant, conflict). Cross-object evidence relationships are stored in `provenance_links` with typed predicates (supports, contradicts, supersedes, mentioned_in, relates_to, resolved_by, derived_from).
 
 **Most of RSMA is automatic. You do not need to call tools for it to work.**
 
@@ -16,7 +16,9 @@ ClawCore uses one of two extraction modes (configured via `CLAWCORE_MEMORY_RELAT
 - **Smart** (default when deep extraction model is configured): LLM-based semantic extraction. A single structured LLM call understands natural language without magic prefixes — "We're going with Postgres" is understood as a decision, "Actually no" as a correction. Uses the same model as deep extraction.
 - **Fast** (default when no model is configured): Regex-only extraction, no LLM calls, <5ms. Detects structured patterns like "Remember:", "We decided...", YAML frontmatter, tool results.
 
-Both modes produce the same types of knowledge (claims, decisions, entities, loops, etc.). Smart mode extracts more from natural language; fast mode requires more explicit patterns.
+Both modes produce `MemoryObject` instances that are reconciled by the TruthEngine. Smart mode extracts more from natural language; fast mode requires more explicit patterns.
+
+Extraction quality is enforced by multiple filters: code block stripping (```blocks removed before LLM extraction), confidence floor (events below 0.35 rejected), and post-extraction junk filters (reject metadata, file paths, URLs, transient noise).
 
 ## What happens automatically (no tool call needed)
 - **Awareness notes** injected into your system prompt every turn — surfaces mismatches, stale references, and entity connections

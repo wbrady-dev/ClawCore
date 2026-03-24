@@ -1,6 +1,6 @@
 # Architecture
 
-This document describes how lossless-claw works internally — the data model, compaction lifecycle, context assembly, and expansion system.
+This document describes how ClawCore Memory works internally -- the data model, compaction lifecycle, context assembly, expansion system, and the unified RSMA ontology.
 
 ## Data model
 
@@ -160,12 +160,12 @@ The XML attributes give the model enough metadata to reason about summary age, s
 
 ## Expansion system
 
-When summaries are too compressed for a task, agents use `lcm_expand_query` to recover detail.
+When summaries are too compressed for a task, agents use `cc_recall` to recover detail.
 
 ### How it works
 
-1. Agent calls `lcm_expand_query` with a `prompt` and either `summaryIds` or a `query`.
-2. If `query` is provided, `lcm_grep` finds matching summaries first.
+1. Agent calls `cc_recall` with a `prompt` and either `summaryIds` or a `query`.
+2. If `query` is provided, `cc_grep` finds matching summaries first.
 3. A **delegation grant** is created, scoping the sub-agent to the relevant conversation(s) with a token cap.
 4. A sub-agent session is spawned with the expansion task.
 5. The sub-agent walks the DAG: it can read summary content, follow parent links, access source messages, and inspect stored files.
@@ -181,7 +181,7 @@ Expansion uses a delegation grant system:
 - **TTL** ensures grants expire even if cleanup fails
 - **Revocation** happens on completion, cancellation, or sweep
 
-The sub-agent only gets `lcm_expand` (the low-level tool), not `lcm_expand_query` — preventing recursive sub-agent spawning.
+The sub-agent only gets `cc_expand` (the low-level tool), not `cc_recall` — preventing recursive sub-agent spawning.
 
 ## Large file handling
 
@@ -194,9 +194,85 @@ Files embedded in user messages (typically via `<file>` blocks from tool output)
    - Generate a ~200 token exploration summary (structural analysis, key sections, etc.)
    - Insert a `large_files` record with metadata
    - Replace the file block in the message with a compact reference
-3. The `lcm_describe` tool can retrieve full file content by ID.
+3. The `cc_describe` tool can retrieve full file content by ID.
 
 This prevents a single large file paste from consuming the entire context window while keeping the content accessible.
+
+## Unified Ontology (RSMA)
+
+### One True Schema
+
+All structured knowledge in ClawCore is stored in two tables in `graph.db`:
+
+1. **`memory_objects`** -- unified storage for all knowledge kinds
+2. **`provenance_links`** -- typed relationships between any two MemoryObjects
+
+These replace 15+ legacy tables (entities, entity_mentions, entity_relations, claims, claim_evidence, decisions, open_loops, attempts, runbooks, runbook_evidence, anti_runbooks, anti_runbook_evidence, invariants, capabilities, state_deltas). Legacy tables are renamed to `_legacy_*` by migration v18 and retained as a safety net.
+
+### MemoryObject
+
+Every piece of knowledge is a `MemoryObject` with a uniform metadata envelope:
+
+| Field | Description |
+|-------|-------------|
+| `composite_id` | Unique string ID (`claim:42`, `entity:17`, `procedure:rb_5`) |
+| `kind` | One of 13 types: event, chunk, message, summary, claim, decision, entity, loop, attempt, procedure, invariant, delta, conflict |
+| `canonical_key` | Dedup/supersession key (per-kind strategies, e.g. `claim::subject::predicate`) |
+| `content` | Human-readable text |
+| `structured_json` | Machine-readable JSON payload (typed per kind: `StructuredClaim`, `StructuredDecision`, `StructuredLoop`, `StructuredEntity`) |
+| `scope_id` | State scope (1 = global) |
+| `branch_id` | Speculative branch (0 = main) |
+| `status` | active, superseded, retracted, stale, needs_confirmation |
+| `confidence` | 0.0-1.0 (blended on upsert: 70% new + 30% old) |
+| `trust_score` | 0.0-1.0 from source trust hierarchy |
+| `influence_weight` | critical, high, standard, low |
+| `source_kind` | How knowledge entered: tool_result (1.0), user_explicit (0.9), document (0.7), message (0.6), extraction (0.5), compaction (0.3), inference (0.2) |
+
+The 8 agent-facing kinds stored in graph.db are: **claim**, **decision**, **entity**, **loop**, **attempt**, **procedure**, **invariant**, **conflict**. The remaining kinds (event, chunk, message, summary, delta) are internal pipeline types projected to their respective stores.
+
+### Provenance Links
+
+Cross-object relationships are stored in `provenance_links` with typed predicates:
+
+| Predicate | Meaning | Example |
+|-----------|---------|---------|
+| `derived_from` | Summary derived from messages | summary -> messages |
+| `supports` | Evidence reinforcing a claim | source -> claim |
+| `contradicts` | Evidence conflicting with a claim | source -> claim |
+| `supersedes` | New belief replacing old | new_claim -> old_claim |
+| `mentioned_in` | Entity appearing in a source | entity -> source |
+| `relates_to` | Entity-to-entity relationship | entity -> entity (detail: "manages") |
+| `resolved_by` | Conflict resolution link | conflict -> resolution |
+
+Each link has: subject_id, predicate, object_id, confidence (0.0-1.0), detail (optional), scope_id, metadata, created_at. UNIQUE constraint on (subject_id, predicate, object_id).
+
+### Semantic Extraction
+
+Every message passes through the extraction pipeline in one of two modes:
+
+- **Smart mode** (default): Single structured LLM call that understands natural language. "We're going with Postgres" becomes a decision, "Actually no" becomes a correction. Code blocks stripped before extraction. Confidence floor of 0.35 rejects low-quality extractions.
+- **Fast mode**: Regex-only, no LLM, <5ms. Detects structured patterns like "Remember:", "We decided...", YAML frontmatter, tool results.
+
+Both modes produce `MemoryObject` instances that are reconciled by the **TruthEngine** using 6 rules:
+1. Higher confidence supersedes
+2. Same confidence, newer wins
+3. Lower confidence adds evidence
+4. Value contradiction creates Conflict objects
+5. Correction signals auto-supersede (with 5-point guard)
+6. Provisional objects don't supersede firm beliefs
+
+### Migrations
+
+The graph database uses 19 versioned migrations (v1-v19):
+- v1-v9: Legacy tables (entities, claims, decisions, loops, attempts, runbooks, invariants, etc.)
+- v10-v11: `provenance_links` table with scope_id and metadata columns
+- v12-v15: Canonical key unification and index improvements
+- v16: `memory_objects` table (one true ontology)
+- v17: Copy all legacy data into memory_objects + provenance_links
+- v18: Rename legacy tables to `_legacy_*`
+- v19: UNIQUE constraint on composite_id, updated_at index
+
+All migrations are idempotent and safe to run on every startup.
 
 ## Session reconciliation
 

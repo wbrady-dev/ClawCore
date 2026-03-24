@@ -30,10 +30,10 @@ All databases use Write-Ahead Logging for concurrent read performance. Writers h
 Set to 5000ms on the evidence graph DB, preventing immediate "database locked" errors under contention.
 
 ### Index Coverage
-35 indexes across 22 tables, designed for actual query patterns:
-- Scope+status composite indexes for filtered queries
-- Temporal indexes for time-range queries
-- FK indexes for JOIN performance
+Indexes across memory_objects, provenance_links, and infrastructure tables, designed for actual query patterns:
+- `memory_objects`: kind+status, canonical_key, composite_id (UNIQUE), scope_id+branch_id, source_kind, updated_at
+- `provenance_links`: subject_id, object_id, predicate, created_at, scope_id, predicate+subject, predicate+object
+- Infrastructure tables: scope+status composite indexes, temporal indexes, FK indexes
 
 ## Memory Usage
 

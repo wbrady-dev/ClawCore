@@ -8,7 +8,7 @@
 
 | Layer | Name | What It Does | What Proves It |
 |-------|------|-------------|----------------|
-| **RAG** | Retrieval-Augmented Generation | Hybrid search (vector + BM25 + reranking) across documents and conversation history | 459 unit tests, full retrieval pipeline |
+| **RAG** | Retrieval-Augmented Generation | Hybrid search (vector + BM25 + reranking) across documents and conversation history | 89 src tests (routes, parsers, chunking, CLI), full retrieval pipeline |
 | **DAG** | Directed Acyclic Graph | Summary lineage with provenance — compacted context traces back to source messages | `engine.test.ts`: compaction rounds, summary DAG traversal, grep across summaries |
 | **KG** | Knowledge Graph | Entity extraction, mention tracking, relationship mapping, mismatch detection | 1000 entities upserted in 56ms, re-ingestion atomicity verified, relation queries |
 | **AL** | Awareness Layer | Injects 1-3 contextual notes per turn — mismatches, stale refs, connections | Eval harness: 26% fire rate, p50=18ms, p95=28ms, ~30-80 tokens/turn |
@@ -31,11 +31,9 @@
 
 | Test Suite | Count | What It Verifies |
 |-----------|-------|-----------------|
-| Unit tests | 459 | RAG pipeline, DAG compaction, memory tools, assembler, config, expansion, auth |
-| RSMA stress test | 37 | All 10 RSMA layers under load (1000 entities, 500 claims, 300 attempts) |
-| Failure injection | 44 | Graceful degradation: empty input, corrupt data, boundary values, FK violations, duplicate keys, mid-transaction crashes, concurrent stress |
-| Live smoke test | 24 | All layers against real SQLite database (50 consecutive runs, 0 failures) |
-| **Total** | **540** | |
+| ClawCore src tests | 89 | RAG pipeline, API routes, parsers, chunking, CLI |
+| Memory engine tests | 858 | DAG compaction, memory tools, assembler, expansion, auth, all 10 RSMA layers, stress, failure injection, ontology, mo-store, truth engine, semantic extraction |
+| **Total** | **947** | |
 
 ### What they do NOT cover
 
@@ -102,8 +100,8 @@ memory-engine/src/ontology/           — RSMA unified ontology (new)
   migration.ts        — backfill legacy join tables → provenance_links (idempotent)
   index.ts            — barrel exports
 
-memory-engine/src/relations/          — Evidence OS stores (legacy, still active)
-  schema.ts           — 10 migrations, 23 tables (incl. provenance_links), all indexes
+memory-engine/src/relations/          — Evidence OS stores + tools
+  schema.ts           — 19 migrations, memory_objects + provenance_links + infrastructure tables + _legacy_* renamed tables
   evidence-log.ts     — withWriteTransaction, writeWithIdempotency, logEvidence, nextScopeSeq
   entity-extract.ts   — extractFast (3 strategies: capitalized, terms-list, quoted)
   graph-store.ts      — upsertEntity, insertMention, deleteGraphDataForSource
@@ -150,4 +148,5 @@ memory-engine/src/relations/          — Evidence OS stores (legacy, still acti
 | v0.2.0 | 2026-03-19 | Sidecar architecture: data consolidation (~/.clawcore/data/), manifest versioning, clawcore doctor/upgrade/integrate, managed OpenClaw integration (check-only startup), lock-protected transactional upgrades, backup validation, post-upgrade smoke test, PID-aware stale lock, backup retention, search tuning (rerank threshold/top-K/smart skip, similarity gate, prefix mode, batch size), ingest-time claim+decision extraction (no /compact required), cc_recall lightweight mode with evidence fallback (summaries→claims→decisions→messages), FTS5 OR fallback for long queries, LIKE partial match for claim/decision search, cold structured archive (hot/cold/RAG tiers with copy-then-delete safety, run tracking, restore, auto-trigger at 5000 events, VACUUM), cc_diagnostics observability tool + /analytics/diagnostics HTTP endpoint, "has more" truncation indicator with agent-guided follow-up |
 | v0.2.1 | 2026-03-19 | Security hardening: command injection prevention (shell:false everywhere), binary dedup, query DoS protection, regression tests, docs audit |
 | v0.3.0 | 2026-03-20 | TUI overhaul (Ink primary, capability detection, live status), spaCy NER integration (/ner endpoint, hybrid entity extraction), recommended install includes OCR + Whisper + NER, RSMA EEL fixes (scope_id propagation, decay evidence logging), awareness cache invalidation, token estimation improvements, port architecture (centralized constants), 1,197 tests passing (643 ClawCore + 554 memory-engine) |
-| v0.3.1 | 2026-03-22 | RSMA unified ontology: MemoryObject type (13 kinds), provenance_links table (replaces 7 legacy join tables), TruthEngine (6 reconciliation rules, 5-point correction guard), MemoryReader (relevance-to-action ranking), StoreProjector (dual-write), semantic extraction (smart: LLM + fast: regex), historical data migration |
+| v0.3.1 | 2026-03-22 | RSMA unified ontology: MemoryObject type (13 kinds), provenance_links table (replaces 7 legacy join tables), TruthEngine (6 reconciliation rules, 5-point correction guard), MemoryReader (relevance-to-action ranking), semantic extraction (smart: LLM + fast: regex), historical data migration |
+| v0.3.2 | 2026-03-23 | One True Ontology: memory_objects table (migration v16), full data migration (v17), legacy tables renamed to _legacy_* (v18), dual-write bridge removed, mo-store.ts as single CRUD entry point, extraction quality filters (code block stripping, junk claim rejection, confidence floor 0.35), typed interfaces (StructuredClaim/Decision/Loop/Entity), TUI full wipe reset (3 options), timing-safe API key auth, MCP path validation, cross-platform services (Linux systemd --user, macOS launchd, Windows Task Scheduler), 947 tests (89 src + 858 memory-engine) |

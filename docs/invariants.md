@@ -2,18 +2,20 @@
 
 ## Overview
 
-Invariants are durable constraints — rules that must be respected across all operations. They represent contract memory: things the agent should always or never do.
+Invariants are durable constraints -- rules that must be respected across all operations. They represent contract memory: things the agent should always or never do. Stored as MemoryObjects with kind='invariant' in the unified `memory_objects` table.
 
 ## Properties
 
+Invariant-specific properties are stored in the `structured_json` field:
+
 | Field | Values | Description |
 |-------|--------|-------------|
-| invariant_key | string | Unique identifier (e.g., "no-force-push") |
+| invariant_key | string | Unique identifier (e.g., "no-force-push") -- also stored as canonical_key |
 | category | string | Grouping (e.g., "git", "deploy", "security") |
-| description | string | Human-readable rule |
+| description | string | Human-readable rule (also in the content field) |
 | severity | critical, error, warning, info | Impact level |
 | enforcement_mode | advisory, warn, block | How strictly enforced |
-| status | active, suspended, retired | Current state |
+| status | active, suspended, retired | Lifecycle state (also in the MO status field) |
 
 ## Severity Ordering
 

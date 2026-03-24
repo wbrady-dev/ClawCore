@@ -33,9 +33,9 @@ const snapshot = getStateAtTime(db, 1, "2026-03-15T12:00:00.000");
 ```
 
 Historical accuracy:
-- **Claims/invariants**: Uses `updated_at > timestamp` to include items that were later superseded
-- **Decisions**: Subquery checks when superseding decision was created
-- **Loops**: Uses `opened_at <= T AND (closed_at IS NULL OR closed_at > T)` (exact)
+- **Claims/invariants** (kind='claim', kind='invariant' in memory_objects): Uses `updated_at > timestamp` to include items that were later superseded
+- **Decisions** (kind='decision'): Subquery checks when superseding decision was created
+- **Loops** (kind='loop'): Uses temporal fields for range-based reconstruction
 
 ## Disaster Recovery
 
@@ -44,13 +44,13 @@ Historical accuracy:
 # Delete evidence graph
 rm ~/.clawcore/data/graph.db
 
-# Restart — migrations re-create empty schema
+# Restart -- migrations re-create empty schema (memory_objects + provenance_links)
 # Then re-ingest documents to rebuild entity graph:
 clawcore relations backfill --collection default
 ```
 
 ### Selective Rebuild
-The evidence log itself is not rebuildable (it IS the source). But projections (entities, claims, etc.) can theoretically be reconstructed from the log by replaying events.
+The evidence log itself is not rebuildable (it IS the source). But the memory_objects and provenance_links tables can theoretically be reconstructed from the log by replaying events.
 
 ## Database Backup
 

@@ -2,12 +2,42 @@
 
 All notable changes to ClawCore are documented here.
 
+## [0.3.2] — 2026-03-23
+
+### One True Ontology Migration
+- **`memory_objects` table** (migration v16) — unified storage for all knowledge kinds, replacing 15+ legacy tables. Schema: composite_id, kind, canonical_key, content, structured_json, scope_id, branch_id, status, confidence, trust_score, influence_weight, source_kind, source_id, source_detail, source_authority, timestamps
+- **Legacy data migration** (v17) — copies all existing claims, decisions, entities, loops, attempts, runbooks, anti-runbooks, invariants, entity_mentions, entity_relations, claim_evidence, runbook/anti-runbook evidence into memory_objects + provenance_links
+- **Legacy table rename** (v18) — 13 legacy tables renamed to `_legacy_*` as safety net
+- **UNIQUE composite_id** (v19) — enforces uniqueness, adds updated_at index for reader ORDER BY
+- **mo-store.ts** — unified CRUD layer for memory_objects (upsert with weighted confidence blending: 70% new + 30% old, supersession, status updates, dynamic query builder)
+- **cc_diagnostics** — now queries memory_objects instead of legacy tables for all counts
+- **cc_memory** — unified smart search queries memory_objects directly for claims, decisions, and relationships
+
+### Extraction Quality
+- **Code block stripping** — strips ```...``` blocks before LLM extraction to prevent code-as-facts
+- **Confidence floor** — rejects extracted events with confidence < 0.35
+- **Junk filters** — post-extraction filters reject message metadata, file paths, URLs, low-confidence noise
+- **LLM prompt rules** — explicit instructions to not extract from code blocks or programming constructs
+
+### Security & Operations
+- **Full wipe reset** — clean database reset path
+- **Timing-safe auth** — API key comparison via `crypto.timingSafeEqual`
+- **MCP path validation** — validates file paths in MCP server requests
+
+### Testing
+- **858 memory-engine tests** across the full test suite
+- **89 src tests** for ClawCore core
+- **19 graph database migrations** (v1-v19)
+
+### Documentation
+- Updated all skill files, root docs, and memory-engine docs to reflect unified ontology
+
 ## [0.3.1] — 2026-03-22
 
 ### RSMA Unified Ontology
 - **MemoryObject type** — single unified type for all 13 knowledge kinds: event, chunk, message, summary, claim, decision, entity, loop, attempt, procedure, invariant, delta, conflict
 - **provenance_links table** — replaces 7 legacy join tables (entity_mentions, claim_evidence, entity_relations, runbook_evidence, anti_runbook_evidence, summary linkage, conflict linkage) with a single typed-predicate table (derived_from, supports, contradicts, supersedes, mentioned_in, relates_to, resolved_by)
-- **TruthEngine** — 6 reconciliation rules: confidence-based supersession, recency tie-breaking, evidence accumulation, value contradiction → first-class Conflict objects, correction-triggered supersession with 5-point guard, provisional gating
+- **TruthEngine** — 6 reconciliation rules: confidence-based supersession, recency tie-breaking, evidence accumulation, value contradiction -> first-class Conflict objects, correction-triggered supersession with 5-point guard, provisional gating
 - **Canonical keys** — per-kind dedup/supersession keys (claim::subject::predicate, decision::topic, entity::name, loop::hash, proc::tool::key, inv::key, conflict::hash)
 - **MemoryReader** — unified read layer across graph.db with relevance-to-action ranking using task-mode weights (coding, planning, troubleshooting, recall, default)
 - **StoreProjector** — dual-write to legacy tables + provenance_links; provenance link insertion for supersession, conflict, mention, evidence, derivation, and resolution

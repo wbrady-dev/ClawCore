@@ -2,7 +2,7 @@
 
 ## Pre-Release Checklist
 
-1. All tests pass: `npx vitest run` (459 tests)
+1. All tests pass: `npx vitest run` in both clawcore (89 tests) and memory-engine (858 tests)
 2. Type check clean: `npx tsc --noEmit` (no new errors)
 3. No stale references: `grep -r "lossless-claw" src/`
 4. Distribution synced: All source files, tests, and configs match

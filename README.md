@@ -18,7 +18,7 @@ ClawCore's Evidence OS extracts structured knowledge from conversations, documen
 - **Semantic Extraction** — Two modes: **Smart** (LLM-based, understands natural language without magic prefixes) and **Fast** (regex-only, no LLM, <5ms). Configurable via `CLAWCORE_MEMORY_RELATIONS_EXTRACTION_MODE=smart|fast`
 - **Extraction Quality Filters** — Multi-layer junk rejection: code block stripping, LLM prompt rules, post-extraction filters (rejects message metadata, file paths, URLs, low-confidence noise, transient debugging context)
 - **Typed Structured Interfaces** — `StructuredClaim`, `StructuredDecision`, `StructuredLoop`, `StructuredEntity` — compile-time type safety prevents field-name mismatches between extraction and storage
-- **Unified Ontology** — Single `MemoryObject` type with 13 kinds and a `provenance_links` table replacing legacy join tables
+- **Unified Ontology** — `memory_objects` + `provenance_links` replace 15+ legacy tables. Single `MemoryObject` type with 13 kinds, unified CRUD via mo-store.ts (upsert with weighted confidence blending), 19 migrations (v1-v19) including full legacy data copy and table rename
 - **TruthEngine** — Reconciles new knowledge against existing beliefs: supersession, conflict creation, confidence blending, value contradiction detection (Jaccard + containment), correction guards, and provisional handling
 - **Context Compiler** — ROI-scored capsule compilation with configurable token budgets (110-280 tokens)
 - **12 Agent Tools** — `cc_grep`, `cc_describe`, `cc_expand`, `cc_recall`, `cc_claims`, `cc_decisions`, `cc_loops`, `cc_attempts`, `cc_branch`, `cc_procedures`, `cc_diagnostics`, `cc_memory`
@@ -62,7 +62,7 @@ ClawCore's Evidence OS extracts structured knowledge from conversations, documen
 [Install](docs/install.md) | [Quick Start](docs/quickstart.md) | [Configuration](docs/configuration.md) | [Migration](docs/migration.md)
 
 **Reference:**
-[Tools (12)](docs/tools.md) | [Schema (21 tables)](docs/schema.md) | [API](docs/api.md) | [FAQ](docs/faq.md)
+[Tools (12)](docs/tools.md) | [Schema](docs/schema.md) | [API](docs/api.md) | [FAQ](docs/faq.md)
 
 **Concepts:**
 [Core Concepts](docs/concepts.md) | [Architecture](docs/architecture.md) | [Scopes & Branches](docs/scopes-and-branches.md) | [Promotion Policies](docs/promotion-policies.md)

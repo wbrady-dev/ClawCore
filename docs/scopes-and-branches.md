@@ -35,9 +35,11 @@ Branches enable **speculative memory** — sub-agents can write claims, decision
 
 ## Query Scoping
 
-All query functions support optional branch awareness:
+All query functions support optional branch awareness. The unified `memory_objects` table uses `scope_id` and `branch_id` columns:
 ```
-getActiveClaims(db, scopeId, branchId?)
+queryMemoryObjects(db, { scopeId, branchId, kinds: ["claim"] })
 ```
 - Without branchId: returns only shared state (branch_id=0)
 - With branchId: returns shared + branch-specific state (`branch_id=0 OR branch_id=?`)
+
+Legacy store functions (e.g. `getActiveClaims`) also support the same scoping pattern.

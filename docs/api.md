@@ -2,28 +2,53 @@
 
 ## HTTP Endpoints (ClawCore Server)
 
+### Health & Lifecycle
+- `GET /health` -- Health check (always accessible, bypasses API key auth)
+- `POST /shutdown` -- Graceful shutdown (localhost only via `isLocalRequest` guard)
+
 ### Search & Query
-- `POST /query` — Hybrid search with reranking
-- `POST /search` — Simple search (no reranking)
+- `POST /query` -- Hybrid search with reranking
+- `POST /search` -- Simple search (no reranking)
 
 ### Ingestion
-- `POST /ingest` — Ingest a file
-- `POST /ingest/batch` — Batch ingest
+- `POST /ingest` -- Ingest a file
+- `POST /ingest/batch` -- Batch ingest
 
 ### Collections
-- `GET /collections` — List collections
-- `POST /collections` — Create collection
-- `DELETE /collections/:id` — Delete collection
-
-### Analytics
-- `GET /analytics` — Query performance summary
-- `GET /analytics/recent?limit=N` — Recent queries
-- `GET /analytics/awareness` — Awareness metrics
-- `DELETE /analytics` — Clear analytics
+- `GET /collections` -- List collections
+- `POST /collections` -- Create collection
+- `DELETE /collections/:id` -- Delete collection
 
 ### Documents
-- `DELETE /documents/:id` — Delete document
-- `GET /documents` — List documents
+- `GET /documents` -- List documents
+- `DELETE /documents/:id` -- Delete document and its chunks
+
+### Analytics & Diagnostics
+- `GET /analytics` -- Query performance summary
+- `GET /analytics/recent?limit=N` -- Recent queries
+- `GET /analytics/awareness` -- Awareness metrics
+- `DELETE /analytics` -- Clear analytics
+- `GET /diagnostics` -- Full RSMA health (JSON): memory stats, evidence counts, awareness metrics, compiler state
+
+### Sources
+- Source adapter management endpoints for Obsidian, Notion, local directories
+
+### Graph
+- Graph-related endpoints for evidence graph queries
+
+### Reindex
+- `POST /reindex` -- Reindex all documents in a collection
+
+### Reset
+- `POST /reset` -- Knowledge base reset (localhost only via `isLocalRequest` guard)
+  - Body: `{ clearGraph?: boolean, clearMemory?: boolean }`
+  - `clearGraph=true` (default): Clears all evidence graph tables
+  - `clearMemory=true`: Clears conversation memory (messages, summaries, context items)
+  - Returns stats on what was cleared
+
+### Authentication
+- When `CLAWCORE_API_KEY` is set, all endpoints except `/health` require `Authorization: Bearer <key>`
+- Comparison uses timing-safe SHA-256 hash comparison (`crypto.timingSafeEqual`) to prevent timing attacks
 
 ## Agent Tools API
 
@@ -62,6 +87,26 @@ logEvidence(db, {
   runId?: string,
   idempotencyKey?: string,
   payload?: Record<string, unknown>,
+});
+```
+
+### mo-store (Unified CRUD)
+
+```typescript
+import { upsertMemoryObject, getMemoryObject, queryMemoryObjects } from "./ontology/mo-store.js";
+
+// Write
+const { moId, isNew } = upsertMemoryObject(db, memoryObject);
+
+// Read single
+const obj = getMemoryObject(db, "claim:42");
+
+// Query multiple
+const objects = queryMemoryObjects(db, {
+  kinds: ["claim", "decision"],
+  statuses: ["active"],
+  keyword: "postgres",
+  limit: 20,
 });
 ```
 

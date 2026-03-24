@@ -259,7 +259,23 @@ After extraction, the **TruthEngine** reconciles candidate MemoryObjects against
 5. **Correction signal auto-supersedes** — "actually..." triggers supersession with a 5-point guard (canonical key match, same scope, same kind family, minimum confidence 0.3, auditable reason trace)
 6. **Provisional objects don't supersede firm beliefs** — "I think..." doesn't override established facts
 
-All extracted objects are unified as `MemoryObject` instances with 13 kinds (event, chunk, message, summary, claim, decision, entity, loop, attempt, procedure, invariant, delta, conflict). Cross-object relationships are stored in the `provenance_links` table with typed predicates (derived_from, supports, contradicts, supersedes, mentioned_in, relates_to, resolved_by), replacing 7 legacy join tables.
+All extracted objects are unified as `MemoryObject` instances with 13 kinds (event, chunk, message, summary, claim, decision, entity, loop, attempt, procedure, invariant, delta, conflict). All knowledge is stored in the `memory_objects` table with a uniform metadata envelope (composite_id, kind, canonical_key, content, structured_json, scope_id, branch_id, status, confidence, trust_score, influence_weight, source provenance, timestamps). Cross-object relationships are stored in the `provenance_links` table with typed predicates (derived_from, supports, contradicts, supersedes, mentioned_in, relates_to, resolved_by). Together, these two tables replace 15+ legacy tables.
+
+### Extraction Quality Filters
+
+Multiple layers prevent junk from entering the knowledge graph:
+1. **Code block stripping** — ````...```` blocks replaced with `[code block removed]` before LLM extraction
+2. **LLM prompt rules** — explicit instructions to not extract from code blocks or programming constructs
+3. **Confidence floor** — extracted events with confidence < 0.35 are silently rejected
+4. **Post-extraction junk filters** — reject message metadata, file paths, bare URLs, low-confidence noise, and transient debugging context
+
+### Memory Object Storage
+
+The `mo-store.ts` module provides unified CRUD for `memory_objects`:
+- **Upsert** — keyed by composite_id; on update, confidence is blended (70% new + 30% old)
+- **Supersession** — marks old object as superseded, links to replacement
+- **Status updates** — active, superseded, retracted, stale, needs_confirmation
+- **Dynamic queries** — filter by kinds, scope, branch, statuses, keyword; ORDER BY updated_at DESC
 
 ---
 
@@ -268,7 +284,7 @@ All extracted objects are unified as `MemoryObject` instances with 13 kinds (eve
 SQLite with sqlite-vec for vectors and FTS5 for full-text search. Three databases in `~/.clawcore/data/`:
 - `clawcore.db` — Document store (RAG: collections, documents, chunks, vectors)
 - `memory.db` — Conversation memory (DAG summaries, context items, messages)
-- `graph.db` — Evidence graph (entities, claims, decisions, loops, attempts, relations, provenance_links)
+- `graph.db` — Evidence graph, now unified under the **One True Ontology**: `memory_objects` (all knowledge kinds) + `provenance_links` (all relationships). Legacy tables (entities, claims, decisions, etc.) renamed to `_legacy_*` by migration v18
 
 ### Schema
 - **collections** — named groups (id, name, description)
@@ -369,6 +385,8 @@ DAG-based lossless conversation context, forked from lossless-claw. Surface rebr
 12 agent tools registered: 4 core (`cc_grep`, `cc_describe`, `cc_expand`, `cc_recall`) + 8 evidence (`cc_memory`, `cc_claims`, `cc_decisions`, `cc_loops`, `cc_attempts`, `cc_branch`, `cc_procedures`, `cc_diagnostics`).
 
 Extraction mode is transparent to tools — the same 12 tools work regardless of whether smart or fast extraction is active. The extraction mode only affects how incoming messages are processed into MemoryObjects.
+
+Evidence tools (`cc_diagnostics`, `cc_memory`) now query `memory_objects` and `provenance_links` directly instead of legacy tables. The diagnostic tool counts entities, claims, decisions, loops, attempts, runbooks, and anti-runbooks all from `memory_objects` with kind-based filtering.
 
 Integrates as an OpenClaw plugin:
 - `plugins.slots.contextEngine = "clawcore-memory"`

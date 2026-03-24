@@ -5,7 +5,7 @@ description: Search the ClawCore document knowledge base for files, PDFs, code, 
 
 # Knowledge Search (ClawCore)
 
-Use `clawcore query` to search the document knowledge base: files, PDFs, code, notes, research, and other ingested reference material.
+Use `clawcore query` to search the document knowledge base: files, PDFs, code, notes, research, and other ingested reference material. The RAG pipeline uses hybrid search (dense vector + BM25 keyword via FTS5), fused with Reciprocal Rank Fusion (RRF), then cross-encoder reranking for precision.
 
 This skill is for **documents and reference material only**.
 

@@ -1,6 +1,6 @@
 # Optional: enable FTS5 for fast full-text search
 
-`lossless-claw` works without FTS5 as of the current release. When FTS5 is unavailable in the
+ClawCore Memory works without FTS5 as of the current release. When FTS5 is unavailable in the
 Node runtime that runs the OpenClaw gateway, the plugin:
 
 - keeps persisting messages and summaries
@@ -9,6 +9,28 @@ Node runtime that runs the OpenClaw gateway, the plugin:
 
 If you want native FTS5 search performance and ranking, the **exact Node runtime that runs the
 gateway** must have SQLite FTS5 compiled in.
+
+## How FTS5 works in ClawCore
+
+When FTS5 is available, the migration creates two standalone virtual tables:
+
+- `messages_fts` -- FTS5 index on message content (rowid = message_id)
+- `summaries_fts` -- FTS5 index on summary content (includes summary_id as UNINDEXED column)
+
+Both use `tokenize='porter unicode61'` for stemming and Unicode support.
+
+### Cascade delete triggers
+
+FTS5 virtual tables are standalone (not external-content) so they need explicit cleanup triggers. The migration creates:
+
+- `messages_fts_delete` -- AFTER DELETE ON messages, removes the FTS row by rowid
+- `summaries_fts_delete` -- AFTER DELETE ON summaries, removes the FTS row by summary_id
+
+These triggers ensure FTS entries don't become ghost rows when parent records are cascade-deleted (e.g., deleting a conversation cascades to messages, which fires the trigger).
+
+### Schema migration
+
+If the FTS tables were previously created with `content_rowid` (external-content mode), the migration detects this and recreates them as standalone tables. This handles upgrades from older versions.
 
 ## Probe the gateway runtime
 
@@ -130,7 +152,7 @@ You should see:
 program = /Users/youruser/Projects/node-fts5/bin/node-22.15.0
 ```
 
-## Verify `lossless-claw`
+## Verify ClawCore Memory
 
 Check the logs:
 

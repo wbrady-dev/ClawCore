@@ -195,12 +195,24 @@ For most long-lived setups, a good starting point is:
 
 ## Agent Tools
 
+12 tools registered: 4 core conversation tools + 8 evidence tools.
+
 | Tool | Access | Description |
 |------|--------|-------------|
-| `cc_grep` | All agents | Full-text search across compacted conversation history |
-| `cc_describe` | All agents | Get a summary of what's been discussed in a conversation |
-| `cc_expand` | Sub-agents only | Drill into a specific summary to recover original detail |
-| `cc_recall` | Main agent | Wrapper for cc_expand with delegation auth for the main agent |
+| `cc_grep` | All agents | Full-text/regex search across compacted conversation history |
+| `cc_describe` | All agents | Inspect a specific summary or stored file |
+| `cc_expand` | Sub-agents only | Low-level DAG expansion |
+| `cc_recall` | Main agent | Deep recall with sub-agent DAG expansion |
+| `cc_memory` | All agents | Unified smart search across all memory sources |
+| `cc_claims` | All agents | Claims with evidence chains |
+| `cc_decisions` | All agents | Decision history with supersession |
+| `cc_loops` | All agents | Open tasks, questions, dependencies |
+| `cc_attempts` | All agents | Tool outcome history with success rates |
+| `cc_branch` | All agents | Speculative branch management |
+| `cc_procedures` | All agents | Learned success/failure patterns |
+| `cc_diagnostics` | All agents | Internal RSMA health and observability |
+
+Evidence tools require Evidence OS (`CLAWCORE_MEMORY_RELATIONS_ENABLED=true`).
 
 ## Documentation
 
@@ -253,15 +265,17 @@ src/
     summary-store.ts        # Summary DAG persistence and context item management
     fts5-sanitize.ts        # FTS5 query sanitization
   ontology/                 # RSMA unified ontology
-    types.ts                # MemoryObject, MemoryKind (13 kinds), ProvenanceLink, RelevanceSignals
+    types.ts                # MemoryObject, MemoryKind (13 kinds), ProvenanceLink, LinkPredicate, RelevanceSignals
     canonical.ts            # Per-kind canonical key generation for dedup/supersession
+    mo-store.ts             # Unified CRUD for memory_objects table (upsert, supersede, query)
     writer.ts               # Fast mode: regex-based message understanding (<5ms)
-    semantic-extractor.ts   # Smart mode: LLM-based semantic extraction (single structured call)
+    semantic-extractor.ts   # Smart mode: LLM-based semantic extraction (code block stripping, confidence floor 0.35)
+    direct-llm.ts           # Direct LLM call utilities for semantic extraction
     truth.ts                # TruthEngine: 6 reconciliation rules, 5-point correction guard
-    reader.ts               # Unified read layer with relevance-to-action ranking
+    reader.ts               # Unified read layer with relevance-to-action ranking (5 task modes)
     projector.ts            # provenance_links writer, supersession/conflict recording
     correction.ts           # Signal detection: correction, uncertainty, preference, temporal
-    migration.ts            # Backfill legacy join tables → provenance_links
+    migration.ts            # Backfill legacy join tables -> provenance_links
     index.ts                # Barrel exports
   tools/
     lcm-grep-tool.ts        # cc_grep tool implementation

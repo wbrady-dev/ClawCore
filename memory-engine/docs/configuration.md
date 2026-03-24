@@ -17,7 +17,7 @@ pnpm openclaw plugins install clawcore-memory
 For local development of this plugin, link your working copy:
 
 ```bash
-openclaw plugins install --link /path/to/lossless-claw
+openclaw plugins install --link /path/to/clawcore/memory-engine
 ```
 
 `openclaw plugins install` handles plugin registration/enabling and slot selection automatically.
@@ -112,12 +112,12 @@ Using a cheaper/faster model for summarization can reduce costs, but quality mat
 
 ## Database management
 
-The SQLite database lives at `LCM_DATABASE_PATH` (default `~/.openclaw/lcm.db`). 
+The SQLite database lives at `LCM_DATABASE_PATH` (default `~/.clawcore/data/memory.db`).
 
 ### Inspecting the database
 
 ```bash
-sqlite3 ~/.openclaw/lcm.db
+sqlite3 ~/.clawcore/data/memory.db
 
 # Count conversations
 SELECT COUNT(*) FROM conversations;
@@ -137,13 +137,13 @@ SELECT summary_id, depth, token_count FROM summaries ORDER BY token_count DESC L
 The database is a single file. Back it up with:
 
 ```bash
-cp ~/.openclaw/lcm.db ~/.openclaw/lcm.db.backup
+cp ~/.clawcore/data/memory.db ~/.clawcore/data/memory.db.backup
 ```
 
 Or use SQLite's online backup:
 
 ```bash
-sqlite3 ~/.openclaw/lcm.db ".backup ~/.openclaw/lcm.db.backup"
+sqlite3 ~/.clawcore/data/memory.db ".backup ~/.clawcore/data/memory.db.backup"
 ```
 
 ## Per-agent configuration

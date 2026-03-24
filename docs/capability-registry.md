@@ -42,7 +42,7 @@ const tools = getCapabilities(db, 1, { type: "tool", status: "available" });
 
 ## Context Compilation
 
-Capabilities are not currently surfaced by the context compiler (they're informational, not action-driving). Query via `cc_capabilities` tool.
+Capabilities are not currently surfaced by the context compiler (they're informational, not action-driving). They can be queried programmatically via `getCapabilities()` or viewed through the `cc_diagnostics` tool.
 
 ## Staleness
 
