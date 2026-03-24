@@ -21,11 +21,14 @@ export async function runStreamedCommand(
 ): Promise<StreamedCommandResult> {
   return new Promise((resolve, reject) => {
     const spawnImpl = options.spawnImpl ?? spawn;
+    // On Windows, .cmd/.bat files require shell:true to execute via spawn.
+    // Node.js spawn with shell:false can produce EINVAL for batch files.
+    const needsShell = process.platform === "win32" && /\.(cmd|bat)$/i.test(command);
     const child = spawnImpl(command, args, {
       cwd: options.cwd,
       env: options.env,
       stdio: ["ignore", "pipe", "pipe"],
-      shell: false,
+      shell: needsShell,
     });
 
     let stdout = "";
