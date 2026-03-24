@@ -1691,7 +1691,50 @@ export class LcmContextEngine implements ContextEngine {
             }
           }
 
-          // Store functions delegate directly to mo-store.ts / memory_objects table.
+          // ── Create entity relations from relationship claims ──
+          // After all objects are stored, scan for claims with relationship predicates
+          // and create entity-to-entity relations in provenance_links.
+          try {
+            const { upsertRelation } = await import("./relations/relation-store.js");
+            const { upsertEntity } = await import("./relations/graph-store.js");
+            const junkPredicates = new Set([
+              "is", "states", "has", "user_i", "user_my",
+              "sent", "contains", "timestamp", "received", "delivered",
+              "file_path", "sender", "sent_by", "from", "type", "size", "format",
+            ]);
+
+            for (const action of reconciled.actions) {
+              const obj = action.type === "insert" ? action.object
+                : action.type === "supersede" ? action.newObject
+                : action.type === "evidence" ? action.newObject
+                : null;
+              if (!obj || obj.kind !== "claim") continue;
+
+              const s = obj.structured as Record<string, unknown> | undefined;
+              const subject = s?.subject ? String(s.subject) : null;
+              const objectText = s?.objectText ? String(s.objectText) : null;
+              const predicate = s?.predicate ? String(s.predicate) : null;
+
+              if (!subject || !objectText || !predicate) continue;
+              if (junkPredicates.has(predicate.toLowerCase())) continue;
+
+              try {
+                const subjEntity = upsertEntity(graphDb, { name: subject });
+                const objEntity = upsertEntity(graphDb, { name: objectText });
+                if (subjEntity.entityId && objEntity.entityId) {
+                  upsertRelation(graphDb, {
+                    scopeId: 1,
+                    subjectEntityId: subjEntity.entityId,
+                    predicate: predicate,
+                    objectEntityId: objEntity.entityId,
+                    confidence: obj.confidence ?? 0.8,
+                    sourceType: "message",
+                    sourceId: obj.provenance?.source_id ?? "",
+                  });
+                }
+              } catch { /* non-fatal per relation */ }
+            }
+          } catch { /* non-fatal: relation extraction is best-effort */ }
         }
         // Health monitoring: track success
         _rsmaSuccessCount++;
