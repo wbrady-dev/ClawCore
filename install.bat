@@ -102,34 +102,40 @@ echo.
 echo [install] Installing Python dependencies (this may take several minutes)...
 
 :: Install PyTorch first (platform-specific)
+:: NOTE: pip output can contain ! chars which break delayed expansion,
+:: so we disable it for pip commands and use goto-based flow control.
+"%SCRIPT_DIR%\.venv\Scripts\python.exe" -c "import torch" >nul 2>&1
+if %errorlevel% equ 0 (
+    echo [OK] PyTorch already installed
+    goto :torch_done
+)
+echo [install] Downloading PyTorch (this may take 5-10 minutes)...
+setlocal disabledelayedexpansion
+"%SCRIPT_DIR%\.venv\Scripts\pip.exe" install torch torchvision --index-url https://download.pytorch.org/whl/cu124
+endlocal
+"%SCRIPT_DIR%\.venv\Scripts\python.exe" -c "import torch" >nul 2>&1
+if %errorlevel% equ 0 (
+    echo [OK] PyTorch installed (GPU)
+    goto :torch_done
+)
+echo [install] GPU PyTorch failed, trying CPU version...
+setlocal disabledelayedexpansion
+"%SCRIPT_DIR%\.venv\Scripts\pip.exe" install torch torchvision
+endlocal
 "%SCRIPT_DIR%\.venv\Scripts\python.exe" -c "import torch" >nul 2>&1
 if %errorlevel% neq 0 (
-    echo [install] Downloading PyTorch (this may take 5-10 minutes)...
-    "%SCRIPT_DIR%\.venv\Scripts\pip.exe" install torch torchvision --index-url https://download.pytorch.org/whl/cu124
-    if %errorlevel% neq 0 (
-        echo [install] GPU PyTorch failed, trying CPU version...
-        "%SCRIPT_DIR%\.venv\Scripts\pip.exe" install torch torchvision
-        if %errorlevel% neq 0 (
-            echo [ERROR] PyTorch install failed.
-            pause
-            exit /b 1
-        )
-    )
-    "%SCRIPT_DIR%\.venv\Scripts\python.exe" -c "import torch" >nul 2>&1
-    if !errorlevel! neq 0 (
-        echo [ERROR] PyTorch installation failed.
-        pause
-        exit /b 1
-    )
-    echo [OK] PyTorch installed
-) else (
-    echo [OK] PyTorch already installed
+    echo [ERROR] PyTorch installation failed.
+    pause
+    exit /b 1
 )
+echo [OK] PyTorch installed (CPU)
+:torch_done
 
 :: Install remaining pinned dependencies
+setlocal disabledelayedexpansion
 if exist "%SCRIPT_DIR%\server\requirements-pinned.txt" (
     "%SCRIPT_DIR%\.venv\Scripts\pip.exe" install -r "%SCRIPT_DIR%\server\requirements-pinned.txt" >nul 2>&1
-    if %errorlevel% neq 0 (
+    if errorlevel 1 (
         echo [WARN] Some Python dependencies failed. Trying individually...
         "%SCRIPT_DIR%\.venv\Scripts\pip.exe" install sentence-transformers flask
         "%SCRIPT_DIR%\.venv\Scripts\pip.exe" install spacy 2>nul
@@ -141,20 +147,25 @@ if exist "%SCRIPT_DIR%\server\requirements-pinned.txt" (
     "%SCRIPT_DIR%\.venv\Scripts\pip.exe" install sentence-transformers flask spacy docling
     echo [OK] Python dependencies installed
 )
+endlocal
 
 :: ── Step 6: spaCy NER model ──
 "%SCRIPT_DIR%\.venv\Scripts\python.exe" -c "import spacy; spacy.load('en_core_web_sm')" >nul 2>&1
-if %errorlevel% neq 0 (
-    echo [install] Downloading spaCy NER model...
-    "%SCRIPT_DIR%\.venv\Scripts\python.exe" -m spacy download en_core_web_sm >nul 2>&1
-    if %errorlevel% neq 0 (
-        echo [WARN] spaCy NER model download failed. Entity extraction will use regex fallback.
-    ) else (
-        echo [OK] spaCy NER model installed
-    )
-) else (
+if %errorlevel% equ 0 (
     echo [OK] spaCy NER model already present
+    goto :spacy_done
 )
+echo [install] Downloading spaCy NER model...
+setlocal disabledelayedexpansion
+"%SCRIPT_DIR%\.venv\Scripts\python.exe" -m spacy download en_core_web_sm >nul 2>&1
+endlocal
+"%SCRIPT_DIR%\.venv\Scripts\python.exe" -c "import spacy; spacy.load('en_core_web_sm')" >nul 2>&1
+if %errorlevel% neq 0 (
+    echo [WARN] spaCy NER model download failed. Entity extraction will use regex fallback.
+) else (
+    echo [OK] spaCy NER model installed
+)
+:spacy_done
 
 :: ── Step 7: Memory-engine dependencies ──
 if not exist "%SCRIPT_DIR%\memory-engine\node_modules\@sinclair\typebox" (
