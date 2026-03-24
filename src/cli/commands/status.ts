@@ -5,7 +5,7 @@ import { config } from "../../config.js";
 import { getDb, runMigrations, listCollections } from "../../storage/index.js";
 import { getCollectionStats } from "../../storage/collections.js";
 import { getGraphDb, closeGraphDb } from "../../storage/graph-sqlite.js";
-import { ensureGraphSchema } from "../../relations/ingest-hook.js";
+
 
 export const statusCommand = new Command("status")
   .description("Show ClawCore system status")
@@ -60,9 +60,9 @@ export const statusCommand = new Command("status")
     if (existsSync(graphPath)) {
       try {
         const graphDb = getGraphDb(graphPath);
-        ensureGraphSchema(graphDb);
+
         const sz = statSync(graphPath).size;
-        const entities = (graphDb.prepare("SELECT COUNT(*) as cnt FROM entities").get() as { cnt: number }).cnt;
+        const entities = (graphDb.prepare("SELECT COUNT(*) as cnt FROM memory_objects WHERE kind = 'entity'").get() as { cnt: number }).cnt;
         const events = (graphDb.prepare("SELECT COUNT(*) as cnt FROM evidence_log").get() as { cnt: number }).cnt;
         console.log(`  Graph DB:  ${(sz / 1024 / 1024).toFixed(2)} MB`);
         console.log(`  Entities:  ${entities}`);

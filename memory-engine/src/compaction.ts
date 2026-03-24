@@ -1170,7 +1170,7 @@ export class CompactionEngine {
         // Get known entity names — filter to short names only
         // (long names are full sentences stored by NER, not useful for relation matching)
         const entityRows = graphDb.prepare(
-          "SELECT name FROM entities WHERE length(name) <= 40 ORDER BY mention_count DESC, last_seen_at DESC LIMIT 200",
+          "SELECT json_extract(structured_json, '$.name') as name FROM memory_objects WHERE kind = 'entity' AND length(json_extract(structured_json, '$.name')) <= 40 ORDER BY json_extract(structured_json, '$.mentionCount') DESC, last_observed_at DESC LIMIT 200",
         ).all() as Array<{ name: string }>;
         const entityNames = entityRows.map((r: { name: string }) => r.name);
 
@@ -1179,8 +1179,8 @@ export class CompactionEngine {
             for (const msg of messageContents) {
               const relations = extractRelationsFast(msg.content, entityNames, String(msg.messageId));
               for (const rel of relations) {
-                const subj = graphDb.prepare("SELECT id FROM entities WHERE name = ?").get(rel.subjectName) as { id: number } | undefined;
-                const obj = graphDb.prepare("SELECT id FROM entities WHERE name = ?").get(rel.objectName) as { id: number } | undefined;
+                const subj = graphDb.prepare("SELECT id FROM memory_objects WHERE kind = 'entity' AND composite_id = 'entity:' || LOWER(?)").get(rel.subjectName) as { id: number } | undefined;
+                const obj = graphDb.prepare("SELECT id FROM memory_objects WHERE kind = 'entity' AND composite_id = 'entity:' || LOWER(?)").get(rel.objectName) as { id: number } | undefined;
                 if (subj && obj) {
                   upsertRelation(graphDb, {
                     scopeId: 1,

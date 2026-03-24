@@ -6,12 +6,15 @@
  *
  * Uses better-sqlite3 (the main ClawCore DB driver) for the graph DB.
  *
- * The entity extraction logic is intentionally duplicated from
- * memory-engine/src/relations/ to avoid cross-module dependencies
- * (different DB drivers: better-sqlite3 vs node:sqlite).
+ * All entity data is stored in the unified ontology tables:
+ *   - memory_objects (kind='entity')
+ *   - provenance_links (predicate='mentioned_in')
  *
- * CANONICAL SOURCE: memory-engine/src/relations/schema.ts (DDL) and
- * memory-engine/src/relations/entity-extract.ts (extraction).
+ * Schema is created by memory-engine's runGraphMigrations — this module
+ * does NOT create tables.
+ *
+ * CANONICAL SOURCE: memory-engine/src/relations/graph-store.ts (storage)
+ * and memory-engine/src/relations/entity-extract.ts (extraction).
  * When updating schema or extraction logic, update both locations.
  *
  * Parity: entity_type storage, evidence logging, scope_id on mentions,
@@ -23,112 +26,6 @@ import { readFileSync } from "fs";
 import { homedir } from "os";
 import { join } from "path";
 import { logger } from "../utils/logger.js";
-
-// ---------------------------------------------------------------------------
-// Schema migration (idempotent, same SQL as memory-engine/src/relations/schema.ts)
-// ---------------------------------------------------------------------------
-
-const MIGRATION_CHECK_SQL = "SELECT version FROM _evidence_migrations WHERE version = ?";
-
-export function ensureGraphSchema(db: Database.Database): void {
-  // Create migration tracking table first
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS _evidence_migrations (
-        version INTEGER PRIMARY KEY,
-        applied_at TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%f', 'now'))
-    )
-  `);
-
-  const row = db.prepare(MIGRATION_CHECK_SQL).get(1) as { version: number } | undefined;
-  if (row) return; // Already migrated
-
-  // Run full v1 migration (same SQL as memory-engine schema.ts)
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS evidence_log (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        scope_id INTEGER, branch_id INTEGER,
-        object_type TEXT NOT NULL, object_id INTEGER NOT NULL,
-        event_type TEXT NOT NULL, actor TEXT, run_id TEXT,
-        idempotency_key TEXT UNIQUE, payload_json TEXT,
-        created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%f', 'now')),
-        scope_seq INTEGER
-    );
-    CREATE INDEX IF NOT EXISTS idx_evidence_log_scope ON evidence_log(scope_id, scope_seq);
-    CREATE INDEX IF NOT EXISTS idx_evidence_log_object ON evidence_log(object_type, object_id, created_at);
-
-    CREATE TABLE IF NOT EXISTS scope_sequences (
-        scope_id INTEGER PRIMARY KEY, next_seq INTEGER NOT NULL DEFAULT 1
-    );
-
-    CREATE TABLE IF NOT EXISTS state_scopes (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        scope_type TEXT NOT NULL, scope_key TEXT NOT NULL, display_name TEXT,
-        created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%f', 'now')),
-        UNIQUE(scope_type, scope_key)
-    );
-    INSERT OR IGNORE INTO state_scopes (id, scope_type, scope_key, display_name)
-    VALUES (1, 'system', 'global', 'Global');
-    INSERT OR IGNORE INTO scope_sequences (scope_id, next_seq) VALUES (1, 1);
-
-    CREATE TABLE IF NOT EXISTS branch_scopes (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        scope_id INTEGER NOT NULL REFERENCES state_scopes(id) ON DELETE CASCADE,
-        branch_type TEXT NOT NULL, branch_key TEXT NOT NULL,
-        parent_branch_id INTEGER REFERENCES branch_scopes(id),
-        created_by_actor TEXT,
-        status TEXT NOT NULL DEFAULT 'active',
-        created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%f', 'now')),
-        promoted_at TEXT,
-        UNIQUE(scope_id, branch_type, branch_key)
-    );
-
-    CREATE TABLE IF NOT EXISTS promotion_policies (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        object_type TEXT NOT NULL, min_confidence REAL DEFAULT 0.6,
-        requires_user_confirm INTEGER DEFAULT 0,
-        auto_promote_above_confidence REAL,
-        requires_evidence_count INTEGER DEFAULT 1,
-        max_age_hours INTEGER, policy_text TEXT,
-        UNIQUE(object_type)
-    );
-    INSERT OR IGNORE INTO promotion_policies (object_type, min_confidence, requires_user_confirm, auto_promote_above_confidence, requires_evidence_count, max_age_hours, policy_text) VALUES
-        ('entity',0.3,0,NULL,1,NULL,'Entities promote freely'),
-        ('mention',0.0,0,NULL,1,NULL,'Mentions write directly'),
-        ('claim',0.6,0,NULL,2,168,'Claims need 0.6+ and 2+ evidence'),
-        ('decision',0.5,1,0.7,1,NULL,'Decisions need confirm or 0.7+'),
-        ('loop',0.3,0,NULL,1,72,'Loops expire after 3 days'),
-        ('attempt',0.0,0,NULL,1,NULL,'Attempts write directly'),
-        ('runbook',0.5,0,NULL,2,NULL,'Runbooks need 2+ evidence'),
-        ('anti_runbook',0.5,0,NULL,2,NULL,'Anti-runbooks need 2+ evidence'),
-        ('invariant',0.7,1,0.9,1,NULL,'Invariants need confirm or 0.9+'),
-        ('capability',0.0,0,NULL,1,NULL,'Capabilities write directly');
-
-    CREATE TABLE IF NOT EXISTS entities (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        name TEXT NOT NULL, display_name TEXT NOT NULL, entity_type TEXT,
-        first_seen_at TEXT NOT NULL, last_seen_at TEXT NOT NULL,
-        mention_count INTEGER DEFAULT 1,
-        UNIQUE(name)
-    );
-    CREATE INDEX IF NOT EXISTS idx_entities_name ON entities(name);
-    CREATE INDEX IF NOT EXISTS idx_entities_last_seen ON entities(last_seen_at);
-
-    CREATE TABLE IF NOT EXISTS entity_mentions (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        entity_id INTEGER NOT NULL REFERENCES entities(id) ON DELETE CASCADE,
-        scope_id INTEGER REFERENCES state_scopes(id),
-        source_type TEXT NOT NULL, source_id TEXT NOT NULL,
-        source_detail TEXT, context_terms TEXT,
-        actor TEXT DEFAULT 'system', run_id TEXT,
-        created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%f', 'now'))
-    );
-    CREATE INDEX IF NOT EXISTS idx_mentions_entity ON entity_mentions(entity_id, created_at);
-    CREATE INDEX IF NOT EXISTS idx_mentions_source ON entity_mentions(source_type, source_id);
-    CREATE INDEX IF NOT EXISTS idx_mentions_scope ON entity_mentions(scope_id, entity_id);
-
-    INSERT INTO _evidence_migrations (version) VALUES (1);
-  `);
-}
 
 // ---------------------------------------------------------------------------
 // Fast entity extraction (same logic as memory-engine/src/relations/entity-extract.ts)
@@ -242,7 +139,7 @@ function loadTerms(): string[] {
 }
 
 // ---------------------------------------------------------------------------
-// Graph store operations (using better-sqlite3 API)
+// Graph store operations (using better-sqlite3 API, targeting memory_objects + provenance_links)
 // ---------------------------------------------------------------------------
 
 function storeEntities(
@@ -253,20 +150,38 @@ function storeEntities(
   sourceDetail?: string,
   scopeId: number = 1,
 ): void {
+  const now = "strftime('%Y-%m-%dT%H:%M:%f','now')";
+
+  // Upsert entity into memory_objects (kind='entity')
   const upsertStmt = db.prepare(`
-    INSERT INTO entities (name, display_name, entity_type, first_seen_at, last_seen_at, mention_count)
-    VALUES (?, ?, ?, strftime('%Y-%m-%dT%H:%M:%f','now'), strftime('%Y-%m-%dT%H:%M:%f','now'), 1)
-    ON CONFLICT(name) DO UPDATE SET
-      mention_count = mention_count + 1,
-      last_seen_at = strftime('%Y-%m-%dT%H:%M:%f','now'),
-      entity_type = COALESCE(excluded.entity_type, entities.entity_type)
+    INSERT INTO memory_objects (
+      composite_id, kind, content, structured_json, canonical_key,
+      provenance_json, confidence, trust_score, freshness, status,
+      scope_id, branch_id, influence_weight,
+      first_observed_at, last_observed_at, created_at, updated_at
+    ) VALUES (
+      ?, 'entity', ?, ?, ?,
+      ?, 0.5, 0.5, 1.0, 'active',
+      1, 0, 'standard',
+      ${now}, ${now}, ${now}, ${now}
+    )
+    ON CONFLICT(composite_id) DO UPDATE SET
+      structured_json = ?,
+      last_observed_at = ${now},
+      updated_at = ${now}
   `);
-  const selectStmt = db.prepare("SELECT id FROM entities WHERE name = ?");
+
+  const selectStmt = db.prepare(
+    "SELECT id, structured_json FROM memory_objects WHERE composite_id = ?",
+  );
+
+  // Insert mention as provenance_link
   const mentionStmt = db.prepare(`
-    INSERT OR IGNORE INTO entity_mentions
-      (entity_id, scope_id, source_type, source_id, source_detail, context_terms, actor)
-    VALUES (?, ?, ?, ?, ?, ?, 'system')
+    INSERT OR IGNORE INTO provenance_links
+      (subject_id, predicate, object_id, confidence, detail, scope_id, metadata)
+    VALUES (?, 'mentioned_in', ?, 1.0, ?, ?, ?)
   `);
+
   // Evidence logging (append-only audit trail)
   const scopeSeqBump = db.prepare(
     "INSERT INTO scope_sequences (scope_id, next_seq) VALUES (?, 2) ON CONFLICT(scope_id) DO UPDATE SET next_seq = next_seq + 1",
@@ -277,19 +192,60 @@ function storeEntities(
   const evidenceInsert = db.prepare(`
     INSERT OR IGNORE INTO evidence_log
       (scope_id, object_type, object_id, event_type, actor, idempotency_key, payload_json, created_at, scope_seq)
-    VALUES (?, ?, ?, ?, ?, ?, ?, strftime('%Y-%m-%dT%H:%M:%f','now'), ?)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ${now}, ?)
   `);
 
   for (const entity of entities) {
     const name = entity.name.toLowerCase().trim();
     if (!name) continue;
-    // Derive entity_type from NER strategy (e.g. "ner:PERSON" → "PERSON")
+
+    const compositeId = `entity:${name}`;
+    const displayName = entity.name.trim();
     const entityType = entity.strategy.startsWith("ner:") ? entity.strategy.slice(4) : null;
-    upsertStmt.run(name, entity.name.trim(), entityType);
-    const row = selectStmt.get(name) as { id: number } | undefined;
+    const canonicalKey = `entity::${name}`;
+    const provenanceJson = JSON.stringify({
+      source_kind: "extraction",
+      source_id: compositeId,
+      actor: "system",
+      trust: 0.5,
+    });
+
+    // Check existing to increment mentionCount
+    let mentionCount = 1;
+    const existingRow = selectStmt.get(compositeId) as { id: number; structured_json: string | null } | undefined;
+    if (existingRow?.structured_json) {
+      try {
+        const parsed = JSON.parse(existingRow.structured_json);
+        mentionCount = (Number(parsed.mentionCount) || 0) + 1;
+      } catch { /* empty */ }
+    }
+
+    const structuredJson = JSON.stringify({
+      name,
+      displayName,
+      entityType,
+      mentionCount,
+    });
+
+    // Upsert — INSERT values + ON CONFLICT update values
+    upsertStmt.run(
+      compositeId, displayName, structuredJson, canonicalKey,
+      provenanceJson,
+      structuredJson, // for the ON CONFLICT UPDATE
+    );
+
+    // Get the row id
+    const row = selectStmt.get(compositeId) as { id: number; structured_json: string | null } | undefined;
     if (!row) continue;
+
     const ctJson = entity.contextTerms?.length ? JSON.stringify(entity.contextTerms) : null;
-    mentionStmt.run(row.id, scopeId, sourceType, sourceId, sourceDetail ?? null, ctJson);
+    const objectId = `${sourceType}:${sourceId}`;
+    const metadataJson = JSON.stringify({
+      context_terms: ctJson,
+      actor: "system",
+      run_id: null,
+    });
+    mentionStmt.run(compositeId, objectId, sourceDetail ?? null, scopeId, metadataJson);
 
     // Log evidence event with idempotency key
     scopeSeqBump.run(scopeId);
@@ -305,50 +261,31 @@ function storeEntities(
 }
 
 export function deleteSourceData(db: Database.Database, sourceType: string, sourceId: string): void {
-  const counts = db.prepare(`
-    SELECT entity_id, COUNT(*) as cnt FROM entity_mentions
-    WHERE source_type = ? AND source_id = ? GROUP BY entity_id
-  `).all(sourceType, sourceId) as Array<{ entity_id: number; cnt: number }>;
+  const objectKey = `${sourceType}:${sourceId}`;
 
-  for (const { entity_id, cnt } of counts) {
-    db.prepare("UPDATE entities SET mention_count = MAX(0, mention_count - ?) WHERE id = ?")
-      .run(cnt, entity_id);
-  }
-  db.prepare("DELETE FROM entity_mentions WHERE source_type = ? AND source_id = ?")
-    .run(sourceType, sourceId);
-  db.prepare("DELETE FROM entities WHERE mention_count <= 0").run();
+  // Delete mentions (provenance_links with mentioned_in) for this source
+  db.prepare(
+    "DELETE FROM provenance_links WHERE object_id = ? AND predicate = 'mentioned_in'",
+  ).run(objectKey);
+
+  // Note: we don't delete the entity memory_objects themselves — they may be
+  // referenced by other sources. Orphan cleanup happens separately.
 }
 
 /**
  * Clear all data tables in the graph DB (for full reset).
  * Preserves infrastructure tables (state_scopes, promotion_policies, _evidence_migrations).
  *
- * Primary entity data lives in entities + entity_mentions.
- * Also clears memory_objects/provenance_links and legacy tables if present.
+ * Only clears memory_objects, provenance_links, and infrastructure data tables.
  */
 export function clearAllGraphTables(db: Database.Database): void {
-  // RSMA unified tables (created by memory-engine, cleared if present)
+  // Unified ontology tables
   try { db.prepare("DELETE FROM provenance_links").run(); } catch {}
   try { db.prepare("DELETE FROM memory_objects").run(); } catch {}
 
-  // Legacy tables (renamed to _legacy_* in v18, cleared for backward compat)
-  const legacyTables = [
-    "work_leases",
-    // Try both renamed (_legacy_*) and original names
-    "_legacy_anti_runbook_evidence", "_legacy_runbook_evidence", "_legacy_claim_evidence",
-    "_legacy_entity_mentions", "_legacy_anti_runbooks", "_legacy_runbooks", "_legacy_attempts",
-    "_legacy_invariants", "_legacy_open_loops", "_legacy_decisions", "_legacy_claims",
-    "_legacy_entity_relations", "_legacy_entities",
-    "anti_runbook_evidence", "runbook_evidence", "claim_evidence",
-    "entity_mentions", "anti_runbooks", "runbooks", "attempts",
-    "invariants", "open_loops", "decisions", "claims",
-    "entity_relations", "entities", "state_deltas",
-  ];
-  for (const table of legacyTables) {
-    try { db.prepare(`DELETE FROM ${table}`).run(); } catch {}
-  }
-
-  // Clear evidence log (audit trail is also reset on full wipe)
+  // Infrastructure tables that hold data (not schema)
+  try { db.prepare("DELETE FROM work_leases").run(); } catch {}
+  try { db.prepare("DELETE FROM state_deltas").run(); } catch {}
   try { db.prepare("DELETE FROM evidence_log").run(); } catch {}
 
   // Reset scope sequences to 1
@@ -396,7 +333,7 @@ export async function extractEntitiesFromDocument(
   chunks: Array<{ text: string; position: number }>,
 ): Promise<void> {
   try {
-    ensureGraphSchema(graphDb);
+    // Schema is managed by memory-engine's runGraphMigrations
     const terms = loadTerms();
 
     // Try NER extraction (non-blocking, returns null on failure)

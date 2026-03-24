@@ -92,8 +92,8 @@ export function registerHealthRoutes(server: FastifyInstance, onShutdown?: () =>
           try { return (graphDb.prepare(sql).get() as { cnt: number }).cnt; } catch { return 0; }
         };
         graphStats = {
-          entities: safe("SELECT COUNT(*) as cnt FROM entities"),
-          mentions: safe("SELECT COUNT(*) as cnt FROM entity_mentions"),
+          entities: safe("SELECT COUNT(*) as cnt FROM memory_objects WHERE kind = 'entity'"),
+          mentions: safe("SELECT COUNT(*) as cnt FROM provenance_links WHERE predicate = 'mentioned_in'"),
           evidenceEvents: safe("SELECT COUNT(*) as cnt FROM evidence_log"),
           graphDbSizeMB: Math.round(statSync(config.relations.graphDbPath).size / 1024 / 1024 * 100) / 100,
         };

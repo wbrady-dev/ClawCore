@@ -8,7 +8,7 @@ const __dirname = dirname(__filename);
 import { config } from "../../config.js";
 import { getDb } from "../../storage/index.js";
 import { getGraphDb, closeGraphDb } from "../../storage/graph-sqlite.js";
-import { ensureGraphSchema, extractEntitiesFromDocument } from "../../relations/ingest-hook.js";
+import { extractEntitiesFromDocument } from "../../relations/ingest-hook.js";
 
 export const relationsCommand = new Command("relations")
   .description("Entity graph management");
@@ -23,7 +23,7 @@ relationsCommand
 
     const db = getDb(config.dataDir + "/clawcore.db");
     const graphDb = getGraphDb(config.relations.graphDbPath);
-    ensureGraphSchema(graphDb);
+
 
     // Query all documents (optionally filtered by collection)
     let documents: Array<{ id: string; source_path: string }>;
@@ -67,8 +67,8 @@ relationsCommand
     }
 
     // Count total entities in graph
-    const entityCount = (graphDb.prepare("SELECT COUNT(*) as cnt FROM entities").get() as { cnt: number }).cnt;
-    const mentionCount = (graphDb.prepare("SELECT COUNT(*) as cnt FROM entity_mentions").get() as { cnt: number }).cnt;
+    const entityCount = (graphDb.prepare("SELECT COUNT(*) as cnt FROM memory_objects WHERE kind = 'entity'").get() as { cnt: number }).cnt;
+    const mentionCount = (graphDb.prepare("SELECT COUNT(*) as cnt FROM provenance_links WHERE predicate = 'mentioned_in'").get() as { cnt: number }).cnt;
 
     const elapsed = Date.now() - start;
     console.log(`\nBackfill complete:`);
@@ -87,14 +87,14 @@ relationsCommand
   .description("Show entity graph statistics")
   .action(async () => {
     const graphDb = getGraphDb(config.relations.graphDbPath);
-    ensureGraphSchema(graphDb);
 
-    const entities = (graphDb.prepare("SELECT COUNT(*) as cnt FROM entities").get() as { cnt: number }).cnt;
-    const mentions = (graphDb.prepare("SELECT COUNT(*) as cnt FROM entity_mentions").get() as { cnt: number }).cnt;
+
+    const entities = (graphDb.prepare("SELECT COUNT(*) as cnt FROM memory_objects WHERE kind = 'entity'").get() as { cnt: number }).cnt;
+    const mentions = (graphDb.prepare("SELECT COUNT(*) as cnt FROM provenance_links WHERE predicate = 'mentioned_in'").get() as { cnt: number }).cnt;
     const events = (graphDb.prepare("SELECT COUNT(*) as cnt FROM evidence_log").get() as { cnt: number }).cnt;
 
     const topEntities = graphDb.prepare(
-      "SELECT name, display_name, mention_count FROM entities ORDER BY mention_count DESC LIMIT 10",
+      "SELECT json_extract(structured_json, '$.name') as name, json_extract(structured_json, '$.displayName') as display_name, json_extract(structured_json, '$.mentionCount') as mention_count FROM memory_objects WHERE kind = 'entity' ORDER BY json_extract(structured_json, '$.mentionCount') DESC LIMIT 10",
     ).all() as Array<{ name: string; display_name: string; mention_count: number }>;
 
     console.log(`Evidence Graph Statistics`);
@@ -118,7 +118,7 @@ relationsCommand
   .option("--dry-run", "Show what would be archived without doing it")
   .action(async (opts: { claimDays: string; decisionDays: string; eventDays: string; dryRun?: boolean }) => {
     const graphDb = getGraphDb(config.relations.graphDbPath);
-    ensureGraphSchema(graphDb);
+
     const archivePath = resolve(homedir(), ".clawcore", "data", "archive.db");
 
     if (opts.dryRun) {
@@ -129,8 +129,8 @@ relationsCommand
       const decCutoff = new Date(Date.now() - decisionDays * 86_400_000).toISOString();
       const evCutoff = new Date(Date.now() - eventDays * 86_400_000).toISOString();
 
-      const staleClaims = (graphDb.prepare("SELECT COUNT(*) as cnt FROM claims WHERE status = 'active' AND confidence < 0.1 AND last_seen_at < ?").get(claimCutoff) as any).cnt;
-      const oldDecs = (graphDb.prepare("SELECT COUNT(*) as cnt FROM decisions WHERE status = 'superseded' AND decided_at < ?").get(decCutoff) as any).cnt;
+      const staleClaims = (graphDb.prepare("SELECT COUNT(*) as cnt FROM memory_objects WHERE kind = 'claim' AND status = 'active' AND confidence < 0.1 AND last_observed_at < ?").get(claimCutoff) as any).cnt;
+      const oldDecs = (graphDb.prepare("SELECT COUNT(*) as cnt FROM memory_objects WHERE kind = 'decision' AND status = 'superseded' AND json_extract(structured_json, '$.decidedAt') < ?").get(decCutoff) as any).cnt;
       const oldEvents = (graphDb.prepare("SELECT COUNT(*) as cnt FROM evidence_log WHERE created_at < ?").get(evCutoff) as any).cnt;
 
       console.log("Archive dry run:");

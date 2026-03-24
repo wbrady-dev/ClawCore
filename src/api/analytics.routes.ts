@@ -183,8 +183,8 @@ export function registerDiagnosticsRoute(server: FastifyInstance) {
         result.graphDb = {
           path: graphDbPath,
           sizeMb: +(statSync(graphDbPath).size / 1024 / 1024).toFixed(2),
-          entities: safe("SELECT COUNT(*) as cnt FROM entities"),
-          mentions: safe("SELECT COUNT(*) as cnt FROM entity_mentions"),
+          entities: safe("SELECT COUNT(*) as cnt FROM memory_objects WHERE kind = 'entity'"),
+          mentions: safe("SELECT COUNT(*) as cnt FROM provenance_links WHERE predicate = 'mentioned_in'"),
           evidenceEvents: safe("SELECT COUNT(*) as cnt FROM evidence_log"),
         };
       } catch (e: any) {

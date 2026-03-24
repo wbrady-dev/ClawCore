@@ -193,11 +193,11 @@ export async function showStatus(): Promise<void> {
         try { return (graphDb.prepare(sql).get() as { cnt: number }).cnt; } catch { return -1; }
       };
 
-      const entities = safeCount("SELECT COUNT(*) as cnt FROM entities");
-      const mentions = safeCount("SELECT COUNT(*) as cnt FROM entity_mentions");
-      const claims = safeCount("SELECT COUNT(*) as cnt FROM claims WHERE status = 'active'");
-      const decisions = safeCount("SELECT COUNT(*) as cnt FROM decisions WHERE status = 'active'");
-      const loops = safeCount("SELECT COUNT(*) as cnt FROM open_loops WHERE status IN ('open','blocked')");
+      const entities = safeCount("SELECT COUNT(*) as cnt FROM memory_objects WHERE kind = 'entity'");
+      const mentions = safeCount("SELECT COUNT(*) as cnt FROM provenance_links WHERE predicate = 'mentioned_in'");
+      const claims = safeCount("SELECT COUNT(*) as cnt FROM memory_objects WHERE kind = 'claim' AND status = 'active'");
+      const decisions = safeCount("SELECT COUNT(*) as cnt FROM memory_objects WHERE kind = 'decision' AND status = 'active'");
+      const loops = safeCount("SELECT COUNT(*) as cnt FROM memory_objects WHERE kind = 'loop' AND status IN ('open','blocked')");
       const events = safeCount("SELECT COUNT(*) as cnt FROM evidence_log");
 
       if (entities >= 0) console.log(kvLine("Entities", String(entities)));

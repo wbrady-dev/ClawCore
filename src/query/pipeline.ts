@@ -229,12 +229,12 @@ export async function query(
         const graphDb = getGraphDb(config.relations.graphDbPath);
         const lowerQuery = queryText.toLowerCase().trim();
         const entity = graphDb.prepare(
-          "SELECT id FROM entities WHERE name = ? AND mention_count >= 2",
-        ).get(lowerQuery) as { id: number } | undefined;
+          "SELECT id, composite_id FROM memory_objects WHERE kind = 'entity' AND composite_id = 'entity:' || ? AND json_extract(structured_json, '$.mentionCount') >= 2",
+        ).get(lowerQuery) as { id: number; composite_id: string } | undefined;
         if (entity) {
           const mentions = graphDb.prepare(
-            "SELECT context_terms FROM entity_mentions WHERE entity_id = ? AND context_terms IS NOT NULL AND context_terms != '[]' LIMIT 5",
-          ).all(entity.id) as Array<{ context_terms: string }>;
+            "SELECT json_extract(metadata, '$.context_terms') as context_terms FROM provenance_links WHERE subject_id = ? AND predicate = 'mentioned_in' AND json_extract(metadata, '$.context_terms') IS NOT NULL AND json_extract(metadata, '$.context_terms') != 'null' LIMIT 5",
+          ).all(entity.composite_id) as Array<{ context_terms: string }>;
           const coTerms = new Set<string>();
           for (const m of mentions) {
             try {

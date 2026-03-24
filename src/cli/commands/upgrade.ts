@@ -161,7 +161,7 @@ async function postUpgradeSmoke(): Promise<{ ok: boolean; checks: string[] }> {
     try {
       const { DatabaseSync } = await import("node:sqlite");
       const db = new DatabaseSync(graphPath);
-      const entityCount = (db.prepare("SELECT COUNT(*) as cnt FROM entities").get() as any).cnt;
+      const entityCount = (db.prepare("SELECT COUNT(*) as cnt FROM memory_objects WHERE kind = 'entity'").get() as any).cnt;
       const evidenceCount = (db.prepare("SELECT COUNT(*) as cnt FROM evidence_log").get() as any).cnt;
       const migrationCount = (db.prepare("SELECT COUNT(*) as cnt FROM _evidence_migrations").get() as any).cnt;
       db.close();

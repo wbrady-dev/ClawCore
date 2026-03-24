@@ -288,16 +288,20 @@ async function tryEvidenceFallback(
     const terms = extractSearchTerms(searchQuery);
     if (terms.length === 0) return null;
 
-    // Build OR-style LIKE conditions for each term
-    const likeConditions = terms.map(() => "(subject LIKE ? OR object_text LIKE ?)").join(" OR ");
+    // Build OR-style LIKE conditions for each term (searching structured_json fields)
+    const likeConditions = terms.map(() => "(json_extract(structured_json, '$.subject') LIKE ? OR json_extract(structured_json, '$.objectText') LIKE ?)").join(" OR ");
     const likeArgs = terms.flatMap((t) => [`%${t}%`, `%${t}%`]);
 
     const lines: string[] = [];
 
     // Search claims (top 5)
     const claims = graphDb.prepare(`
-      SELECT id, subject, predicate, object_text, confidence, trust_score, last_seen_at
-      FROM claims WHERE status = 'active' AND scope_id = 1 AND branch_id = 0 AND (${likeConditions})
+      SELECT id,
+        json_extract(structured_json, '$.subject') as subject,
+        json_extract(structured_json, '$.predicate') as predicate,
+        json_extract(structured_json, '$.objectText') as object_text,
+        confidence, trust_score, last_observed_at as last_seen_at
+      FROM memory_objects WHERE kind = 'claim' AND status = 'active' AND scope_id = 1 AND branch_id = 0 AND (${likeConditions})
       ORDER BY confidence DESC LIMIT 5
     `).all(...likeArgs) as Array<{
       id: number; subject: string; predicate: string; object_text: string | null;
@@ -324,13 +328,18 @@ async function tryEvidenceFallback(
     }
 
     // Search decisions (top 3)
-    const decLikeConditions = terms.map(() => "(topic LIKE ? OR decision_text LIKE ?)").join(" OR ");
+    const decLikeConditions = terms.map(() => "(json_extract(structured_json, '$.topic') LIKE ? OR json_extract(structured_json, '$.decisionText') LIKE ?)").join(" OR ");
     const decLikeArgs = terms.flatMap((t) => [`%${t}%`, `%${t}%`]);
 
     const decisions = graphDb.prepare(`
-      SELECT id, topic, decision_text, status, decided_at, superseded_by
-      FROM decisions WHERE status = 'active' AND scope_id = 1 AND (${decLikeConditions})
-      ORDER BY decided_at DESC LIMIT 3
+      SELECT id,
+        json_extract(structured_json, '$.topic') as topic,
+        json_extract(structured_json, '$.decisionText') as decision_text,
+        status,
+        json_extract(structured_json, '$.decidedAt') as decided_at,
+        json_extract(structured_json, '$.supersededBy') as superseded_by
+      FROM memory_objects WHERE kind = 'decision' AND status = 'active' AND scope_id = 1 AND (${decLikeConditions})
+      ORDER BY json_extract(structured_json, '$.decidedAt') DESC LIMIT 3
     `).all(...decLikeArgs) as Array<{
       id: number; topic: string; decision_text: string; status: string;
       decided_at: string; superseded_by: number | null;

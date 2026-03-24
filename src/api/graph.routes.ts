@@ -4,7 +4,7 @@ import { homedir } from "os";
 import { join, dirname } from "path";
 import { config } from "../config.js";
 import { getGraphDb } from "../storage/graph-sqlite.js";
-import { ensureGraphSchema } from "../relations/ingest-hook.js";
+
 import { logger } from "../utils/logger.js";
 import { isLocalRequest } from "./guards.js";
 import { escapeLike } from "../utils/sql.js";
@@ -33,31 +33,40 @@ export function registerGraphRoutes(server: FastifyInstance) {
 
     try {
       const db = getGraphDb(graphDbPath);
-      ensureGraphSchema(db);
+
 
       let entities;
       if (search && search.trim()) {
         const pattern = `%${escapeLike(search.toLowerCase().trim())}%`;
         entities = db.prepare(`
-          SELECT id, name, display_name, entity_type, mention_count,
-                 first_seen_at, last_seen_at
-          FROM entities
-          WHERE name LIKE ? ESCAPE '\\'
-          ORDER BY mention_count DESC
+          SELECT id,
+            json_extract(structured_json, '$.name') as name,
+            json_extract(structured_json, '$.displayName') as display_name,
+            json_extract(structured_json, '$.entityType') as entity_type,
+            json_extract(structured_json, '$.mentionCount') as mention_count,
+            created_at as first_seen_at, last_observed_at as last_seen_at
+          FROM memory_objects
+          WHERE kind = 'entity' AND json_extract(structured_json, '$.name') LIKE ? ESCAPE '\\'
+          ORDER BY json_extract(structured_json, '$.mentionCount') DESC
           LIMIT ? OFFSET ?
         `).all(pattern, limit, offset);
       } else {
         entities = db.prepare(`
-          SELECT id, name, display_name, entity_type, mention_count,
-                 first_seen_at, last_seen_at
-          FROM entities
-          ORDER BY mention_count DESC
+          SELECT id,
+            json_extract(structured_json, '$.name') as name,
+            json_extract(structured_json, '$.displayName') as display_name,
+            json_extract(structured_json, '$.entityType') as entity_type,
+            json_extract(structured_json, '$.mentionCount') as mention_count,
+            created_at as first_seen_at, last_observed_at as last_seen_at
+          FROM memory_objects
+          WHERE kind = 'entity'
+          ORDER BY json_extract(structured_json, '$.mentionCount') DESC
           LIMIT ? OFFSET ?
         `).all(limit, offset);
       }
 
       const total = (db.prepare(
-        "SELECT COUNT(*) as cnt FROM entities",
+        "SELECT COUNT(*) as cnt FROM memory_objects WHERE kind = 'entity'",
       ).get() as { cnt: number }).cnt;
 
       return { entities, total, limit, offset };
@@ -81,25 +90,33 @@ export function registerGraphRoutes(server: FastifyInstance) {
 
     try {
       const db = getGraphDb(graphDbPath);
-      ensureGraphSchema(db);
+
 
       const entity = db.prepare(`
-        SELECT id, name, display_name, entity_type, mention_count,
-               first_seen_at, last_seen_at
-        FROM entities
-        WHERE id = ?
+        SELECT id,
+          json_extract(structured_json, '$.name') as name,
+          json_extract(structured_json, '$.displayName') as display_name,
+          json_extract(structured_json, '$.entityType') as entity_type,
+          json_extract(structured_json, '$.mentionCount') as mention_count,
+          created_at as first_seen_at, last_observed_at as last_seen_at
+        FROM memory_objects
+        WHERE kind = 'entity' AND id = ?
       `).get(idNum);
 
       if (!entity) return reply.status(404).send({ error: "Entity not found" });
 
-      // Get mention data from entity_mentions
-      const mentions = db.prepare(`
-        SELECT em.id, em.source_type, em.source_id, em.source_detail,
-               em.context_terms, em.actor, em.created_at
-        FROM entity_mentions em
-        WHERE em.entity_id = ?
-        ORDER BY em.created_at DESC LIMIT 50
-      `).all(idNum);
+      // Get mention data from provenance_links
+      const entityRow = db.prepare(
+        "SELECT composite_id FROM memory_objects WHERE id = ?",
+      ).get(idNum) as { composite_id: string } | undefined;
+      const mentions = entityRow ? db.prepare(`
+        SELECT pl.id, pl.object_id as source_ref, pl.detail as source_detail,
+               json_extract(pl.metadata, '$.context_terms') as context_terms,
+               json_extract(pl.metadata, '$.actor') as actor, pl.created_at
+        FROM provenance_links pl
+        WHERE pl.subject_id = ? AND pl.predicate = 'mentioned_in'
+        ORDER BY pl.created_at DESC LIMIT 50
+      `).all(entityRow.composite_id) : [];
 
       return { entity, mentions };
     } catch {

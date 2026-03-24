@@ -1644,7 +1644,7 @@ export class LcmContextEngine implements ContextEngine {
                     let newRawId = 0;
                     if (newCanonicalKey) {
                       const row = graphDb.prepare(
-                        "SELECT id FROM claims WHERE canonical_key = ? AND scope_id = 1 ORDER BY id DESC LIMIT 1",
+                        "SELECT id FROM memory_objects WHERE kind = 'claim' AND canonical_key = ? AND scope_id = 1 ORDER BY id DESC LIMIT 1",
                       ).get(newCanonicalKey) as { id: number } | undefined;
                       if (row) newRawId = row.id;
                     }
@@ -1656,15 +1656,15 @@ export class LcmContextEngine implements ContextEngine {
                     supersedeClaim(graphDb, oldRawId, newRawId);
                   } else if (oldKind === "decision" && !isNaN(oldRawId)) {
                     graphDb.prepare(
-                      "UPDATE decisions SET status = 'superseded', updated_at = strftime('%Y-%m-%dT%H:%M:%f', 'now') WHERE id = ?",
+                      "UPDATE memory_objects SET status = 'superseded', updated_at = strftime('%Y-%m-%dT%H:%M:%f', 'now') WHERE kind = 'decision' AND id = ?",
                     ).run(oldRawId);
                   } else if (oldKind === "loop" && !isNaN(oldRawId)) {
                     graphDb.prepare(
-                      "UPDATE open_loops SET status = 'closed', updated_at = strftime('%Y-%m-%dT%H:%M:%f', 'now') WHERE id = ?",
+                      "UPDATE memory_objects SET status = 'superseded', updated_at = strftime('%Y-%m-%dT%H:%M:%f', 'now') WHERE kind = 'loop' AND id = ?",
                     ).run(oldRawId);
                   } else if (oldKind === "invariant" && !isNaN(oldRawId)) {
                     graphDb.prepare(
-                      "UPDATE invariants SET status = 'retired', updated_at = strftime('%Y-%m-%dT%H:%M:%f', 'now') WHERE id = ?",
+                      "UPDATE memory_objects SET status = 'retracted', updated_at = strftime('%Y-%m-%dT%H:%M:%f', 'now') WHERE kind = 'invariant' AND id = ?",
                     ).run(oldRawId);
                   }
                 }
