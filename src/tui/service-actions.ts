@@ -84,7 +84,8 @@ export async function performServiceAction(
   options.onStatus?.("Launching model server...");
   const modelResult = startModelServer();
   if (!modelResult.success) {
-    return { success: false, message: modelResult.error ?? "Failed to launch model server" };
+    const msg = modelResult.error ?? "Failed to launch model server";
+    return { success: false, message: formatAccessDenied(msg) };
   }
 
   const modelWait = await waitForHealthWithLogs(getModelPort(), MODEL_WAIT_TIMEOUT, "models", root, "Waiting for model server...", options.onStatus);
@@ -103,7 +104,7 @@ export async function performServiceAction(
   if (!apiResult.success) {
     options.onStatus?.("API launch failed — cleaning up model server...");
     stopServices();
-    const msg = apiResult.error ?? "Failed to launch ThreadClaw API";
+    const msg = formatAccessDenied(apiResult.error ?? "Failed to launch ThreadClaw API");
     if (action === "restart") {
       return { success: false, message: `Services stopped but failed to restart: ${msg}. Run 'threadclaw start' to retry.` };
     }
@@ -191,4 +192,12 @@ async function waitForPortClosed(
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/** If the error looks like an access-denied from Task Scheduler, append a helpful hint. */
+function formatAccessDenied(msg: string): string {
+  if (/access/i.test(msg) && /denied/i.test(msg)) {
+    return `${msg}\nTask Scheduler access denied. Try: threadclaw serve (runs in foreground) or restart your terminal.`;
+  }
+  return msg;
 }

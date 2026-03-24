@@ -371,6 +371,31 @@ export function checkServices(): ServiceStatus {
     // Check via Task Scheduler
     result.models.running = isTaskRunning(TASK_MODELS);
     result.threadclaw.running = isTaskRunning(TASK_RAG);
+
+    // Also check PID files (fallback for direct-spawn mode)
+    const winRoot = getRootDir();
+    if (!result.models.running) {
+      try {
+        const pidPath = resolve(winRoot, ".models.pid");
+        if (existsSync(pidPath)) {
+          const pid = parseInt(readFileSync(pidPath, "utf-8").trim(), 10);
+          if (Number.isFinite(pid) && pid > 0) {
+            try { process.kill(pid, 0); result.models = { running: true, pid }; } catch {}
+          }
+        }
+      } catch {}
+    }
+    if (!result.threadclaw.running) {
+      try {
+        const pidPath = resolve(winRoot, ".threadclaw.pid");
+        if (existsSync(pidPath)) {
+          const pid = parseInt(readFileSync(pidPath, "utf-8").trim(), 10);
+          if (Number.isFinite(pid) && pid > 0) {
+            try { process.kill(pid, 0); result.threadclaw = { running: true, pid }; } catch {}
+          }
+        }
+      } catch {}
+    }
   } else {
     // Check systemd services (Linux)
     if (plat === "linux") {
@@ -523,11 +548,23 @@ export function startThreadClawApi(): { success: boolean; error?: string } {
   const root = getRootDir();
   const plat = getPlatform();
 
-  // Windows: Task Scheduler
+  // Windows: Task Scheduler first, then direct-spawn fallback
   if (plat === "windows") {
+    const entryArgs = findApiEntryArgs(root);
+    const logsDir = resolve(root, "logs");
+
     const tasks = ensureWindowsTasks(root);
-    if (!tasks.success) return { success: false, error: tasks.error };
-    return startTask(TASK_RAG);
+    if (tasks.success) {
+      const startResult = startTask(TASK_RAG);
+      if (startResult.success) return startResult;
+    }
+    // Fallback: direct spawn (detached, same as Unix path)
+    return startDirectProcess(process.execPath, entryArgs, {
+      cwd: root,
+      logFile: resolve(logsDir, "threadclaw.log"),
+      pidFile: ".threadclaw.pid",
+      root,
+    });
   }
 
   // Unix: detached spawn
