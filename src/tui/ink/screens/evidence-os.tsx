@@ -286,7 +286,6 @@ export function EvidenceOsScreen({ onBack }: { onBack: () => void }) {
         )}
         {error && <Text>{"  " + t.err(error)}</Text>}
         {status && <Text>{"  " + (status.startsWith("Failed") ? t.err(status) : t.ok(status))}</Text>}
-        {remainingAfterPage > 0 && entityPage === totalEntityPages - 1 ? null : null}
         <Separator />
         <Menu items={items} onSelect={(value) => {
           if (value === "__back__") return onBack();
