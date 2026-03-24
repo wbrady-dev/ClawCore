@@ -308,7 +308,7 @@ function eventTypeToEventType(type: string): EventType {
 }
 
 /** Reject junk claims that are message metadata, file paths, or low-quality noise. */
-function isJunkClaim(event: { subject?: string; predicate?: string; value?: string; content?: string; confidence?: number }): boolean {
+export function isJunkClaim(event: { subject?: string; predicate?: string; value?: string; content?: string; confidence?: number }): boolean {
   const subj = (event.subject ?? "").toLowerCase().trim();
   const pred = (event.predicate ?? "").toLowerCase().trim();
   const val = (event.value ?? "").toLowerCase().trim();

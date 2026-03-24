@@ -84,8 +84,9 @@ function rebuildEntityCache(
       mention_count: r.mention_count ?? 1,
     }));
     cacheBuiltAt = Date.now();
-  } catch {
+  } catch (err) {
     // Non-fatal — use stale cache
+    if (process.env.DEBUG) console.error('[awareness] Cache rebuild failed:', err instanceof Error ? err.message : String(err));
   }
   return entityCache;
 }
@@ -138,6 +139,7 @@ function extractKeyTerms(text: string, cache: EntityCacheEntry[]): EntityCacheEn
       const escaped = e.name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
       (e as EntityCacheEntryWithRegex)._regex = new RegExp(`\\b${escaped}\\b`);
     }
+    (e as EntityCacheEntryWithRegex)._regex!.lastIndex = 0;
     return (e as EntityCacheEntryWithRegex)._regex!.test(lowerText);
   });
 }
@@ -333,6 +335,7 @@ function withBudgetGuard<T>(fn: () => T[], budgetMs: number): T[] {
 function formatMismatch(note: MismatchNote): string {
   const diffA = note.termsA.filter((t) => !note.termsB.includes(t));
   const diffB = note.termsB.filter((t) => !note.termsA.includes(t));
+  if (diffA.length === 0 && diffB.length === 0) return "";
   return `Possible mismatch: "${note.entity}" — ${note.sourceA} mentions [${diffA.join(", ")}] but ${note.sourceB} mentions [${diffB.join(", ")}]`;
 }
 
@@ -399,6 +402,7 @@ export function buildAwarenessNote(
     for (const m of mismatches) {
       if (noteLines.length >= config.maxNotes) break;
       const line = formatMismatch(m);
+      if (!line) continue;
       const cost = estimateTokens(line);
       if (cost > tokenBudget) continue;
       noteLines.push(line);

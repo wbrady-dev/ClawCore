@@ -126,8 +126,8 @@ export async function understandMessage(
     ? SOURCE_TRUST[sourceKind] * PROVISIONAL_CONFIDENCE_FACTOR
     : SOURCE_TRUST[sourceKind];
 
-  // ── Step 1: Decision extraction ──
-  try {
+  // ── Step 1: Decision extraction (user messages only — assistant "decisions" are AI opinions) ──
+  if (role === "user") try {
     const { extractDecisionsFromText } = await import("../relations/claim-extract.js");
     const decisions = extractDecisionsFromText(text, sourceId);
     for (const d of decisions) {

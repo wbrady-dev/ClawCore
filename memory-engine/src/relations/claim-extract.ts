@@ -11,6 +11,7 @@
 import type { ClaimExtractionResult, EvidenceRole } from "./types.js";
 import { SOURCE_TRUST } from "./types.js";
 import { buildCanonicalKey } from "./claim-store.js";
+import { isJunkClaim as isJunkClaimSemantic } from "../ontology/semantic-extractor.js";
 
 // ---------------------------------------------------------------------------
 // Strategy 1: Tool results (trust 1.0)
@@ -701,8 +702,19 @@ export function extractClaimsFast(
     }
   }
 
-  // Filter out sensitive claims (passwords, keys, secrets) and meta claims (identity, tool lists)
-  const safe = Array.from(deduped.values()).filter((r) => !isSensitiveClaim(r) && !isMetaClaim(r));
+  // Filter out sensitive claims (passwords, keys, secrets), meta claims (identity, tool lists),
+  // and junk claims (message metadata, file paths, URLs) matching Smart mode filters
+  const safe = Array.from(deduped.values()).filter((r) => {
+    if (isSensitiveClaim(r) || isMetaClaim(r)) return false;
+    // Apply the same junk filters used in Smart mode (semantic-extractor)
+    if (isJunkClaimSemantic({
+      subject: r.claim.subject,
+      predicate: r.claim.predicate,
+      value: r.claim.objectText,
+      confidence: r.claim.confidence,
+    })) return false;
+    return true;
+  });
 
   return safe;
 }
