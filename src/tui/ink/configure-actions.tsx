@@ -110,7 +110,46 @@ const AWARENESS_TUNING_FIELDS: FieldDef[] = [
   { key: "THREADCLAW_MEMORY_RELATIONS_AWARENESS_DOC_SURFACING", label: "Doc Surfacing", fallback: "false", message: "Surface relevant docs as fallback", type: "string" },
 ];
 
-const SUMMARY_MODEL_FIELDS: FieldDef[] = [  { key: "THREADCLAW_MEMORY_SUMMARY_PROVIDER", label: "Summary Provider", fallback: "", message: "LLM provider for memory compaction (openai, anthropic, ollama, lmstudio)", type: "string" },  { key: "THREADCLAW_MEMORY_SUMMARY_MODEL", label: "Summary Model", fallback: "", message: "Model for memory summaries", type: "string" },  { key: "THREADCLAW_MEMORY_LARGE_FILE_SUMMARY_PROVIDER", label: "Large File Summary Provider", fallback: "", message: "Provider for large file summaries", type: "string" },  { key: "THREADCLAW_MEMORY_LARGE_FILE_SUMMARY_MODEL", label: "Large File Summary Model", fallback: "", message: "Model for large file summaries", type: "string" },];const QUERY_TUNING_FIELDS: FieldDef[] = [  { key: "QUERY_EXPANSION_TEMPERATURE", label: "Expansion Temperature", fallback: "0.3", message: "LLM temperature for query expansion", type: "number" },  { key: "QUERY_EXPANSION_MAX_TOKENS", label: "Expansion Max Tokens", fallback: "512", message: "Max tokens for expanded queries", type: "number" },  { key: "QUERY_EXPANSION_TIMEOUT_MS", label: "Expansion Timeout", fallback: "15000", message: "Timeout for expansion LLM call (ms)", type: "number" },  { key: "HYBRID_VECTOR_WEIGHT", label: "Hybrid Vector Weight", fallback: "1.0", message: "Weight for semantic search in hybrid mode", type: "number" },  { key: "HYBRID_BM25_WEIGHT", label: "Hybrid BM25 Weight", fallback: "1.0", message: "Weight for keyword search in hybrid mode", type: "number" },  { key: "QUERY_CACHE_MAX_ENTRIES", label: "Cache Max Entries", fallback: "50", message: "Max cached query results", type: "number" },  { key: "QUERY_CACHE_TTL_MS", label: "Cache TTL", fallback: "300000", message: "Cache entry lifetime (ms)", type: "number" },  { key: "QUERY_RETRIEVE_MULTIPLIER", label: "Retrieve Multiplier", fallback: "2", message: "Over-retrieve factor before reranking", type: "number" },];const INGESTION_TUNING_FIELDS: FieldDef[] = [  { key: "CHUNK_OVERLAP_RATIO", label: "Chunk Overlap Ratio", fallback: "0.2", message: "Chunk overlap as fraction of target", type: "number" },  { key: "DEDUP_SIMILARITY_THRESHOLD", label: "Dedup Threshold", fallback: "0.95", message: "Cosine similarity for dedup", type: "number" },  { key: "OCR_LANGUAGE", label: "OCR Language", fallback: "eng", message: "Tesseract OCR language code", type: "string" },  { key: "INGEST_MAX_FILE_SIZE_MB", label: "Max File Size (MB)", fallback: "100", message: "Max file size to ingest (MB)", type: "number" },  { key: "EMBEDDING_MAX_CONCURRENT", label: "Embedding Concurrency", fallback: "2", message: "Concurrent embedding requests", type: "number" },  { key: "EMBEDDING_TIMEOUT_MS", label: "Embedding Timeout", fallback: "30000", message: "Embedding API timeout (ms)", type: "number" },];export async function configureSummaryModel(): Promise<void> {  await configureFieldGroup("Summary Model", SUMMARY_MODEL_FIELDS);  await showNotice("Summary Model", "Summary model configured. Changes take effect on next compaction cycle.");}export async function configureQueryTuning(): Promise<void> {  await configureFieldGroup("Query Tuning", QUERY_TUNING_FIELDS);}export async function configureIngestionTuning(): Promise<void> {  await configureFieldGroup("Ingestion Tuning", INGESTION_TUNING_FIELDS);}
+const SUMMARY_MODEL_FIELDS: FieldDef[] = [
+  { key: "THREADCLAW_MEMORY_SUMMARY_PROVIDER", label: "Summary Provider", fallback: "", message: "LLM provider for memory compaction (openai, anthropic, ollama, lmstudio)", type: "string" },
+  { key: "THREADCLAW_MEMORY_SUMMARY_MODEL", label: "Summary Model", fallback: "", message: "Model for memory summaries", type: "string" },
+  { key: "THREADCLAW_MEMORY_LARGE_FILE_SUMMARY_PROVIDER", label: "Large File Summary Provider", fallback: "", message: "Provider for large file summaries", type: "string" },
+  { key: "THREADCLAW_MEMORY_LARGE_FILE_SUMMARY_MODEL", label: "Large File Summary Model", fallback: "", message: "Model for large file summaries", type: "string" },
+];
+
+const QUERY_TUNING_FIELDS: FieldDef[] = [
+  { key: "QUERY_EXPANSION_TEMPERATURE", label: "Expansion Temperature", fallback: "0.3", message: "LLM temperature for query expansion", type: "number" },
+  { key: "QUERY_EXPANSION_MAX_TOKENS", label: "Expansion Max Tokens", fallback: "512", message: "Max tokens for expanded queries", type: "number" },
+  { key: "QUERY_EXPANSION_TIMEOUT_MS", label: "Expansion Timeout", fallback: "15000", message: "Timeout for expansion LLM call (ms)", type: "number" },
+  { key: "HYBRID_VECTOR_WEIGHT", label: "Hybrid Vector Weight", fallback: "1.0", message: "Weight for semantic search in hybrid mode", type: "number" },
+  { key: "HYBRID_BM25_WEIGHT", label: "Hybrid BM25 Weight", fallback: "1.0", message: "Weight for keyword search in hybrid mode", type: "number" },
+  { key: "QUERY_CACHE_MAX_ENTRIES", label: "Cache Max Entries", fallback: "50", message: "Max cached query results", type: "number" },
+  { key: "QUERY_CACHE_TTL_MS", label: "Cache TTL", fallback: "300000", message: "Cache entry lifetime (ms)", type: "number" },
+  { key: "QUERY_RETRIEVE_MULTIPLIER", label: "Retrieve Multiplier", fallback: "2", message: "Over-retrieve factor before reranking", type: "number" },
+];
+
+const INGESTION_TUNING_FIELDS: FieldDef[] = [
+  { key: "CHUNK_OVERLAP_RATIO", label: "Chunk Overlap Ratio", fallback: "0.2", message: "Chunk overlap as fraction of target", type: "number" },
+  { key: "DEDUP_SIMILARITY_THRESHOLD", label: "Dedup Threshold", fallback: "0.95", message: "Cosine similarity for dedup", type: "number" },
+  { key: "OCR_LANGUAGE", label: "OCR Language", fallback: "eng", message: "Tesseract OCR language code", type: "string" },
+  { key: "INGEST_MAX_FILE_SIZE_MB", label: "Max File Size (MB)", fallback: "100", message: "Max file size to ingest (MB)", type: "number" },
+  { key: "EMBEDDING_MAX_CONCURRENT", label: "Embedding Concurrency", fallback: "2", message: "Concurrent embedding requests", type: "number" },
+  { key: "EMBEDDING_TIMEOUT_MS", label: "Embedding Timeout", fallback: "30000", message: "Embedding API timeout (ms)", type: "number" },
+];
+
+export async function configureSummaryModel(): Promise<void> {
+  await configureFieldGroup("Summary Model", SUMMARY_MODEL_FIELDS);
+  await showNotice("Summary Model", "Summary model configured. Changes take effect on next compaction cycle.");
+}
+
+export async function configureQueryTuning(): Promise<void> {
+  await configureFieldGroup("Query Tuning", QUERY_TUNING_FIELDS);
+}
+
+export async function configureIngestionTuning(): Promise<void> {
+  await configureFieldGroup("Ingestion Tuning", INGESTION_TUNING_FIELDS);
+}
+
 export async function runInkConfigureAction(action: ConfigureAction): Promise<void> {
   if (action === "embed") await configureModel("embed");
   else if (action === "rerank") await configureModel("rerank");

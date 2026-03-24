@@ -56,7 +56,13 @@ export type ConfigureAction =
   | "ner"
   | "evidence"
   | "watch"
-  | "general";
+  | "general"
+  | "summary-model"
+  | "query-tuning"
+  | "ingestion-tuning"
+  | "embedding-tuning"
+  | "watch-tuning"
+  | "rate-limiting";
 
 export async function runConfigure(): Promise<void> {
   const root = getRootDir();

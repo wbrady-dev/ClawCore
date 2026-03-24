@@ -44,6 +44,9 @@ export function ConfigureScreen({
     { label: "NER (Entity Extraction)", value: "configure-ner", description: "spaCy model for named entity recognition" },
     { label: "Evidence OS", value: "configure-evidence", description: "Relations, awareness, claims, deep extraction" },
     { label: "Watch paths", value: "configure-watch", description: "Auto-ingest folders and collections" },
+    { label: "Embedding tuning", value: "configure-embedding-tuning", description: "API key, retries, circuit cooldown, cache" },
+    { label: "Watch tuning", value: "configure-watch-tuning", description: "Exclude patterns, concurrency, queue limits" },
+    { label: "Rate limiting", value: "configure-rate-limiting", description: "Enable/disable, max requests, window" },
     { label: "Ports & defaults", value: "configure-general", description: "Ports, collection, data path" },
     { label: "Back", value: "__back__", color: t.dim },
   ];
