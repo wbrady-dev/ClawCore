@@ -1,7 +1,7 @@
 import { Command } from "commander";
 import { resolve } from "path";
 import { existsSync, statSync } from "fs";
-import chalk from "chalk";
+import { t } from "../../tui/theme.js";
 import { config } from "../../config.js";
 import { getInitializedDb, listCollections } from "../../storage/index.js";
 import { getCollectionStats } from "../../storage/collections.js";
@@ -13,7 +13,7 @@ import { getApiPort, getModelPort } from "../../tui/platform.js";
 export const statusCommand = new Command("status")
   .description("Show ThreadClaw system status")
   .action(async () => {
-    console.log(chalk.bold("\nThreadClaw RAG System Status\n"));
+    console.log(t.brand("\nThreadClaw RAG System Status\n"));
 
     // Service liveness checks
     const apiPort = getApiPort();
@@ -25,13 +25,13 @@ export const statusCommand = new Command("status")
 
     console.log(
       modelsUp
-        ? chalk.green(`  Models:  RUNNING`) + chalk.dim(` on port ${modelPort}`)
-        : chalk.red(`  Models:  STOPPED`),
+        ? t.ok(`  Models:  RUNNING`) + t.dim(` on port ${modelPort}`)
+        : t.err(`  Models:  STOPPED`),
     );
     console.log(
       apiUp
-        ? chalk.green(`  API:     RUNNING`) + chalk.dim(` on port ${apiPort}`)
-        : chalk.red(`  API:     STOPPED`),
+        ? t.ok(`  API:     RUNNING`) + t.dim(` on port ${apiPort}`)
+        : t.err(`  API:     STOPPED`),
     );
     console.log("");
 

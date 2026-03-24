@@ -15,7 +15,7 @@ import { existsSync, readFileSync, writeFileSync, copyFileSync, mkdirSync, unlin
 import { resolve, dirname } from "path";
 import { homedir } from "os";
 import { fileURLToPath } from "url";
-import chalk from "chalk";
+import { t } from "../../tui/theme.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -27,10 +27,10 @@ import {
 import { applyOpenClawIntegration, computeIntegrationHash, findOpenClawConfigPath } from "../../integration.js";
 import { syncSkills } from "../../skills.js";
 
-const ok = (msg: string) => console.log(`  ${chalk.green("✓")} ${msg}`);
-const warn = (msg: string) => console.log(`  ${chalk.yellow("⚠")} ${msg}`);
-const err = (msg: string) => console.log(`  ${chalk.red("✗")} ${msg}`);
-const info = (msg: string) => console.log(`  ${chalk.dim("·")} ${msg}`);
+const ok = (msg: string) => console.log(`  ${t.ok("✓")} ${msg}`);
+const warn = (msg: string) => console.log(`  ${t.warn("⚠")} ${msg}`);
+const err = (msg: string) => console.log(`  ${t.err("✗")} ${msg}`);
+const info = (msg: string) => console.log(`  ${t.dim("·")} ${msg}`);
 
 // ── Lock file ──
 
@@ -218,12 +218,12 @@ export const upgradeCommand = new Command("upgrade")
     const backupDir = resolve(THREADCLAW_BACKUPS_DIR, backupDirName);
 
     console.log("");
-    console.log(chalk.bold("ThreadClaw Upgrade"));
-    if (isDryRun) console.log(chalk.yellow("  (dry run — no changes will be made)"));
+    console.log(t.brand("ThreadClaw Upgrade"));
+    if (isDryRun) console.log(t.warn("  (dry run — no changes will be made)"));
     console.log("");
 
     // ── Pre-flight ──
-    console.log(chalk.dim("── Pre-flight ──"));
+    console.log(t.dim("── Pre-flight ──"));
     info(`Current version: ${manifest.appVersion || "(none)"} → Target: ${appVersion}`);
     info(`Evidence schema: v${manifest.evidenceSchemaVersion}`);
     info(`RAG schema: v${manifest.schemaVersion}`);
@@ -249,7 +249,7 @@ export const upgradeCommand = new Command("upgrade")
 
       // ── Step 1: Backup ──
       console.log("");
-      console.log(chalk.dim("── Step 1: Backup ──"));
+      console.log(t.dim("── Step 1: Backup ──"));
       if (!isDryRun) mkdirSync(backupDir, { recursive: true });
 
       const backedUpFiles: string[] = [];
@@ -305,14 +305,14 @@ export const upgradeCommand = new Command("upgrade")
         } else {
           err("Backup validation failed — aborting upgrade");
           releaseLock();
-          console.log(chalk.dim(`  Backup dir: ${backupDir}`));
+          console.log(t.dim(`  Backup dir: ${backupDir}`));
           process.exit(1);
         }
       }
 
       // ── Step 2: Data Migration ──
       console.log("");
-      console.log(chalk.dim("── Step 2: Data Migration ──"));
+      console.log(t.dim("── Step 2: Data Migration ──"));
 
       if (!isDryRun) mkdirSync(THREADCLAW_DATA_DIR, { recursive: true });
 
@@ -375,7 +375,7 @@ export const upgradeCommand = new Command("upgrade")
 
       // ── Step 3: Schema Migration (idempotent) ──
       console.log("");
-      console.log(chalk.dim("── Step 3: Schema Migration ──"));
+      console.log(t.dim("── Step 3: Schema Migration ──"));
 
       const ragDbPath = existsSync(resolve(THREADCLAW_DATA_DIR, "threadclaw.db"))
         ? resolve(THREADCLAW_DATA_DIR, "threadclaw.db")
@@ -460,7 +460,7 @@ export const upgradeCommand = new Command("upgrade")
 
       // ── Step 4: Integration ──
       console.log("");
-      console.log(chalk.dim("── Step 4: Integration ──"));
+      console.log(t.dim("── Step 4: Integration ──"));
 
       const memoryEnginePath = resolve(rootDir, "memory-engine");
       if (isDryRun) {
@@ -476,7 +476,7 @@ export const upgradeCommand = new Command("upgrade")
 
       // ── Step 4b: Python Venv + Dependencies ──
       console.log("");
-      console.log(chalk.dim("── Step 4b: Python Environment ──"));
+      console.log(t.dim("── Step 4b: Python Environment ──"));
 
       const { getPythonCmd, getSystemPythonCmd, getPlatform } = await import("../../tui/platform.js");
       const venvDir = resolve(rootDir, ".venv");
@@ -529,7 +529,7 @@ export const upgradeCommand = new Command("upgrade")
 
       // ── Step 5: Skill Sync (3-way merge) ──
       console.log("");
-      console.log(chalk.dim("── Step 5: Skill Sync ──"));
+      console.log(t.dim("── Step 5: Skill Sync ──"));
 
       let workspaceDir = resolve(homedir(), ".openclaw", "workspace");
       try {
@@ -558,7 +558,7 @@ export const upgradeCommand = new Command("upgrade")
 
       // ── Step 6: Post-upgrade smoke test ──
       console.log("");
-      console.log(chalk.dim("── Step 6: Validate ──"));
+      console.log(t.dim("── Step 6: Validate ──"));
 
       if (!isDryRun) {
         const smoke = await postUpgradeSmoke();
@@ -571,8 +571,8 @@ export const upgradeCommand = new Command("upgrade")
         if (!smoke.ok) {
           console.log("");
           err("Post-upgrade validation failed.");
-          console.log(chalk.dim("  Manifest NOT updated. Old version remains active."));
-          console.log(chalk.dim(`  Restore from backup: ${backupDir}`));
+          console.log(t.dim("  Manifest NOT updated. Old version remains active."));
+          console.log(t.dim(`  Restore from backup: ${backupDir}`));
           releaseLock();
           process.exit(1);
         }
@@ -582,7 +582,7 @@ export const upgradeCommand = new Command("upgrade")
 
       // ── Step 7: Write Manifest (LAST — only after everything succeeds) ──
       console.log("");
-      console.log(chalk.dim("── Step 7: Finalize ──"));
+      console.log(t.dim("── Step 7: Finalize ──"));
 
       let integrationHash = "";
       if (ocConfigPath && existsSync(ocConfigPath)) {
@@ -617,20 +617,20 @@ export const upgradeCommand = new Command("upgrade")
 
       // ── Summary ──
       console.log("");
-      console.log(chalk.dim("───────────────────────────────────────"));
+      console.log(t.dim("───────────────────────────────────────"));
       if (isDryRun) {
-        console.log(chalk.yellow("  Dry run complete — no changes made."));
-        console.log(chalk.dim("  Run without --dry-run to apply."));
+        console.log(t.warn("  Dry run complete — no changes made."));
+        console.log(t.dim("  Run without --dry-run to apply."));
       } else {
         // Clean old backups (keep last 10)
         const removed = cleanOldBackups();
         if (removed > 0) info(`Cleaned ${removed} old backup(s) (keeping last ${MAX_BACKUPS})`);
 
-        console.log(chalk.green(`  Upgrade complete (${manifest.appVersion || "fresh"} → ${appVersion})`));
-        console.log(chalk.dim("  Restart services: threadclaw (then select Start)"));
-        console.log(chalk.dim(`  Backup saved to: ${backupDir}`));
+        console.log(t.ok(`  Upgrade complete (${manifest.appVersion || "fresh"} → ${appVersion})`));
+        console.log(t.dim("  Restart services: threadclaw (then select Start)"));
+        console.log(t.dim(`  Backup saved to: ${backupDir}`));
       }
-      console.log(chalk.dim("───────────────────────────────────────"));
+      console.log(t.dim("───────────────────────────────────────"));
       console.log("");
 
     } finally {

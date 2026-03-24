@@ -47,6 +47,9 @@ export function ConfigureScreen({
     { label: "Embedding tuning", value: "configure-embedding-tuning", description: "API key, retries, circuit cooldown, cache" },
     { label: "Watch tuning", value: "configure-watch-tuning", description: "Exclude patterns, concurrency, queue limits" },
     { label: "Rate limiting", value: "configure-rate-limiting", description: "Enable/disable, max requests, window" },
+    { label: "Summary Model", value: "configure-summary-model", description: "LLM provider and model for memory compaction" },
+    { label: "Query Tuning", value: "configure-query-tuning", description: "Expansion, hybrid weights, cache, retrieval" },
+    { label: "Ingestion Tuning", value: "configure-ingestion-tuning", description: "Overlap, dedup, OCR, file size, embedding concurrency" },
     { label: "Ports & defaults", value: "configure-general", description: "Ports, collection, data path" },
     { label: "Back", value: "__back__", color: t.dim },
   ];

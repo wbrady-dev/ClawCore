@@ -1,11 +1,11 @@
 import { Command } from "commander";
-import chalk from "chalk";
+import { t } from "../../tui/theme.js";
 import { performServiceAction } from "../../tui/service-actions.js";
 
 export const startCommand = new Command("start")
   .description("Start ThreadClaw services in the background")
   .action(async () => {
-    console.log(chalk.bold("\n  THREADCLAW START\n"));
+    console.log(t.brand("\n  THREADCLAW START\n"));
     try {
       const result = await performServiceAction("start", {
         onStatus: (status) => {
@@ -13,12 +13,12 @@ export const startCommand = new Command("start")
         },
       });
       if (!result.success) {
-        console.error(chalk.red(`\n  Failed to start: ${result.message}\n`));
+        console.error(t.err(`\n  Failed to start: ${result.message}\n`));
         process.exit(1);
       }
-      console.log(chalk.green("\n  Services started successfully.\n"));
+      console.log(t.ok("\n  Services started successfully.\n"));
     } catch (err: any) {
-      console.error(chalk.red(`\n  Failed to start: ${err.message}\n`));
+      console.error(t.err(`\n  Failed to start: ${err.message}\n`));
       process.exit(1);
     }
   });

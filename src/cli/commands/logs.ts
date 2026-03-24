@@ -1,15 +1,15 @@
 import { Command } from "commander";
 import { watchFile, unwatchFile } from "fs";
-import chalk from "chalk";
+import { t } from "../../tui/theme.js";
 import { readServiceLogTail, getServiceLogPath, type ServiceLogName } from "../../tui/service-logs.js";
 
 function colorLine(line: string): string {
   const lower = line.toLowerCase();
   if (lower.includes("error") || lower.includes("traceback") || lower.includes("exception")) {
-    return chalk.red(line);
+    return t.err(line);
   }
   if (lower.includes("warn")) {
-    return chalk.yellow(line);
+    return t.warn(line);
   }
   return line;
 }
@@ -32,16 +32,16 @@ export const logsCommand = new Command("logs")
     const showModels = !serviceFilter || serviceFilter === "models";
     const showApi = !serviceFilter || serviceFilter === "api" || serviceFilter === "threadclaw";
 
-    console.log(chalk.bold("\n  THREADCLAW LOGS\n"));
+    console.log(t.brand("\n  THREADCLAW LOGS\n"));
 
     // Show tail of each log
     if (showModels) {
       const lines = readServiceLogTail("models", lineCount);
       if (lines.length > 0) {
-        console.log(chalk.magenta("  ── models ──"));
-        printLogLines(lines, chalk.magenta("[models]"));
+        console.log(t.tag("  ── models ──"));
+        printLogLines(lines, t.tag("[models]"));
       } else {
-        console.log(chalk.dim("  No model server logs found."));
+        console.log(t.dim("  No model server logs found."));
       }
       console.log("");
     }
@@ -49,17 +49,17 @@ export const logsCommand = new Command("logs")
     if (showApi) {
       const lines = readServiceLogTail("threadclaw", lineCount);
       if (lines.length > 0) {
-        console.log(chalk.green("  ── api ──"));
-        printLogLines(lines, chalk.green("[api]   "));
+        console.log(t.ok("  ── api ──"));
+        printLogLines(lines, t.ok("[api]   "));
       } else {
-        console.log(chalk.dim("  No API logs found."));
+        console.log(t.dim("  No API logs found."));
       }
       console.log("");
     }
 
     // Follow mode
     if (opts.follow) {
-      console.log(chalk.dim("  Following logs... Press Ctrl+C to stop.\n"));
+      console.log(t.dim("  Following logs... Press Ctrl+C to stop.\n"));
 
       const trackers = new Map<ServiceLogName, string[]>();
 
@@ -80,8 +80,8 @@ export const logsCommand = new Command("logs")
         });
       }
 
-      setupWatcher("models", chalk.magenta("[models]"), showModels);
-      setupWatcher("threadclaw", chalk.green("[api]   "), showApi);
+      setupWatcher("models", t.tag("[models]"), showModels);
+      setupWatcher("threadclaw", t.ok("[api]   "), showApi);
 
       // Keep alive until Ctrl+C
       process.on("SIGINT", () => {

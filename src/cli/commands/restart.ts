@@ -1,11 +1,11 @@
 import { Command } from "commander";
-import chalk from "chalk";
+import { t } from "../../tui/theme.js";
 import { performServiceAction } from "../../tui/service-actions.js";
 
 export const restartCommand = new Command("restart")
   .description("Restart ThreadClaw services")
   .action(async () => {
-    console.log(chalk.bold("\n  THREADCLAW RESTART\n"));
+    console.log(t.brand("\n  THREADCLAW RESTART\n"));
     try {
       const result = await performServiceAction("restart", {
         onStatus: (status) => {
@@ -13,12 +13,12 @@ export const restartCommand = new Command("restart")
         },
       });
       if (!result.success) {
-        console.error(chalk.red(`\n  Failed to restart: ${result.message}\n`));
+        console.error(t.err(`\n  Failed to restart: ${result.message}\n`));
         process.exit(1);
       }
-      console.log(chalk.green("\n  Services restarted successfully.\n"));
+      console.log(t.ok("\n  Services restarted successfully.\n"));
     } catch (err: any) {
-      console.error(chalk.red(`\n  Failed to restart: ${err.message}\n`));
+      console.error(t.err(`\n  Failed to restart: ${err.message}\n`));
       process.exit(1);
     }
   });
