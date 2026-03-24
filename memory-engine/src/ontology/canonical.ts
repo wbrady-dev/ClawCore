@@ -46,6 +46,11 @@ interface StructuredInvariant {
   key?: string;
 }
 
+interface StructuredCapability {
+  capabilityType?: string;
+  capabilityKey?: string;
+}
+
 /**
  * Build a canonical key for a MemoryObject based on its kind.
  *
@@ -68,11 +73,11 @@ export function buildCanonicalKey(
     }
 
     case "decision": {
-      // decision::topic (normalized, first 60 chars)
+      // decision::hash(topic) — hash avoids collisions from truncation
       const s = structured as StructuredDecision | undefined;
       const topic = normalize(s?.topic);
       if (!topic) return undefined;
-      return `decision::${topic.substring(0, 60)}`;
+      return `decision::${hashPrefix(topic, 200)}`;
     }
 
     case "entity": {
@@ -103,6 +108,15 @@ export function buildCanonicalKey(
       const key = normalize(s?.key);
       if (!key) return undefined;
       return `inv::${key}`;
+    }
+
+    case "capability": {
+      // capability::type::key
+      const s = structured as StructuredCapability | undefined;
+      const capType = normalize(s?.capabilityType);
+      const capKey = normalize(s?.capabilityKey);
+      if (!capType || !capKey) return undefined;
+      return `capability::${capType}::${capKey}`;
     }
 
     case "conflict": {

@@ -1371,6 +1371,198 @@ export function runGraphMigrations(db: GraphDb, dbPath?: string): void {
     markMigrationApplied(db, 22);
   }
 
+  // Migration v23: Migrate capabilities and state_deltas from legacy tables
+  // These were missed in v17 — without this migration, data is lost when v18/v19 rename/drop legacy tables
+  if (!isMigrationApplied(db, 23)) {
+    // ── Capabilities → memory_objects (kind='capability') ──
+    try {
+      db.exec(`
+        INSERT OR IGNORE INTO memory_objects (
+          composite_id, kind, canonical_key, content, structured_json,
+          scope_id, branch_id, status, confidence, trust_score,
+          influence_weight, source_kind, source_id, source_detail, source_authority,
+          first_observed_at, last_observed_at, observed_at,
+          created_at, updated_at
+        )
+        SELECT
+          'capability:' || id,
+          'capability',
+          'capability::' || LOWER(TRIM(capability_type)) || '::' || LOWER(TRIM(capability_key)),
+          COALESCE(display_name, capability_key) || ' (' || capability_type || '): ' || COALESCE(summary, ''),
+          json_object(
+            'capabilityType', capability_type,
+            'capabilityKey', capability_key,
+            'displayName', display_name,
+            'status', status,
+            'summary', summary,
+            'metadata', metadata_json
+          ),
+          scope_id,
+          0,
+          CASE status
+            WHEN 'available' THEN 'active'
+            WHEN 'unavailable' THEN 'stale'
+            WHEN 'deprecated' THEN 'superseded'
+            ELSE 'active'
+          END,
+          1.0,
+          1.0,
+          'standard',
+          'extraction',
+          CAST(id AS TEXT),
+          NULL,
+          1.0,
+          last_checked_at,
+          last_checked_at,
+          last_checked_at,
+          last_checked_at,
+          last_checked_at
+        FROM _legacy_capabilities
+      `);
+    } catch {
+      // _legacy_capabilities may not exist (fresh install or already dropped)
+      try {
+        db.exec(`
+          INSERT OR IGNORE INTO memory_objects (
+            composite_id, kind, canonical_key, content, structured_json,
+            scope_id, branch_id, status, confidence, trust_score,
+            influence_weight, source_kind, source_id, source_detail, source_authority,
+            first_observed_at, last_observed_at, observed_at,
+            created_at, updated_at
+          )
+          SELECT
+            'capability:' || id,
+            'capability',
+            'capability::' || LOWER(TRIM(capability_type)) || '::' || LOWER(TRIM(capability_key)),
+            COALESCE(display_name, capability_key) || ' (' || capability_type || '): ' || COALESCE(summary, ''),
+            json_object(
+              'capabilityType', capability_type,
+              'capabilityKey', capability_key,
+              'displayName', display_name,
+              'status', status,
+              'summary', summary,
+              'metadata', metadata_json
+            ),
+            scope_id,
+            0,
+            CASE status
+              WHEN 'available' THEN 'active'
+              WHEN 'unavailable' THEN 'stale'
+              WHEN 'deprecated' THEN 'superseded'
+              ELSE 'active'
+            END,
+            1.0,
+            1.0,
+            'standard',
+            'extraction',
+            CAST(id AS TEXT),
+            NULL,
+            1.0,
+            last_checked_at,
+            last_checked_at,
+            last_checked_at,
+            last_checked_at,
+            last_checked_at
+          FROM capabilities
+        `);
+      } catch {
+        // capabilities table also doesn't exist — nothing to migrate
+      }
+    }
+
+    // ── State Deltas → memory_objects (kind='delta') ──
+    try {
+      db.exec(`
+        INSERT OR IGNORE INTO memory_objects (
+          composite_id, kind, canonical_key, content, structured_json,
+          scope_id, branch_id, status, confidence, trust_score,
+          influence_weight, source_kind, source_id, source_detail, source_authority,
+          first_observed_at, last_observed_at, observed_at,
+          created_at, updated_at
+        )
+        SELECT
+          'delta:' || id,
+          'delta',
+          NULL,
+          COALESCE(entity_key, '(unknown)') || '.' || COALESCE(delta_type, 'change') ||
+            ': ' || COALESCE(old_value, '(none)') || ' → ' || COALESCE(new_value, '(none)'),
+          json_object(
+            'deltaType', delta_type,
+            'entityKey', entity_key,
+            'summary', summary,
+            'oldValue', old_value,
+            'newValue', new_value
+          ),
+          scope_id,
+          branch_id,
+          'active',
+          COALESCE(confidence, 1.0),
+          1.0,
+          'standard',
+          COALESCE(source_type, 'extraction'),
+          COALESCE(source_id, CAST(id AS TEXT)),
+          source_detail,
+          1.0,
+          created_at,
+          created_at,
+          created_at,
+          created_at,
+          created_at
+        FROM _legacy_state_deltas
+      `);
+    } catch {
+      // _legacy_state_deltas may not exist
+      try {
+        db.exec(`
+          INSERT OR IGNORE INTO memory_objects (
+            composite_id, kind, canonical_key, content, structured_json,
+            scope_id, branch_id, status, confidence, trust_score,
+            influence_weight, source_kind, source_id, source_detail, source_authority,
+            first_observed_at, last_observed_at, observed_at,
+            created_at, updated_at
+          )
+          SELECT
+            'delta:' || id,
+            'delta',
+            NULL,
+            COALESCE(entity_key, '(unknown)') || '.' || COALESCE(delta_type, 'change') ||
+              ': ' || COALESCE(old_value, '(none)') || ' → ' || COALESCE(new_value, '(none)'),
+            json_object(
+              'deltaType', delta_type,
+              'entityKey', entity_key,
+              'summary', summary,
+              'oldValue', old_value,
+              'newValue', new_value
+            ),
+            scope_id,
+            branch_id,
+            'active',
+            COALESCE(confidence, 1.0),
+            1.0,
+            'standard',
+            COALESCE(source_type, 'extraction'),
+            COALESCE(source_id, CAST(id AS TEXT)),
+            source_detail,
+            1.0,
+            created_at,
+            created_at,
+            created_at,
+            created_at,
+            created_at
+          FROM state_deltas
+        `);
+      } catch {
+        // state_deltas table also doesn't exist — nothing to migrate
+      }
+    }
+
+    // Also rename the legacy tables if they weren't already renamed in v18
+    try { db.exec("ALTER TABLE capabilities RENAME TO _legacy_capabilities"); } catch { /* already renamed or missing */ }
+    try { db.exec("ALTER TABLE state_deltas RENAME TO _legacy_state_deltas"); } catch { /* already renamed or missing */ }
+
+    markMigrationApplied(db, 23);
+  }
+
   // File permissions: chmod 600 on Unix/macOS, skip on Windows
   if (dbPath && process.platform !== "win32") {
     try {
