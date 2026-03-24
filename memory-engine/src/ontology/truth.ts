@@ -192,8 +192,10 @@ function valuesContradict(
   // e.g. "port 8080" vs "port 8080 (verified)" — not a contradiction
   if (a.includes(b) || b.includes(a)) return false;
   // Jaccard word similarity: high overlap = refinement, not contradiction
-  const wordsA = new Set(a.split(/\s+/).filter((w) => w.length > 1));
-  const wordsB = new Set(b.split(/\s+/).filter((w) => w.length > 1));
+  // Strip punctuation first so "8080," and "8080" produce the same word
+  const clean = (s: string) => s.replace(/[^\w\s]/g, " ").toLowerCase();
+  const wordsA = new Set(clean(a).split(/\s+/).filter((w) => w.length > 1));
+  const wordsB = new Set(clean(b).split(/\s+/).filter((w) => w.length > 1));
   if (wordsA.size > 0 && wordsB.size > 0) {
     const intersection = [...wordsA].filter((w) => wordsB.has(w)).length;
     const union = new Set([...wordsA, ...wordsB]).size;

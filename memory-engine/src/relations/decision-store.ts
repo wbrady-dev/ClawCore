@@ -21,14 +21,6 @@ export function upsertDecision(db: GraphDb, input: UpsertDecisionInput): UpsertD
   const topic = input.topic.toLowerCase().trim().replace(/\s+/g, " ");
   const canonicalKey = `decision::${topic}`;
 
-  // Check for existing active decision on same topic
-  const existing = db.prepare(`
-    SELECT id, composite_id FROM memory_objects
-    WHERE scope_id = ? AND branch_id = ? AND canonical_key = ? AND kind = 'decision' AND status = 'active'
-    ORDER BY updated_at DESC LIMIT 1
-  `).get(input.scopeId, branchId, canonicalKey) as { id: number; composite_id: string } | undefined;
-
-  // Build a unique composite_id for the new decision
   const now = new Date().toISOString();
   const compositeId = `decision:${input.scopeId}:${branchId}:${Date.now()}:${Math.random().toString(36).slice(2, 8)}:${canonicalKey}`;
 
@@ -59,12 +51,11 @@ export function upsertDecision(db: GraphDb, input: UpsertDecisionInput): UpsertD
     updated_at: now,
   };
 
-  const result = upsertMemoryObject(db, mo, { skipCanonicalDedup: true });
-
-  // Auto-supersede the old decision if one existed
-  if (existing) {
-    supersedeMemoryObject(db, existing.composite_id, compositeId);
-  }
+  // Let upsertMemoryObject handle canonical dedup — TruthEngine's reconcile()
+  // handles decision supersession via the SUPERSESSION_KINDS set, so we don't
+  // manually supersede here. This ensures conflict detection, evidence linking,
+  // and correction guards are applied.
+  const result = upsertMemoryObject(db, mo);
 
   logEvidence(db, {
     scopeId: input.scopeId,
@@ -72,10 +63,10 @@ export function upsertDecision(db: GraphDb, input: UpsertDecisionInput): UpsertD
     objectType: "decision",
     objectId: result.moId,
     eventType: "create",
-    payload: { topic, supersedes: existing?.id },
+    payload: { topic },
   });
 
-  return { decisionId: result.moId, isNew: !existing };
+  return { decisionId: result.moId, isNew: result.isNew };
 }
 
 // ---------------------------------------------------------------------------

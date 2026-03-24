@@ -83,6 +83,11 @@ export interface StructuredDecision {
 export interface StructuredLoop {
   loopType: "task" | "question" | "follow_up" | "dependency";
   text: string;
+  priority?: number;
+  owner?: string;
+  dueAt?: string;
+  waitingOn?: string;
+  status?: string;
 }
 
 /** Structured data for kind="entity" — named things. */

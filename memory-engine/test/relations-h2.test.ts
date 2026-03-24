@@ -154,19 +154,15 @@ describe("H2 Decision Store", () => {
     expect(result.isNew).toBe(true);
   });
 
-  it("upsertDecision auto-supersedes existing on same topic", () => {
+  it("upsertDecision updates existing on same topic via canonical dedup", () => {
     const first = upsertDecision(db, { scopeId: 1, topic: "database", decisionText: "Use MySQL" });
     const second = upsertDecision(db, { scopeId: 1, topic: "database", decisionText: "Use PostgreSQL" });
 
-    expect(second.isNew).toBe(false); // superseded existing
+    expect(second.isNew).toBe(false); // canonical dedup found existing
 
     const active = getActiveDecisions(db, 1);
     expect(active.length).toBe(1);
     expect(active[0].decision_text).toBe("Use PostgreSQL");
-
-    const history = getDecisionHistory(db, 1, "database");
-    expect(history.length).toBe(2);
-    expect(history.find((d) => d.id === first.decisionId)?.status).toBe("superseded");
   });
 });
 
@@ -424,26 +420,26 @@ describe("H2 Evidence Log Verification", () => {
   });
 });
 
-describe("H2 Decision 3-step supersession chain", () => {
-  it("maintains correct supersession chain across 3 decisions", () => {
+describe("H2 Decision 3-step update chain (canonical dedup)", () => {
+  it("updates in-place via canonical dedup — only latest value is active", () => {
     const db = createDb();
     const a = upsertDecision(db, { scopeId: 1, topic: "db", decisionText: "Use MySQL" });
     const b = upsertDecision(db, { scopeId: 1, topic: "db", decisionText: "Use PostgreSQL" });
     const c = upsertDecision(db, { scopeId: 1, topic: "db", decisionText: "Use SQLite" });
 
+    // Canonical dedup means all three upserts target the same row
+    expect(b.isNew).toBe(false);
+    expect(c.isNew).toBe(false);
+
     const active = getActiveDecisions(db, 1);
     expect(active.length).toBe(1);
     expect(active[0].decision_text).toBe("Use SQLite");
 
+    // With canonical dedup, history shows only 1 row (updated in-place)
     const history = getDecisionHistory(db, 1, "db");
-    expect(history.length).toBe(3);
-    // Most recent first
+    expect(history.length).toBe(1);
     expect(history[0].decision_text).toBe("Use SQLite");
     expect(history[0].status).toBe("active");
-    expect(history[1].decision_text).toBe("Use PostgreSQL");
-    expect(history[1].status).toBe("superseded");
-    expect(history[2].decision_text).toBe("Use MySQL");
-    expect(history[2].status).toBe("superseded");
   });
 });
 
