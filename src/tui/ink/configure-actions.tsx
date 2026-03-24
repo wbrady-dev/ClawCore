@@ -243,28 +243,73 @@ export async function configureOcrAndMedia(): Promise<void> {
 
 export async function configureMemoryAndSummary(): Promise<void> {
   const root = getRootDir();
-  const env = readEnvMap(root);
-  const relationsEnabled = env.THREADCLAW_MEMORY_RELATIONS_ENABLED === "true";
 
-  // Summary model fields first
-  await configureFieldGroup("Memory & Summary — Compaction Model", SUMMARY_MODEL_FIELDS);
-  await showNotice("Summary Model", "Summary model configured. Changes take effect on next compaction cycle.");
+  while (true) {
+    const env = readEnvMap(root);
+    const provider = env.THREADCLAW_MEMORY_SUMMARY_PROVIDER || "default (OpenClaw gateway)";
+    const model = env.THREADCLAW_MEMORY_SUMMARY_MODEL || "default (gateway model)";
+    const lfProvider = env.THREADCLAW_MEMORY_LARGE_FILE_SUMMARY_PROVIDER || "same as above";
+    const lfModel = env.THREADCLAW_MEMORY_LARGE_FILE_SUMMARY_MODEL || "same as above";
+    const tier = env.THREADCLAW_MEMORY_RELATIONS_CONTEXT_TIER ?? "standard";
+    const relationsOn = env.THREADCLAW_MEMORY_RELATIONS_ENABLED === "true";
 
-  // Context tier selection if Evidence OS is active
-  if (relationsEnabled) {
-    const tier = await promptMenu({
-      title: "Context Tier",
-      message: "Choose how much Evidence OS context to compile into prompts.",
+    const action = await promptMenu({
+      title: "Memory & Summary",
+      message: "Controls the LLM used to compress conversation history and summarize large files.\nLeave blank to use the default OpenClaw gateway model.",
       items: [
-        { label: "Lite (110 tokens)", value: "lite" },
-        { label: "Standard (190 tokens)", value: "standard" },
-        { label: "Premium (280 tokens)", value: "premium" },
-        { label: "Keep current", value: "__keep__", color: t.dim },
+        { label: t.dim("── Compaction LLM ────────────"), value: "__sep_comp__" },
+        { label: `  Provider            ${t.dim(provider)}`, value: "provider", description: "openai, anthropic, ollama, lmstudio, or blank for default" },
+        { label: `  Model               ${t.dim(model)}`, value: "model", description: "e.g. gpt-4o-mini, llama3.1:8b, or blank for default" },
+        { label: "", value: "__sep_blank1__" },
+        { label: t.dim("── Large File Overrides ──────"), value: "__sep_lf__" },
+        { label: `  Provider            ${t.dim(lfProvider)}`, value: "lf-provider", description: "Override for files >25k tokens (blank = same as above)" },
+        { label: `  Model               ${t.dim(lfModel)}`, value: "lf-model", description: "Override for large file summaries (blank = same as above)" },
+        ...(relationsOn ? [
+          { label: "", value: "__sep_blank2__" },
+          { label: t.dim("── Evidence OS Context ───────"), value: "__sep_evi__" },
+          { label: `  Context Tier        ${t.dim(tier)}`, value: "context-tier", description: "How much graph context per prompt (lite/standard/premium)" },
+        ] : []),
+        { label: "", value: "__sep_blank3__" },
+        { label: "  Back", value: "__back__", color: t.dim },
       ],
     });
-    if (tier && tier !== "__keep__") {
-      updateEnvValues(root, { THREADCLAW_MEMORY_RELATIONS_CONTEXT_TIER: tier });
-      await showNotice("Context Tier", `Context tier set to ${tier}.`);
+
+    if (!action || action === "__back__") return;
+    if (action.startsWith("__sep")) continue;
+
+    if (action === "provider") {
+      const val = await promptText({ title: "Summary Provider", message: "openai, anthropic, ollama, lmstudio — or leave blank for OpenClaw default", label: "Provider", initial: env.THREADCLAW_MEMORY_SUMMARY_PROVIDER ?? "", allowEmpty: true });
+      if (val != null) updateEnvValues(root, { THREADCLAW_MEMORY_SUMMARY_PROVIDER: val });
+      continue;
+    }
+    if (action === "model") {
+      const val = await promptText({ title: "Summary Model", message: "e.g. gpt-4o-mini, llama3.1:8b — or leave blank for gateway default", label: "Model", initial: env.THREADCLAW_MEMORY_SUMMARY_MODEL ?? "", allowEmpty: true });
+      if (val != null) updateEnvValues(root, { THREADCLAW_MEMORY_SUMMARY_MODEL: val });
+      continue;
+    }
+    if (action === "lf-provider") {
+      const val = await promptText({ title: "Large File Summary Provider", message: "Override provider for files >25k tokens. Blank = same as compaction provider.", label: "Provider", initial: env.THREADCLAW_MEMORY_LARGE_FILE_SUMMARY_PROVIDER ?? "", allowEmpty: true });
+      if (val != null) updateEnvValues(root, { THREADCLAW_MEMORY_LARGE_FILE_SUMMARY_PROVIDER: val });
+      continue;
+    }
+    if (action === "lf-model") {
+      const val = await promptText({ title: "Large File Summary Model", message: "Override model for files >25k tokens. Blank = same as compaction model.", label: "Model", initial: env.THREADCLAW_MEMORY_LARGE_FILE_SUMMARY_MODEL ?? "", allowEmpty: true });
+      if (val != null) updateEnvValues(root, { THREADCLAW_MEMORY_LARGE_FILE_SUMMARY_MODEL: val });
+      continue;
+    }
+    if (action === "context-tier") {
+      const val = await promptMenu({
+        title: "Context Tier",
+        message: "How much Evidence OS context to compile into each prompt.",
+        items: [
+          { label: `Lite — 110 tokens${tier === "lite" ? " (current)" : ""}`, value: "lite" },
+          { label: `Standard — 190 tokens${tier === "standard" ? " (current)" : ""}`, value: "standard" },
+          { label: `Premium — 280 tokens${tier === "premium" ? " (current)" : ""}`, value: "premium" },
+          { label: "Cancel", value: "__back__", color: t.dim },
+        ],
+      });
+      if (val && val !== "__back__") updateEnvValues(root, { THREADCLAW_MEMORY_RELATIONS_CONTEXT_TIER: val });
+      continue;
     }
   }
 }
