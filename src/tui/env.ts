@@ -107,6 +107,10 @@ export function writeEnvMap(root: string, values: EnvMap): void {
   const tmpPath = envPath + ".tmp";
   writeFileSync(tmpPath, lines.join("\n") + "\n");
   renameSync(tmpPath, envPath);
+  // Restrict .env to owner-only (contains API keys and secrets)
+  if (process.platform !== "win32") {
+    try { chmodSync(envPath, 0o600); } catch {}
+  }
 }
 
 const ONE_HOUR_MS = 60 * 60 * 1000;
