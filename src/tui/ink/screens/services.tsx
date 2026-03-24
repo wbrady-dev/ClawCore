@@ -6,7 +6,8 @@ import { readServiceLogTail } from "../../service-logs.js";
 import { checkAutoStartupAsync, isPortReachable } from "../../runtime-status.js";
 import { subscribeTasks } from "../../tasks.js";
 
-// Module-level cache
+// Module-level cache — intentionally per-screen (not shared) so each screen
+// controls its own poll interval and re-mount doesn't flash stale data.
 let cachedServicesSvc: ServiceStatus = { models: { running: false }, threadclaw: { running: false } };
 let cachedServicesAutoStart = false;
 

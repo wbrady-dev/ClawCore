@@ -2,22 +2,14 @@ import React, { useState } from "react";
 import { Box, Text, useInput } from "ink";
 import chalk from "chalk";
 import { getTerminalCapabilities } from "../capabilities.js";
+import { t } from "../theme.js";
 
 const r = chalk.hex("#e72d19");
 const w = chalk.bold.white;
 
-export const t = {
-  ok: chalk.green,
-  warn: chalk.yellow,
-  err: chalk.red,
-  info: chalk.blue,
-  dim: chalk.dim,
-  title: chalk.bold.green,
-  label: chalk.bold,
-  value: chalk.white,
-  selected: chalk.green,
-  muted: chalk.gray,
-};
+// Re-export t so existing imports from this module keep working.
+// The canonical theme definition lives in ../theme.ts — do NOT duplicate here.
+export { t };
 
 export function Banner() {
   const caps = getTerminalCapabilities();

@@ -4,7 +4,8 @@
  * Covers the full spectrum from Raspberry Pi to datacenter GPUs.
  */
 
-import { execFileSync } from "child_process";
+import { execFileSync, execFile as ef } from "child_process";
+import { promisify } from "util";
 
 export interface ModelInfo {
   id: string;
@@ -367,142 +368,62 @@ export interface GpuInfo {
   detected: boolean;
 }
 
+const GPU_NONE: GpuInfo = { name: "None detected", vramTotalMb: 0, vramUsedMb: 0, vramFreeMb: 0, detected: false };
+
+/** Module-level cache populated by detectGpuAsyncImpl, read by detectGpu. */
+let _cachedGpuResult: GpuInfo | null = null;
+
 /**
- * Detect any GPU on any platform.
- * Tries multiple detection methods — works with NVIDIA, AMD, Intel, Apple Silicon, and others.
+ * Sync GPU detection — thin wrapper.
+ * Returns cached async result if available, otherwise does a minimal sync probe
+ * (nvidia-smi only) to unblock the initial TUI render. The full async detection
+ * should be kicked off early via detectGpuAsyncImpl().
  */
 export function detectGpu(): GpuInfo {
-  const none: GpuInfo = { name: "None detected", vramTotalMb: 0, vramUsedMb: 0, vramFreeMb: 0, detected: false };
-  // Python fallback (detectViaPython) removed — too slow (1-3s), other methods cover all platforms
-  const detectors = [detectNvidia, detectAmdRocm, detectMacGpu, detectWindowsGeneric, detectLinuxLspci];
+  if (_cachedGpuResult) return _cachedGpuResult;
 
-  for (const detect of detectors) {
-    try {
-      const result = detect();
-      if (result) return result;
-    } catch {}
-  }
-
-  return none;
-}
-
-// --- Detection methods (tried in order) ---
-
-/** NVIDIA via nvidia-smi (Windows, Linux) */
-function detectNvidia(): GpuInfo | null {
+  // Minimal sync fallback — just nvidia-smi (fast) + platform hint
   try {
     const output = execFileSync(
       "nvidia-smi", ["--query-gpu=name,memory.total,memory.used,memory.free", "--format=csv,noheader,nounits"],
-      { stdio: "pipe" },
+      { stdio: "pipe", timeout: 3000 },
     ).toString().trim();
     const [name, total, used, free] = output.split(",").map((s) => s.trim());
     if (name && total) {
-      return { name, vramTotalMb: parseInt(total), vramUsedMb: parseInt(used), vramFreeMb: parseInt(free), detected: true };
+      const result: GpuInfo = { name, vramTotalMb: parseInt(total), vramUsedMb: parseInt(used), vramFreeMb: parseInt(free), detected: true };
+      _cachedGpuResult = result;
+      return result;
     }
   } catch {}
-  return null;
+
+  // On non-NVIDIA systems the sync path just returns a platform hint;
+  // the full detection (AMD, Mac, Windows WMI, lspci) runs async.
+  if (process.platform === "darwin") {
+    return { name: "GPU (detecting...)", vramTotalMb: 0, vramUsedMb: 0, vramFreeMb: 0, detected: false };
+  }
+  return GPU_NONE;
 }
 
-/** AMD via rocm-smi (Linux with ROCm) */
-function detectAmdRocm(): GpuInfo | null {
-  try {
-    const output = execFileSync("rocm-smi", ["--showmeminfo", "vram", "--csv"], { stdio: "pipe" }).toString();
-    const lines = output.trim().split("\n");
-    if (lines.length >= 2) {
-      let name = "AMD GPU";
-      try {
-        const n = execFileSync("rocm-smi", ["--showproductname", "--csv"], { stdio: "pipe" }).toString();
-        name = n.trim().split("\n")[1]?.split(",")[1]?.trim() ?? name;
-      } catch {}
-      const parts = lines[1].split(",");
-      const totalMb = Math.round(parseInt(parts[1] ?? "0") / 1024 / 1024);
-      const usedMb = Math.round(parseInt(parts[2] ?? "0") / 1024 / 1024);
-      return { name, vramTotalMb: totalMb, vramUsedMb: usedMb, vramFreeMb: totalMb - usedMb, detected: true };
-    }
-  } catch {}
-  return null;
-}
+const execAsync = promisify(ef);
 
-/** macOS system_profiler — detects Apple Silicon, AMD, Intel GPUs on Mac */
-function detectMacGpu(): GpuInfo | null {
-  if (process.platform !== "darwin") return null;
-  try {
-    const output = execFileSync("system_profiler", ["SPDisplaysDataType"], { stdio: "pipe" }).toString();
-    const nameMatch = output.match(/Chipset Model:\s*(.+)/i) ?? output.match(/Chip:\s*(.+)/i);
-    if (!nameMatch) return null;
-
-    const gpuName = nameMatch[1].trim();
-    let totalMb = 0;
-
-    // Dedicated VRAM (AMD/Intel discrete)
-    const memMatch = output.match(/VRAM.*?:\s*(\d+)\s*(MB|GB)/i);
-    if (memMatch) {
-      totalMb = parseInt(memMatch[1]) * (memMatch[2].toUpperCase() === "GB" ? 1024 : 1);
-    } else {
-      // Apple Silicon unified memory — GPU can use most of system RAM
-      try {
-        const bytes = parseInt(execFileSync("sysctl", ["-n", "hw.memsize"], { stdio: "pipe" }).toString().trim());
-        totalMb = Math.round((bytes / 1024 / 1024) * 0.75);
-      } catch {}
-    }
-
-    return { name: gpuName, vramTotalMb: totalMb, vramUsedMb: 0, vramFreeMb: totalMb, detected: true };
-  } catch {}
-  return null;
-}
-
-/** Windows generic — PowerShell WMI query (detects any GPU: NVIDIA, AMD, Intel Arc, etc.) */
-function detectWindowsGeneric(): GpuInfo | null {
-  if (process.platform !== "win32") return null;
-  try {
-    const output = execFileSync(
-      "powershell", ["-NoProfile", "-c", "Get-CimInstance Win32_VideoController | Select-Object Name, AdapterRAM | ConvertTo-Json"],
-      { stdio: "pipe", timeout: 3000 },
-    ).toString().trim();
-    const gpus = JSON.parse(output.startsWith("[") ? output : `[${output}]`);
-
-    // Pick the GPU with the most VRAM, skip virtual/basic adapters
-    let best = { name: "", ram: 0 };
-    for (const gpu of gpus) {
-      const ram = parseInt(gpu.AdapterRAM ?? "0");
-      const name: string = gpu.Name ?? "";
-      if (ram > best.ram && !name.includes("Microsoft") && !name.includes("Basic")) {
-        best = { name, ram };
-      }
-    }
-    if (best.ram > 0) {
-      const totalMb = Math.round(best.ram / 1024 / 1024);
-      return { name: best.name, vramTotalMb: totalMb, vramUsedMb: 0, vramFreeMb: totalMb, detected: true };
-    }
-  } catch {}
-  return null;
-}
-
-/** Linux fallback — lspci (detects GPU name but not VRAM) */
-function detectLinuxLspci(): GpuInfo | null {
-  if (process.platform !== "linux") return null;
-  try {
-    const output = execFileSync("lspci", [], { stdio: "pipe" }).toString()
-      .split("\n").filter((l) => /vga|3d|display/i.test(l)).join("\n").trim();
-    if (output) {
-      // Extract the GPU name from lspci output
-      const name = output.split(":").slice(-1)[0]?.trim() ?? "GPU";
-      return { name, vramTotalMb: 0, vramUsedMb: 0, vramFreeMb: 0, detected: true };
-    }
-  } catch {}
-  return null;
-}
-
-/** Truly async GPU detection — uses execFile (non-blocking) instead of execFileSync. */
+/**
+ * Canonical async GPU detection — the single source of truth.
+ * Uses non-blocking execFile. Populates the module-level cache so that
+ * subsequent sync detectGpu() calls return instantly.
+ */
 export async function detectGpuAsyncImpl(): Promise<GpuInfo> {
-  const none: GpuInfo = { name: "None detected", vramTotalMb: 0, vramUsedMb: 0, vramFreeMb: 0, detected: false };
-  const { execFile: ef } = await import("child_process");
-  const { promisify } = await import("util");
-  const exec = promisify(ef);
+  // Return cache if already detected
+  if (_cachedGpuResult) return _cachedGpuResult;
 
+  const result = await _detectGpuAsyncCore();
+  _cachedGpuResult = result;
+  return result;
+}
+
+async function _detectGpuAsyncCore(): Promise<GpuInfo> {
   // NVIDIA
   try {
-    const { stdout } = await exec(
+    const { stdout } = await execAsync(
       "nvidia-smi", ["--query-gpu=name,memory.total,memory.used,memory.free", "--format=csv,noheader,nounits"],
       { timeout: 3000 },
     );
@@ -514,12 +435,12 @@ export async function detectGpuAsyncImpl(): Promise<GpuInfo> {
 
   // AMD ROCm
   try {
-    const { stdout } = await exec("rocm-smi", ["--showmeminfo", "vram", "--csv"], { timeout: 3000 });
+    const { stdout } = await execAsync("rocm-smi", ["--showmeminfo", "vram", "--csv"], { timeout: 3000 });
     const lines = stdout.trim().split("\n");
     if (lines.length >= 2) {
       let name = "AMD GPU";
       try {
-        const n = await exec("rocm-smi", ["--showproductname", "--csv"], { timeout: 3000 });
+        const n = await execAsync("rocm-smi", ["--showproductname", "--csv"], { timeout: 3000 });
         name = n.stdout.trim().split("\n")[1]?.split(",")[1]?.trim() ?? name;
       } catch {}
       const parts = lines[1].split(",");
@@ -532,7 +453,7 @@ export async function detectGpuAsyncImpl(): Promise<GpuInfo> {
   // macOS
   if (process.platform === "darwin") {
     try {
-      const { stdout } = await exec("system_profiler", ["SPDisplaysDataType"], { timeout: 5000 });
+      const { stdout } = await execAsync("system_profiler", ["SPDisplaysDataType"], { timeout: 5000 });
       const nameMatch = stdout.match(/Chipset Model:\s*(.+)/i) ?? stdout.match(/Chip:\s*(.+)/i);
       if (nameMatch) {
         const gpuName = nameMatch[1].trim();
@@ -542,7 +463,7 @@ export async function detectGpuAsyncImpl(): Promise<GpuInfo> {
           totalMb = parseInt(memMatch[1]) * (memMatch[2].toUpperCase() === "GB" ? 1024 : 1);
         } else {
           try {
-            const hw = await exec("sysctl", ["-n", "hw.memsize"], { timeout: 2000 });
+            const hw = await execAsync("sysctl", ["-n", "hw.memsize"], { timeout: 2000 });
             totalMb = Math.round((parseInt(hw.stdout.trim()) / 1024 / 1024) * 0.75);
           } catch {}
         }
@@ -554,7 +475,7 @@ export async function detectGpuAsyncImpl(): Promise<GpuInfo> {
   // Windows PowerShell (AMD/Intel fallback)
   if (process.platform === "win32") {
     try {
-      const { stdout } = await exec(
+      const { stdout } = await execAsync(
         "powershell", ["-NoProfile", "-c", "Get-CimInstance Win32_VideoController | Select-Object Name, AdapterRAM | ConvertTo-Json"],
         { timeout: 3000 },
       );
@@ -577,7 +498,7 @@ export async function detectGpuAsyncImpl(): Promise<GpuInfo> {
   // Linux lspci fallback
   if (process.platform === "linux") {
     try {
-      const { stdout } = await exec("lspci", [], { timeout: 3000 });
+      const { stdout } = await execAsync("lspci", [], { timeout: 3000 });
       const line = stdout.split("\n").filter((l) => /vga|3d|display/i.test(l)).join("\n").trim();
       if (line) {
         const name = line.split(":").slice(-1)[0]?.trim() ?? "GPU";
@@ -586,7 +507,7 @@ export async function detectGpuAsyncImpl(): Promise<GpuInfo> {
     } catch {}
   }
 
-  return none;
+  return GPU_NONE;
 }
 
 export function getRecommendation(
