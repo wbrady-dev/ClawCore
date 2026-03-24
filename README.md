@@ -1,5 +1,15 @@
 # ClawCore — Stateful Evidence Engine
 
+**Persistent, evidence-backed memory for AI agents.**
+
+![tests](https://img.shields.io/badge/tests-947%20passing-brightgreen)
+![build](https://img.shields.io/github/actions/workflow/status/wbrady-dev/ClawCore/ci.yml?branch=main&label=build)
+![license](https://img.shields.io/badge/license-MIT-blue)
+![node](https://img.shields.io/badge/node-22%2B-green)
+![platform](https://img.shields.io/badge/platform-windows%20%7C%20linux%20%7C%20macos-lightgrey)
+
+---
+
 **ClawCore** brings a knowledge and memory backbone to [OpenClaw](https://openclaw.ai), built on the **RSMA (Reconciled Semantic Memory Architecture)** — a multi-layer agent architecture that combines retrieval, summary lineage, knowledge graphs, awareness, evidence-backed state, delta tracking, attempt memory, branch governance, and low-token context compilation. It gives your AI agent persistent, inspectable, evidence-backed memory.
 
 ### Evidence OS
@@ -280,17 +290,36 @@ Authentication: set `CLAWCORE_API_KEY` to require `Authorization: Bearer <key>` 
 
 ## Testing
 
+**947 tests** across **43 test files**, running on every push via GitHub Actions CI.
+
 ```bash
 # Run all tests
-npm test                    # 89 src tests
-cd memory-engine && npm test # 859 memory-engine tests (incl. 14 integration tests)
-
-# Key test suites
-# - rsma-relations-integration.test.ts: full extraction -> entity_relations pipeline
-# - rsma-data-shapes.test.ts: verifies field names match between producer and consumer
-# - rsma-truth.test.ts: TruthEngine reconciliation and supersession
-# - rsma-stress.test.ts: schema migrations and stress scenarios
+npm test                    # 89 src tests (API, parsers, chunker, CLI)
+cd memory-engine && npm test # 858 memory-engine tests
 ```
+
+### Test Suite Breakdown
+
+| Suite | Tests | What it covers |
+|-------|-------|---------------|
+| **RSMA Stress** | 37 | 1000 entities, 500 claims, 300 attempts, performance benchmarks |
+| **RSMA Truth** | 31 | TruthEngine: supersession, conflict, correction, reconciliation |
+| **RSMA Reader** | 37 | Unified memory_objects queries, scoring, ranking, all 8 kinds |
+| **RSMA Golden Corpus** | 41 | Extraction quality baselines, known-good extraction patterns |
+| **RSMA Failure Injection** | 44 | Concurrent stress, corrupt data, edge cases, recovery |
+| **RSMA Corrections** | 47 | Correction detection, is_correction_of, confidence adjustment |
+| **Relations H2** | 34 | Claims, decisions, loops, invariants CRUD + supersession chains |
+| **Relations H3** | 24 | Runbooks, anti-runbooks, decay, context compiler capsules |
+| **Relations H3 Promotion** | 25 | Branch promotion, canonical key collision, auto-supersession |
+| **Relations H4** | 16 | Evidence chains, provenance links, evidence retrieval |
+| **Relations H5** | 13 | Entity relations, deep extraction, relation graph |
+| **Relations Core** | 46 | Entity CRUD, mentions, awareness, scope isolation, re-extraction |
+| **Engine** | 54 | Bootstrap, ingest, compaction, assembly, token budgets |
+| **Expansion Auth** | 50 | Grants, depth enforcement, token caps, revocation, expiry |
+| **Data Shapes** | 6 | Field name contracts between extraction and storage |
+| **Relations Integration** | 8 | Full pipeline: extraction → entity_relations table |
+| **Security Hardening** | 14 | Path validation, model server discovery, file permissions |
+| **API Routes** | 89 | All HTTP endpoints, auth, rate limiting, validation |
 
 ## Requirements
 
