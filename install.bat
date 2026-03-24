@@ -1,5 +1,5 @@
 @echo off
-setlocal enabledelayedexpansion
+setlocal
 title ThreadClaw - Installer
 
 set "SCRIPT_DIR=%~dp0"
@@ -15,7 +15,7 @@ echo.
 
 :: ── Step 1: Check Node.js ──
 where node >nul 2>&1
-if %errorlevel% neq 0 (
+if errorlevel 1 (
     echo [ERROR] Node.js is not installed.
     echo         Install Node.js 22+ from https://nodejs.org/
     pause
@@ -31,7 +31,7 @@ for /f "tokens=*" %%v in ('node --version') do echo [OK] Node.js %%v
 
 :: ── Pre-flight: internet connectivity ──
 ping -n 1 -w 3000 pypi.org >nul 2>&1
-if %errorlevel% neq 0 (
+if errorlevel 1 (
     echo [WARN] Cannot reach pypi.org — Python package downloads may fail.
     echo         Check your internet connection.
 )
@@ -41,7 +41,7 @@ if not exist "%SCRIPT_DIR%\logs" mkdir "%SCRIPT_DIR%\logs"
 
 :: ── Step 2: Check Python ──
 where python >nul 2>&1
-if %errorlevel% neq 0 (
+if errorlevel 1 (
     echo [ERROR] Python is not installed or not on PATH.
     echo         Install Python 3.10+ and enable "Add to PATH", then try again.
     pause
@@ -58,26 +58,27 @@ if %PYTHON_MINOR% LSS 10 (
 )
 
 :: ── Step 3: Node.js dependencies ──
-if not exist "%SCRIPT_DIR%\node_modules\.install-ok" (
-    echo.
-    echo [install] Installing Node.js dependencies...
-    call npm install --no-audit --no-fund
-    if !errorlevel! neq 0 (
-        echo [ERROR] npm install failed.
-        pause
-        exit /b 1
-    )
-    type nul > "%SCRIPT_DIR%\node_modules\.install-ok"
-    echo [OK] Node.js dependencies installed
-) else (
+if exist "%SCRIPT_DIR%\node_modules\.install-ok" (
     echo [OK] Node.js dependencies already present
+    goto :npm_done
 )
+echo.
+echo [install] Installing Node.js dependencies...
+call npm install --no-audit --no-fund
+if errorlevel 1 (
+    echo [ERROR] npm install failed.
+    pause
+    exit /b 1
+)
+type nul > "%SCRIPT_DIR%\node_modules\.install-ok"
+echo [OK] Node.js dependencies installed
+:npm_done
 set "THREADCLAW_SKIP_NODE_INSTALL=1"
 
 :: ── Step 4: Python virtual environment ──
 if exist "%SCRIPT_DIR%\.venv\Scripts\python.exe" (
     "%SCRIPT_DIR%\.venv\Scripts\python.exe" -c "import sys" >nul 2>&1
-    if !errorlevel! neq 0 (
+    if errorlevel 1 (
         echo [WARN] Existing venv is broken — recreating...
         rmdir /s /q "%SCRIPT_DIR%\.venv"
     )
@@ -86,7 +87,7 @@ if not exist "%SCRIPT_DIR%\.venv\Scripts\python.exe" (
     echo.
     echo [install] Creating Python virtual environment...
     python -m venv "%SCRIPT_DIR%\.venv"
-    if !errorlevel! neq 0 (
+    if errorlevel 1 (
         echo [ERROR] Failed to create Python virtual environment.
         echo         Make sure 'python -m venv' works on your system.
         pause
@@ -102,28 +103,22 @@ echo.
 echo [install] Installing Python dependencies (this may take several minutes)...
 
 :: Install PyTorch first (platform-specific)
-:: NOTE: pip output can contain ! chars which break delayed expansion,
-:: so we disable it for pip commands and use goto-based flow control.
 "%SCRIPT_DIR%\.venv\Scripts\python.exe" -c "import torch" >nul 2>&1
-if %errorlevel% equ 0 (
+if not errorlevel 1 (
     echo [OK] PyTorch already installed
     goto :torch_done
 )
 echo [install] Downloading PyTorch (this may take 5-10 minutes)...
-setlocal disabledelayedexpansion
 "%SCRIPT_DIR%\.venv\Scripts\pip.exe" install torch torchvision --index-url https://download.pytorch.org/whl/cu124
-endlocal
 "%SCRIPT_DIR%\.venv\Scripts\python.exe" -c "import torch" >nul 2>&1
-if %errorlevel% equ 0 (
+if not errorlevel 1 (
     echo [OK] PyTorch installed (GPU)
     goto :torch_done
 )
 echo [install] GPU PyTorch failed, trying CPU version...
-setlocal disabledelayedexpansion
 "%SCRIPT_DIR%\.venv\Scripts\pip.exe" install torch torchvision
-endlocal
 "%SCRIPT_DIR%\.venv\Scripts\python.exe" -c "import torch" >nul 2>&1
-if %errorlevel% neq 0 (
+if errorlevel 1 (
     echo [ERROR] PyTorch installation failed.
     pause
     exit /b 1
@@ -132,7 +127,6 @@ echo [OK] PyTorch installed (CPU)
 :torch_done
 
 :: Install remaining pinned dependencies
-setlocal disabledelayedexpansion
 if exist "%SCRIPT_DIR%\server\requirements-pinned.txt" (
     "%SCRIPT_DIR%\.venv\Scripts\pip.exe" install -r "%SCRIPT_DIR%\server\requirements-pinned.txt" >nul 2>&1
     if errorlevel 1 (
@@ -147,20 +141,17 @@ if exist "%SCRIPT_DIR%\server\requirements-pinned.txt" (
     "%SCRIPT_DIR%\.venv\Scripts\pip.exe" install sentence-transformers flask spacy docling
     echo [OK] Python dependencies installed
 )
-endlocal
 
 :: ── Step 6: spaCy NER model ──
 "%SCRIPT_DIR%\.venv\Scripts\python.exe" -c "import spacy; spacy.load('en_core_web_sm')" >nul 2>&1
-if %errorlevel% equ 0 (
+if not errorlevel 1 (
     echo [OK] spaCy NER model already present
     goto :spacy_done
 )
 echo [install] Downloading spaCy NER model...
-setlocal disabledelayedexpansion
 "%SCRIPT_DIR%\.venv\Scripts\python.exe" -m spacy download en_core_web_sm >nul 2>&1
-endlocal
 "%SCRIPT_DIR%\.venv\Scripts\python.exe" -c "import spacy; spacy.load('en_core_web_sm')" >nul 2>&1
-if %errorlevel% neq 0 (
+if errorlevel 1 (
     echo [WARN] spaCy NER model download failed. Entity extraction will use regex fallback.
 ) else (
     echo [OK] spaCy NER model installed
@@ -168,24 +159,22 @@ if %errorlevel% neq 0 (
 :spacy_done
 
 :: ── Step 7: Memory-engine dependencies ──
-if not exist "%SCRIPT_DIR%\memory-engine\node_modules\@sinclair\typebox" (
-    echo [install] Installing memory-engine dependencies...
-    cd /d "%SCRIPT_DIR%\memory-engine"
-    call npm install --no-audit --no-fund >nul 2>&1
-    if %errorlevel% neq 0 (
-        echo [WARN] memory-engine npm install returned an error.
-    )
-    cd /d "%SCRIPT_DIR%"
-    if exist "%SCRIPT_DIR%\memory-engine\node_modules\@sinclair" (
-        echo [OK] Memory-engine dependencies installed
-    ) else (
-        echo [ERROR] Memory-engine dependencies incomplete.
-        pause
-        exit /b 1
-    )
-) else (
+if exist "%SCRIPT_DIR%\memory-engine\node_modules\@sinclair\typebox" (
     echo [OK] Memory-engine dependencies already present
+    goto :memengine_done
 )
+echo [install] Installing memory-engine dependencies...
+cd /d "%SCRIPT_DIR%\memory-engine"
+call npm install --no-audit --no-fund >nul 2>&1
+cd /d "%SCRIPT_DIR%"
+if exist "%SCRIPT_DIR%\memory-engine\node_modules\@sinclair" (
+    echo [OK] Memory-engine dependencies installed
+) else (
+    echo [ERROR] Memory-engine dependencies incomplete.
+    pause
+    exit /b 1
+)
+:memengine_done
 
 echo.
 echo [launch] Starting ThreadClaw setup...
@@ -196,82 +185,86 @@ node "%SCRIPT_DIR%\bin\threadclaw.mjs" install %*
 set "EXIT_CODE=%ERRORLEVEL%"
 
 :: ── Step 9: Register global command ──
-if %EXIT_CODE% equ 0 (
-    echo.
-    echo [install] Registering threadclaw command...
-    if not exist "%LOCALAPPDATA%\ThreadClaw" mkdir "%LOCALAPPDATA%\ThreadClaw"
-    (
-        echo @echo off
-        echo node "%SCRIPT_DIR%\bin\threadclaw.mjs" %%*
-    ) > "%LOCALAPPDATA%\ThreadClaw\threadclaw.cmd"
+if %EXIT_CODE% neq 0 goto :skip_register
 
-    :: Add to user PATH if not already there (read from registry to avoid corruption)
-    for /f "tokens=2*" %%a in ('reg query "HKCU\Environment" /v PATH 2^>nul') do set "USER_PATH=%%b"
-    if not defined USER_PATH set "USER_PATH="
-    echo !USER_PATH! | findstr /i "ThreadClaw" >nul 2>&1
-    if !errorlevel! neq 0 (
-        setx PATH "!USER_PATH!;%LOCALAPPDATA%\ThreadClaw" >nul 2>&1
-        set "PATH=%PATH%;%LOCALAPPDATA%\ThreadClaw"
-        echo [OK] threadclaw command registered. Restart your terminal to use it.
-    ) else (
-        echo [OK] threadclaw command already on PATH
-    )
+echo.
+echo [install] Registering threadclaw command...
+if not exist "%LOCALAPPDATA%\ThreadClaw" mkdir "%LOCALAPPDATA%\ThreadClaw"
+(
+    echo @echo off
+    echo node "%SCRIPT_DIR%\bin\threadclaw.mjs" %%*
+) > "%LOCALAPPDATA%\ThreadClaw\threadclaw.cmd"
+
+:: Add to user PATH if not already there (read from registry to avoid corruption)
+:: Need delayed expansion only for this section
+setlocal enabledelayedexpansion
+for /f "tokens=2*" %%a in ('reg query "HKCU\Environment" /v PATH 2^>nul') do set "USER_PATH=%%b"
+if not defined USER_PATH set "USER_PATH="
+echo !USER_PATH! | findstr /i "ThreadClaw" >nul 2>&1
+if !errorlevel! neq 0 (
+    setx PATH "!USER_PATH!;%LOCALAPPDATA%\ThreadClaw" >nul 2>&1
+    echo [OK] threadclaw command registered. Restart your terminal to use it.
+) else (
+    echo [OK] threadclaw command already on PATH
 )
+endlocal
 
 :: ── Step 10: Register background services (Task Scheduler, no admin needed) ──
-if %EXIT_CODE% equ 0 (
-    echo.
-    echo [install] Setting up background services...
-    if not exist "%SCRIPT_DIR%\logs" mkdir "%SCRIPT_DIR%\logs"
+echo.
+echo [install] Setting up background services...
+if not exist "%SCRIPT_DIR%\logs" mkdir "%SCRIPT_DIR%\logs"
 
-    :: Find Python and models script
-    set "PYTHON=%SCRIPT_DIR%\.venv\Scripts\python.exe"
-    set "MODELS_SCRIPT=%SCRIPT_DIR%\server\server.py"
-    if not exist "!MODELS_SCRIPT!" (
-        echo [WARN] server\server.py not found. Model services may not start.
-    )
-
-    :: Create wrapper scripts for Task Scheduler
-    (
-        echo @echo off
-        echo cd /d "%SCRIPT_DIR%"
-        echo "!PYTHON!" "!MODELS_SCRIPT!" ^>^> "%SCRIPT_DIR%\logs\models.log" 2^>^&1
-    ) > "%SCRIPT_DIR%\bin\ThreadClaw_Models.cmd"
-
-    if exist "%SCRIPT_DIR%\dist\index.js" (
-        set "API_ENTRY=%SCRIPT_DIR%\dist\index.js"
-    ) else (
-        set "API_ENTRY=%SCRIPT_DIR%\node_modules\tsx\dist\cli.mjs" "%SCRIPT_DIR%\src\index.ts"
-    )
-
-    (
-        echo @echo off
-        echo cd /d "%SCRIPT_DIR%"
-        echo node "!API_ENTRY!" ^>^> "%SCRIPT_DIR%\logs\threadclaw.log" 2^>^&1
-    ) > "%SCRIPT_DIR%\bin\ThreadClaw_RAG.cmd"
-
-    :: Remove old tasks if they exist (clean reinstall)
-    schtasks /delete /tn ThreadClaw_Models /f >nul 2>&1
-    schtasks /delete /tn ThreadClaw_RAG /f >nul 2>&1
-
-    :: Register tasks (onlogon auto-start, no admin required)
-    schtasks /create /tn ThreadClaw_Models /tr "\"%SCRIPT_DIR%\bin\ThreadClaw_Models.cmd\"" /sc onlogon /rl limited /f >nul 2>&1
-    if %errorlevel% equ 0 (
-        echo [OK] ThreadClaw_Models task registered
-    ) else (
-        echo [WARN] ThreadClaw_Models task registration failed
-    )
-
-    schtasks /create /tn ThreadClaw_RAG /tr "\"%SCRIPT_DIR%\bin\ThreadClaw_RAG.cmd\"" /sc onlogon /rl limited /f >nul 2>&1
-    if %errorlevel% equ 0 (
-        echo [OK] ThreadClaw_RAG task registered
-    ) else (
-        echo [WARN] ThreadClaw_RAG task registration failed
-    )
-
-    echo [OK] Services will start automatically on login
-    echo      Use 'threadclaw' TUI to start/stop/restart services
+:: Find Python and models script
+set "PYTHON=%SCRIPT_DIR%\.venv\Scripts\python.exe"
+set "MODELS_SCRIPT=%SCRIPT_DIR%\server\server.py"
+if not exist "%MODELS_SCRIPT%" (
+    echo [WARN] server\server.py not found. Model services may not start.
 )
+
+:: Create wrapper scripts for Task Scheduler — need delayed expansion for variables
+setlocal enabledelayedexpansion
+(
+    echo @echo off
+    echo cd /d "%SCRIPT_DIR%"
+    echo "!PYTHON!" "!MODELS_SCRIPT!" ^>^> "%SCRIPT_DIR%\logs\models.log" 2^>^&1
+) > "%SCRIPT_DIR%\bin\ThreadClaw_Models.cmd"
+
+if exist "%SCRIPT_DIR%\dist\index.js" (
+    set "API_ENTRY=%SCRIPT_DIR%\dist\index.js"
+) else (
+    set "API_ENTRY=%SCRIPT_DIR%\node_modules\tsx\dist\cli.mjs" "%SCRIPT_DIR%\src\index.ts"
+)
+
+(
+    echo @echo off
+    echo cd /d "%SCRIPT_DIR%"
+    echo node "!API_ENTRY!" ^>^> "%SCRIPT_DIR%\logs\threadclaw.log" 2^>^&1
+) > "%SCRIPT_DIR%\bin\ThreadClaw_RAG.cmd"
+endlocal
+
+:: Remove old tasks if they exist (clean reinstall)
+schtasks /delete /tn ThreadClaw_Models /f >nul 2>&1
+schtasks /delete /tn ThreadClaw_RAG /f >nul 2>&1
+
+:: Register tasks (onlogon auto-start, no admin required)
+schtasks /create /tn ThreadClaw_Models /tr "\"%SCRIPT_DIR%\bin\ThreadClaw_Models.cmd\"" /sc onlogon /rl limited /f >nul 2>&1
+if errorlevel 1 (
+    echo [WARN] ThreadClaw_Models task registration failed
+) else (
+    echo [OK] ThreadClaw_Models task registered
+)
+
+schtasks /create /tn ThreadClaw_RAG /tr "\"%SCRIPT_DIR%\bin\ThreadClaw_RAG.cmd\"" /sc onlogon /rl limited /f >nul 2>&1
+if errorlevel 1 (
+    echo [WARN] ThreadClaw_RAG task registration failed
+) else (
+    echo [OK] ThreadClaw_RAG task registered
+)
+
+echo [OK] Services will start automatically on login
+echo      Use 'threadclaw' TUI to start/stop/restart services
+
+:skip_register
 
 if %EXIT_CODE% neq 0 (
     echo.
@@ -284,10 +277,10 @@ if %EXIT_CODE% neq 0 (
 echo.
 echo [install] Running smoke test...
 node "%SCRIPT_DIR%\bin\threadclaw.mjs" doctor >nul 2>&1
-if %errorlevel% equ 0 (
-    echo [OK] Smoke test passed
-) else (
+if errorlevel 1 (
     echo [WARN] Smoke test had issues. Run 'threadclaw doctor' for details.
+) else (
+    echo [OK] Smoke test passed
 )
 
 exit /b 0
