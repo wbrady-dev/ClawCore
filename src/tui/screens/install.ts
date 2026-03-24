@@ -731,7 +731,11 @@ export async function performInstallPlan(plan: InstallPlan): Promise<void> {
   console.log("");
 
   // Write completion marker so first-run detection knows install finished successfully
-  writeFileSync(resolve(root, ".install-complete"), new Date().toISOString());
+  try {
+    writeFileSync(resolve(root, ".install-complete"), new Date().toISOString());
+  } catch {
+    console.error(t.warn("  Could not write install completion marker. Next launch may re-run installer."));
+  }
 }
 
 async function selectTier(): Promise<string | null> {

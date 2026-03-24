@@ -5,6 +5,28 @@ title ThreadClaw - Installer
 set "SCRIPT_DIR=%~dp0"
 if "%SCRIPT_DIR:~-1%"=="\" set "SCRIPT_DIR=%SCRIPT_DIR:~0,-1%"
 
+:: ── Fix 1: Auto-cd out of System32 ──
+:: If running from System32 or similar system directory, cd somewhere sensible
+if /i "%SCRIPT_DIR%"=="%WINDIR%\System32" (
+    echo [NOTE] Detected System32 directory. Changing to Desktop...
+    cd /d "%USERPROFILE%\Desktop"
+    set "SCRIPT_DIR=%USERPROFILE%\Desktop"
+)
+if /i "%SCRIPT_DIR%"=="%WINDIR%\system32" (
+    echo [NOTE] Detected System32 directory. Changing to Desktop...
+    cd /d "%USERPROFILE%\Desktop"
+    set "SCRIPT_DIR=%USERPROFILE%\Desktop"
+)
+
+:: Verify this is actually a ThreadClaw directory
+if not exist "%SCRIPT_DIR%\package.json" (
+    echo [ERROR] This does not appear to be a ThreadClaw directory.
+    echo         Clone ThreadClaw first: git clone https://github.com/wbrady-dev/ThreadClaw.git
+    echo         Then: cd ThreadClaw ^& install.bat
+    pause
+    exit /b 1
+)
+
 cd /d "%SCRIPT_DIR%"
 
 echo.
@@ -22,7 +44,19 @@ if errorlevel 1 (
     exit /b 1
 )
 
-for /f %%m in ('node -e "console.log(process.versions.node.split('.')[0])"') do set "NODE_MAJOR=%%m"
+:: ── Fix 7: Robust Node version parsing ──
+:: Parse major version from "vXX.Y.Z" output
+for /f "tokens=1 delims=." %%v in ('node --version') do set "NODE_VER=%%v"
+set "NODE_MAJOR=%NODE_VER:v=%"
+set "NODE_MAJOR=%NODE_MAJOR:V=%"
+
+:: Validate NODE_MAJOR is numeric
+set /a "_NV=%NODE_MAJOR%" 2>nul
+if "%_NV%"=="0" if not "%NODE_MAJOR%"=="0" (
+    echo [ERROR] Could not determine Node.js version.
+    pause
+    exit /b 1
+)
 if "%NODE_MAJOR%"=="" (
     echo [ERROR] Could not determine Node.js version.
     pause
@@ -53,6 +87,17 @@ if errorlevel 1 (
     exit /b 1
 )
 for /f "tokens=*" %%v in ('python --version') do echo [OK] %%v
+
+:: ── Fix 4: Microsoft Store Python detection ──
+:: Verify venv module actually works (Microsoft Store Python often lacks it)
+python -m venv --help >nul 2>&1
+if errorlevel 1 (
+    echo [ERROR] Python venv module not available.
+    echo         Install Python from python.org (not Microsoft Store^).
+    echo         Enable "Add to PATH" during installation.
+    pause
+    exit /b 1
+)
 
 for /f %%m in ('python -c "import sys; print(sys.version_info.minor)"') do set "PYTHON_MINOR=%%m"
 if "%PYTHON_MINOR%"=="" (
@@ -147,8 +192,16 @@ exit /b 1
 :: Install remaining pinned dependencies
 if not exist "%SCRIPT_DIR%\server\requirements-pinned.txt" goto :pip_fallback
 
+:: ── Fix 5: pip errorlevel check on requirements install ──
 echo [install] Installing from requirements-pinned.txt...
 "%SCRIPT_DIR%\.venv\Scripts\pip.exe" install -r "%SCRIPT_DIR%\server\requirements-pinned.txt"
+if errorlevel 1 (
+    echo [WARN] Some dependencies failed. Attempting individual installs...
+    "%SCRIPT_DIR%\.venv\Scripts\pip.exe" install sentence-transformers
+    "%SCRIPT_DIR%\.venv\Scripts\pip.exe" install flask
+    "%SCRIPT_DIR%\.venv\Scripts\pip.exe" install spacy
+    "%SCRIPT_DIR%\.venv\Scripts\pip.exe" install docling
+)
 goto :pip_validate
 
 :pip_fallback
@@ -231,39 +284,49 @@ if not exist "%LOCALAPPDATA%\ThreadClaw" mkdir "%LOCALAPPDATA%\ThreadClaw"
     echo node "%SCRIPT_DIR%\bin\threadclaw.mjs" %%*
 ) > "%LOCALAPPDATA%\ThreadClaw\threadclaw.cmd"
 
-:: Add to user PATH if not already there
+:: ── Fix 2 & 3: Add to user PATH (fixed empty PATH + errorlevel syntax) ──
 setlocal enabledelayedexpansion
 set "TC_PATH=%LOCALAPPDATA%\ThreadClaw"
 for /f "tokens=2*" %%a in ('reg query "HKCU\Environment" /v PATH 2^>nul') do set "USER_PATH=%%b"
-if not defined USER_PATH set "USER_PATH="
-echo !USER_PATH! | findstr /i "ThreadClaw" >nul 2>&1
-if !errorlevel! neq 0 (
-    setx PATH "!USER_PATH!;!TC_PATH!" >nul 2>&1
+if not defined USER_PATH (
+    setx PATH "!TC_PATH!" >nul 2>&1
     echo [OK] threadclaw command registered. Restart your terminal to use it.
 ) else (
-    echo [OK] threadclaw command already on PATH
+    echo !USER_PATH! | findstr /i /c:"ThreadClaw" >nul 2>&1
+    if errorlevel 1 (
+        setx PATH "!USER_PATH!;!TC_PATH!" >nul 2>&1
+        echo [OK] threadclaw command registered. Restart your terminal to use it.
+    ) else (
+        echo [OK] threadclaw command already on PATH
+    )
 )
 endlocal
 
-:: ── Smoke test ──
+:: ── Fix 6: Smoke test with visible output ──
 echo.
 echo [install] Running smoke test...
-node "%SCRIPT_DIR%\bin\threadclaw.mjs" doctor >nul 2>&1
+node "%SCRIPT_DIR%\bin\threadclaw.mjs" doctor
 if errorlevel 1 (
-    echo [WARN] Smoke test had issues. Run 'threadclaw doctor' for details.
+    echo [WARN] Smoke test had issues. Review the output above.
 ) else (
     echo [OK] Smoke test passed
 )
 
 :: ── Done ──
+:: ── Fix 8: Better next-steps message ──
 echo.
 echo  ========================================
 echo   Installation complete!
 echo  ========================================
 echo.
 echo  Next steps:
-echo    1. Close and reopen your terminal
-echo    2. Run: threadclaw
+echo    1. Close this window completely
+echo    2. Open a NEW terminal (PowerShell or Command Prompt)
+echo    3. Type: threadclaw
+echo.
+echo  The 'threadclaw' command only works in NEW terminal windows.
+echo  If it doesn't work, run directly:
+echo    node "%SCRIPT_DIR%\bin\threadclaw.mjs"
 echo.
 
 pause

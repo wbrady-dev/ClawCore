@@ -23,8 +23,10 @@ async function launchTui(): Promise<void> {
   if (!readConfig() || !existsSync(resolve(getRootDir(), ".env")) || !existsSync(resolve(getRootDir(), ".install-complete"))) {
     const { runInstall } = await import("./screens/install.js");
     await runInstall();
-    if (!readConfig() || !existsSync(resolve(getRootDir(), ".env")) || !existsSync(resolve(getRootDir(), ".install-complete"))) {
-      return;
+    if (!readConfig() || !existsSync(resolve(getRootDir(), ".env"))) {
+      console.error("Installation incomplete. Missing .env or config.json.");
+      console.error("Run: threadclaw install");
+      process.exit(1);
     }
   }
 

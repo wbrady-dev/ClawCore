@@ -9,7 +9,7 @@ import { fileURLToPath } from "node:url";
 import { existsSync } from "node:fs";
 
 const [major] = process.versions.node.split(".").map(Number);
-if (major < 22) {
+if (!Number.isFinite(major) || major < 22) {
   console.error(`Error: ThreadClaw requires Node.js >= 22. You have ${process.versions.node}.`);
   console.error("Download the latest from https://nodejs.org/");
   process.exit(1);

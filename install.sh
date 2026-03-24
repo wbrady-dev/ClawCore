@@ -34,6 +34,10 @@ if [ -z "$NODE_MAJOR" ]; then
   echo "[ERROR] Could not determine Node.js version."
   exit 1
 fi
+if ! [[ "$NODE_MAJOR" =~ ^[0-9]+$ ]]; then
+  echo "[ERROR] Could not determine Node.js version (got: '$NODE_MAJOR')"
+  exit 1
+fi
 if [ "$NODE_MAJOR" -lt 22 ]; then
   echo "[ERROR] Node.js $NODE_MAJOR detected. ThreadClaw requires Node.js 22+."
   exit 1
@@ -66,6 +70,10 @@ if [ -z "$PYTHON_MINOR" ]; then
   echo "[ERROR] Could not determine Python minor version."
   exit 1
 fi
+if ! [[ "$PYTHON_MINOR" =~ ^[0-9]+$ ]]; then
+  echo "[ERROR] Could not determine Python minor version (got: '$PYTHON_MINOR')"
+  exit 1
+fi
 if [ "$PYTHON_MINOR" -lt 10 ]; then
   echo "[ERROR] Python 3.$PYTHON_MINOR detected. ThreadClaw requires Python 3.10+."
   exit 1
@@ -75,7 +83,14 @@ fi
 if [ ! -f "$SCRIPT_DIR/node_modules/.install-ok" ]; then
   echo ""
   echo "[install] Installing Node.js dependencies..."
-  npm install --no-audit --no-fund
+  set +e
+  npm install --no-audit --no-fund >> "$LOG" 2>&1
+  NPM_RC=$?
+  set -e
+  if [ $NPM_RC -ne 0 ]; then
+    echo "[ERROR] npm install failed (exit $NPM_RC). See $LOG"
+    exit 1
+  fi
   touch "$SCRIPT_DIR/node_modules/.install-ok"
   echo "[OK] Node.js dependencies installed ($(elapsed))"
 else

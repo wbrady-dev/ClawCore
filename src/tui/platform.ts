@@ -1,6 +1,7 @@
 import { execFileSync, spawn } from "child_process";
 import { existsSync, readFileSync, writeFileSync, mkdirSync, unlinkSync, openSync, closeSync } from "fs";
 import { resolve, dirname } from "path";
+import { fileURLToPath } from "node:url";
 import { platform, homedir } from "os";
 
 /**
@@ -51,8 +52,7 @@ export function getPlatform(): Platform {
 
 export function getRootDir(): string {
   if (rootDirOverride) return rootDirOverride;
-  const raw = decodeURIComponent(new URL(import.meta.url).pathname);
-  const filePath = raw.replace(/^\/([A-Z]:)/, "$1");
+  const filePath = fileURLToPath(import.meta.url);
   return resolve(dirname(filePath), "../..");
 }
 

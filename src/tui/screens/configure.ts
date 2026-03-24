@@ -243,9 +243,14 @@ async function changeEmbedModel(
 
   const sp = ora(`Downloading ${choice.name}...`).start();
   try {
-    const safeId = choice.id.replace(/'/g, "\\'");
     const trustArg = choice.trustRemoteCode ? ", trust_remote_code=True" : "";
-    execFileSync(python, ["-c", `from sentence_transformers import SentenceTransformer; SentenceTransformer('${safeId}'${trustArg})`], { stdio: "pipe", timeout: 600000 });
+    const tmpScript = resolve(tmpdir(), `threadclaw_dl_${randomUUID()}.py`);
+    writeFileSync(tmpScript, `import sys; from sentence_transformers import SentenceTransformer; SentenceTransformer(sys.argv[1]${trustArg})`);
+    try {
+      execFileSync(python, [tmpScript, choice.id], { stdio: "pipe", timeout: 600000 });
+    } finally {
+      try { unlinkSync(tmpScript); } catch {}
+    }
     sp.succeed(`${choice.name} ready. Restart services and re-ingest documents.`);
   } catch {
     sp.warn("Download failed. Will retry on server start.");
@@ -289,9 +294,14 @@ async function changeRerankModel(
 
   const sp = ora(`Downloading ${choice.name}...`).start();
   try {
-    const safeId = choice.id.replace(/'/g, "\\'");
     const trustArg = choice.trustRemoteCode ? ", trust_remote_code=True" : "";
-    execFileSync(python, ["-c", `from sentence_transformers import CrossEncoder; CrossEncoder('${safeId}'${trustArg})`], { stdio: "pipe", timeout: 600000 });
+    const tmpScript = resolve(tmpdir(), `threadclaw_dl_${randomUUID()}.py`);
+    writeFileSync(tmpScript, `import sys; from sentence_transformers import CrossEncoder; CrossEncoder(sys.argv[1]${trustArg})`);
+    try {
+      execFileSync(python, [tmpScript, choice.id], { stdio: "pipe", timeout: 600000 });
+    } finally {
+      try { unlinkSync(tmpScript); } catch {}
+    }
     sp.succeed(`${choice.name} ready. Restart services to apply.`);
   } catch {
     sp.warn("Download failed. Will retry on server start.");
