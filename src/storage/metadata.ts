@@ -33,6 +33,7 @@ export function getDocumentIdsByMetadata(
   collectionId?: string,
 ): string[] {
   if (filters.length === 0) return [];
+  if (filters.length > 20) throw new Error("Too many metadata filters (max 20)");
 
   const conditions = filters.map(
     (_, i) => `(mi${i}.key = ? AND mi${i}.value = ?)`,

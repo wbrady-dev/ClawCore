@@ -214,11 +214,8 @@ export function ensureCollection(
   db: Database.Database,
   name: string,
 ): Collection {
-  const existing = getCollectionByName(db, name);
-  if (existing) return existing;
-
-  // Race-safe: INSERT OR IGNORE prevents UNIQUE constraint errors
-  // when multiple concurrent ingests create the same collection.
+  // Atomic: INSERT OR IGNORE first, then SELECT.
+  // No check-then-insert race — the INSERT is the single point of truth.
   const id = uuidv4();
   db.prepare(
     "INSERT OR IGNORE INTO collections (id, name) VALUES (?, ?)",

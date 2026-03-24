@@ -76,7 +76,7 @@ def _is_path_blocked(file_path: str) -> bool:
     return any(seg in blocked_dirs for seg in parts)
 
 app = Flask(__name__)
-app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024  # 50 MB
+app.config['MAX_CONTENT_LENGTH'] = MAX_PARSE_SIZE_MB * 1024 * 1024
 embed_model = None
 rerank_model = None
 ner_model = None
@@ -251,17 +251,29 @@ def embeddings():
 
     # Encode with OOM recovery: clear CUDA cache and retry with progressively
     # smaller batches. No CPU fallback — large models get mixed-device errors.
+    # Timeout: model.encode() is synchronous and can hang indefinitely on GPU.
+    # Run in a thread with a 120s timeout to prevent request blocking forever.
+    EMBED_TIMEOUT_SECONDS = 120
+
+    def _do_encode(texts, bs):
+        return embed_model.encode(
+            texts,
+            normalize_embeddings=True,
+            batch_size=bs,
+            show_progress_bar=False,
+        )
+
     vectors = None
     batch_sizes = [64, 16, 4, 1]
     for i, bs in enumerate(batch_sizes):
         try:
-            vectors = embed_model.encode(
-                input_text,
-                normalize_embeddings=True,
-                batch_size=bs,
-                show_progress_bar=False,
-            )
+            with ThreadPoolExecutor(max_workers=1) as pool:
+                future = pool.submit(_do_encode, input_text, bs)
+                vectors = future.result(timeout=EMBED_TIMEOUT_SECONDS)
             break
+        except FuturesTimeout:
+            logger.error(f"Embedding timed out after {EMBED_TIMEOUT_SECONDS}s (batch_size={bs})")
+            return jsonify({"error": f"Embedding timed out after {EMBED_TIMEOUT_SECONDS}s"}), 504
         except RuntimeError as e:
             err_str = str(e).lower()
             if "out of memory" in err_str:

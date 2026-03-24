@@ -144,45 +144,58 @@ export interface DeleteResult {
  * and provenance_links.
  *
  * This function performs multiple SQL operations that must be atomic.
- * Callers MUST wrap this in a write transaction (withWriteTransaction or
- * better-sqlite3 .transaction()) to prevent partial cleanup on crash.
+ * It will start a write transaction if not already inside one; if the
+ * caller has already opened a transaction the operations run within it.
  */
 export function deleteGraphDataForSource(
   db: GraphDb,
   sourceType: string,
   sourceId: string,
 ): DeleteResult {
-  // Count mentions (provenance_links with mentioned_in) for this source
-  const objectKey = `${sourceType}:${sourceId}`;
+  const doDelete = (): DeleteResult => {
+    // Count mentions (provenance_links with mentioned_in) for this source
+    const objectKey = `${sourceType}:${sourceId}`;
 
-  let mentionsDeleted = 0;
-  try {
-    const deleteResult = db.prepare(
-      "DELETE FROM provenance_links WHERE object_id = ? AND predicate = 'mentioned_in'",
-    ).run(objectKey);
-    mentionsDeleted = Number(deleteResult.changes);
-  } catch { /* non-fatal */ }
+    let mentionsDeleted = 0;
+    try {
+      const deleteResult = db.prepare(
+        "DELETE FROM provenance_links WHERE object_id = ? AND predicate = 'mentioned_in'",
+      ).run(objectKey);
+      mentionsDeleted = Number(deleteResult.changes);
+    } catch { /* non-fatal */ }
 
-  // Delete memory_objects from this source
-  deleteMemoryObjectsBySource(db, sourceType, sourceId);
+    // Delete memory_objects from this source
+    deleteMemoryObjectsBySource(db, sourceType, sourceId);
 
-  // Invalidate awareness cache after graph mutations
-  invalidateAwarenessCache();
+    // Invalidate awareness cache after graph mutations
+    invalidateAwarenessCache();
 
-  // Log the cleanup
-  logEvidence(db, {
-    scopeId: 1,
-    objectType: "source",
-    objectId: 0,
-    eventType: "delete",
-    payload: { sourceType, sourceId, mentionsDeleted },
-  });
+    // Log the cleanup
+    logEvidence(db, {
+      scopeId: 1,
+      objectType: "source",
+      objectId: 0,
+      eventType: "delete",
+      payload: { sourceType, sourceId, mentionsDeleted },
+    });
 
-  return {
-    entitiesAffected: 0,
-    mentionsDeleted,
-    orphansRemoved: 0,
+    return {
+      entitiesAffected: 0,
+      mentionsDeleted,
+      orphansRemoved: 0,
+    };
   };
+
+  // If already inside a transaction, run directly; otherwise wrap in one
+  try {
+    return withWriteTransaction(db, doDelete);
+  } catch (err) {
+    if (err instanceof Error && err.message.includes("transaction")) {
+      // Already inside a transaction — run directly
+      return doDelete();
+    }
+    throw err;
+  }
 }
 
 // ---------------------------------------------------------------------------

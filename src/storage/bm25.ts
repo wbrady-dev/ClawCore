@@ -15,7 +15,7 @@ export interface BM25SearchResult {
  */
 function escapeFts5Query(query: string): string | null {
   const words = query
-    .replace(/[^\w\s]/g, " ")
+    .replace(/[^\p{L}\p{N}\s_-]/gu, " ")
     .split(/\s+/)
     .filter((w) => w.length > 0);
 

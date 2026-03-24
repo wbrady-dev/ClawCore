@@ -318,14 +318,14 @@ export async function runGDriveOAuth(clientId: string, clientSecret: string): Pr
   console.log(`\n  Opening browser for Google sign-in...`);
   console.log(`  If browser doesn't open, visit:\n  ${authUrl}\n`);
 
-  // Open browser
-  const { exec } = await import("child_process");
+  // Open browser — use execFile to avoid shell injection via authUrl
+  const { execFile } = await import("child_process");
   if (process.platform === "win32") {
-    exec(`start "" "${authUrl}"`);
+    execFile("cmd", ["/c", "start", "", authUrl]);
   } else if (process.platform === "darwin") {
-    exec(`open "${authUrl}"`);
+    execFile("open", [authUrl]);
   } else {
-    exec(`xdg-open "${authUrl}"`);
+    execFile("xdg-open", [authUrl]);
   }
 
   // Wait for OAuth callback

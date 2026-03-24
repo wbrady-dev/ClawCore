@@ -651,7 +651,10 @@ function HomeScreen({ onAction }: { onAction: (action: string) => void }) {
       if (refreshTimerRef.current) clearTimeout(refreshTimerRef.current);
       refreshTimerRef.current = setTimeout(() => { void refresh(); }, 500);
     });
-    return unsub; // cleanup on unmount
+    return () => {
+      unsub();
+      if (refreshTimerRef.current) clearTimeout(refreshTimerRef.current);
+    };
   }, []);
 
   useInterval(refresh, modelsUp || threadclawUp ? 3000 : 5000);

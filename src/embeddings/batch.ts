@@ -73,9 +73,13 @@ async function embedWithRetry(
   try {
     return await embed(texts, type);
   } catch (err) {
-    // If circuit breaker is open, don't retry — fail immediately
+    // If circuit breaker is open or request is invalid (4xx), don't retry — fail immediately
     const msg = err instanceof Error ? err.message : String(err);
     if (msg.includes("circuit breaker")) {
+      throw err;
+    }
+    const status = (err as any)?.status ?? (err as any)?.statusCode ?? 0;
+    if (status >= 400 && status < 500) {
       throw err;
     }
 

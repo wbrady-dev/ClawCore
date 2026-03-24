@@ -758,11 +758,16 @@ export async function performInstallPlan(plan: InstallPlan): Promise<void> {
           const regOutput = execFileSync("reg", ["query", "HKCU\\Environment", "/v", "PATH"], { stdio: "pipe", timeout: 10000 }).toString();
           const match = regOutput.match(/PATH\s+REG_(?:EXPAND_)?SZ\s+(.*)/i);
           const userPath = match ? match[1].trim() : "";
-          if (!userPath.toLowerCase().includes("threadclaw")) {
-            const newPath = userPath ? `${userPath};${cmdDir}` : cmdDir;
+          if (!match || !userPath) {
+            // Registry returned data but regex failed to parse — skip to avoid overwriting PATH
+            console.error(t.dim("  Could not parse user PATH from registry. Add manually: setx PATH \"%PATH%;" + cmdDir + "\""));
+          } else if (!userPath.toLowerCase().includes("threadclaw")) {
+            const newPath = `${userPath};${cmdDir}`;
             execFileSync("setx", ["PATH", newPath], { stdio: "pipe", timeout: 10000 });
+            pathRegistered = true;
+          } else {
+            pathRegistered = true;
           }
-          pathRegistered = true;
         } catch {
           // User PATH key may not exist yet — create it with just our dir
           try {

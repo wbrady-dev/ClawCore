@@ -200,7 +200,6 @@ export async function performUninstall(options: { deleteData: boolean }): Promis
     resolve(root, ".env.bak"),
     resolve(root, "server", "config.json"),
     resolve(root, "logs"),
-    resolve(root, "data"),
     resolve(root, ".models.pid"),
     resolve(root, ".threadclaw.pid"),
     resolve(root, ".install-complete"),

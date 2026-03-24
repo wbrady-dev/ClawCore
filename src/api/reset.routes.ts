@@ -56,8 +56,15 @@ export function registerResetRoutes(server: FastifyInstance) {
         const { DatabaseSync } = await import("node:sqlite");
         const memPath = resolve(config.dataDir, "memory.db");
         const memDb = new DatabaseSync(memPath);
+        // Allowlist of valid memory tables to prevent SQL injection via table name interpolation
+        const ALLOWED_MEM_TABLES = new Set([
+          "context_items", "summary_parents", "summary_messages", "message_parts",
+          "large_files", "summaries", "messages", "conversations",
+          "messages_fts", "summaries_fts",
+        ]);
+        const validateTable = (tbl: string) => { if (!ALLOWED_MEM_TABLES.has(tbl)) throw new Error(`Invalid table name: ${tbl}`); };
         // Count before deleting
-        const safeCount = (tbl: string) => { try { return (memDb.prepare(`SELECT COUNT(*) as c FROM ${tbl}`).get() as any)?.c ?? 0; } catch { return 0; } };
+        const safeCount = (tbl: string) => { try { validateTable(tbl); return (memDb.prepare(`SELECT COUNT(*) as c FROM ${tbl}`).get() as any)?.c ?? 0; } catch { return 0; } };
         memoryStats = {
           conversations: safeCount("conversations"),
           messages: safeCount("messages"),
@@ -66,9 +73,9 @@ export function registerResetRoutes(server: FastifyInstance) {
         };
         // Delete in FK-safe order: children first, then parents
         const memTables = ["context_items", "summary_parents", "summary_messages", "message_parts", "large_files", "summaries", "messages", "conversations"];
-        for (const tbl of memTables) { try { memDb.exec(`DELETE FROM ${tbl}`); } catch {} }
-        try { memDb.exec("DELETE FROM messages_fts"); } catch {}
-        try { memDb.exec("DELETE FROM summaries_fts"); } catch {}
+        for (const tbl of memTables) { try { validateTable(tbl); memDb.exec(`DELETE FROM ${tbl}`); } catch {} }
+        try { validateTable("messages_fts"); memDb.exec("DELETE FROM messages_fts"); } catch {}
+        try { validateTable("summaries_fts"); memDb.exec("DELETE FROM summaries_fts"); } catch {}
         try { memDb.exec("VACUUM"); } catch {}
         memDb.close();
         memoryCleared = true;

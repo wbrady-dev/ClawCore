@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { existsSync } from "fs";
+import { existsSync, writeFileSync } from "fs";
 import { resolve } from "path";
 import { t } from "./theme.js";
 import { detectTerminalCapabilities, setTerminalCapabilities } from "./capabilities.js";

@@ -273,7 +273,7 @@ async function ingestFileInner(
     for (let ci = 0; ci < dedupedIndices.length; ci++) {
       const i = dedupedIndices[ci];
       const chunk = chunks[i];
-      const parentId = (ci > 0 && dedupedIndices[ci] === dedupedIndices[ci - 1] + 1) ? chunkIds[ci - 1] : null;
+      const parentId = ci > 0 ? chunkIds[ci - 1] : null;
       chunkStmt.run(
         chunkIds[ci],
         documentId,

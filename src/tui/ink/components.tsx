@@ -158,7 +158,7 @@ export function useInterval(callback: () => void, delayMs: number) {
     const id = setInterval(async () => {
       if (running.current) return; // prevent overlapping async calls
       running.current = true;
-      try { await savedCallback.current(); } catch (e) { /* useInterval: swallowed error to avoid crashing render loop */ } finally { running.current = false; }
+      try { await savedCallback.current(); } catch (e) { if (process.env.DEBUG) console.error("useInterval error:", e); } finally { running.current = false; }
     }, delayMs);
     return () => clearInterval(id);
   }, [delayMs]);
