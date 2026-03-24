@@ -820,12 +820,13 @@ export async function performInstallPlan(plan: InstallPlan): Promise<void> {
     const ragDbPath = resolve(THREADCLAW_DATA_DIR, "threadclaw.db");
     try {
       mkdirSync(dirname(ragDbPath), { recursive: true });
-      const { getDb } = await import("../../storage/sqlite.js");
+      const { getDb, closeDb } = await import("../../storage/sqlite.js");
       const { runMigrations } = await import("../../storage/index.js");
       const { ensureCollection } = await import("../../storage/collections.js");
       const ragDb = getDb(ragDbPath);
       runMigrations(ragDb);
       ensureCollection(ragDb, "default");
+      closeDb();
     } catch (ragErr) {
       console.error(t.warn(`  RAG database init failed (non-fatal): ${String(ragErr).slice(0, 200)}`));
     }
