@@ -90,11 +90,12 @@ export async function runInkInstall(): Promise<boolean> {
       root = resolve(installDir);
     }
   } else {
+    const defaultDir = resolve(homedir(), ".threadclaw");
     const installDir = await promptText({
       title: "Install Location",
-      message: "No OpenClaw detected. Enter the ThreadClaw install directory.",
+      message: "No OpenClaw installation detected.\n\nThreadClaw will be installed to a dedicated directory (separate from this git clone).",
       label: "Install directory",
-      initial: sourceRoot,
+      initial: defaultDir,
     });
     if (!installDir) return false;
     root = resolve(installDir);

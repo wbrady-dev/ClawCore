@@ -144,38 +144,12 @@ echo.
 node "%SCRIPT_DIR%\bin\threadclaw.mjs" install %*
 if errorlevel 1 goto :install_failed
 
-:: ── Step 5: Register global command (fallback) ──
-:: performInstallPlan already registers the global command pointing to the
-:: install root. This fallback only fires if that didn't happen (e.g. user
-:: cancelled during install). Note: SCRIPT_DIR may be the clone location, not
-:: the install root — the TUI's registration is authoritative.
-if not exist "%LOCALAPPDATA%\ThreadClaw\threadclaw.cmd" (
-    echo.
-    echo [install] Registering threadclaw command (fallback)...
-    if not exist "%LOCALAPPDATA%\ThreadClaw" mkdir "%LOCALAPPDATA%\ThreadClaw"
-    (
-        echo @echo off
-        echo node "%SCRIPT_DIR%\bin\threadclaw.mjs" %%*
-    ) > "%LOCALAPPDATA%\ThreadClaw\threadclaw.cmd"
-
-    setlocal enabledelayedexpansion
-    set "TC_PATH=%LOCALAPPDATA%\ThreadClaw"
-    for /f "tokens=2*" %%a in ('reg query "HKCU\Environment" /v PATH 2^>nul') do set "USER_PATH=%%b"
-    if not defined USER_PATH (
-        setx PATH "!TC_PATH!" >nul 2>&1
-        echo [OK] threadclaw command registered. Restart your terminal to use it.
-    ) else (
-        echo !USER_PATH! | findstr /i /c:"ThreadClaw" >nul 2>&1
-        if errorlevel 1 (
-            setx PATH "!USER_PATH!;!TC_PATH!" >nul 2>&1
-            echo [OK] threadclaw command registered. Restart your terminal to use it.
-        ) else (
-            echo [OK] threadclaw command already on PATH
-        )
-    )
-    endlocal
+:: The TUI installer (performInstallPlan) registers the global command
+:: pointing to the correct install root. No fallback needed here.
+if exist "%LOCALAPPDATA%\ThreadClaw\threadclaw.cmd" (
+    echo [OK] threadclaw command registered
 ) else (
-    echo [OK] threadclaw command already registered
+    echo [WARN] Global command not registered. Run: threadclaw install
 )
 
 :: ── Done ──

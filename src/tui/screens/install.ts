@@ -3,7 +3,7 @@ import ora, { type Ora } from "ora";
 import { execFileSync } from "child_process";
 import { randomUUID } from "crypto";
 import { cpSync, existsSync, mkdirSync, readFileSync, writeFileSync, unlinkSync } from "fs";
-import { resolve } from "path";
+import { dirname, resolve } from "path";
 import { homedir, tmpdir } from "os";
 import { clearScreen, kvLine, section, t } from "../theme.js";
 import { runStreamedCommand, sanitizeCommandLine } from "../process.js";
@@ -226,7 +226,8 @@ export async function runInstall(): Promise<void> {
     }
   } else {
     console.log(t.dim("  No OpenClaw installation detected.\n"));
-    const { installDir } = await prompts({ type: "text", name: "installDir", message: "Install directory", initial: sourceRoot }, { onCancel });
+    const defaultDir = resolve(homedir(), ".threadclaw");
+    const { installDir } = await prompts({ type: "text", name: "installDir", message: "Install directory", initial: defaultDir }, { onCancel });
     if (!installDir || cancelled) return;
     root = resolve(installDir);
   }
@@ -815,16 +816,38 @@ export async function performInstallPlan(plan: InstallPlan): Promise<void> {
     const { ensureThreadClawHome, getAppVersion, readManifest, writeManifest, THREADCLAW_DATA_DIR } = await import("../../version.js");
     ensureThreadClawHome();
 
-    // RAG DB migration
+    // RAG DB creation + migration (always run — fresh installs need the DB created)
     const ragDbPath = resolve(THREADCLAW_DATA_DIR, "threadclaw.db");
-    if (existsSync(ragDbPath)) {
+    try {
+      mkdirSync(dirname(ragDbPath), { recursive: true });
+      const { getDb } = await import("../../storage/sqlite.js");
+      const { runMigrations } = await import("../../storage/index.js");
+      const { ensureCollection } = await import("../../storage/collections.js");
+      const ragDb = getDb(ragDbPath);
+      runMigrations(ragDb);
+      ensureCollection(ragDb, "default");
+    } catch (ragErr) {
+      console.error(t.warn(`  RAG database init failed (non-fatal): ${String(ragErr).slice(0, 200)}`));
+    }
+
+    // Evidence OS graph database initialization
+    if (evidenceConfig.relationsEnabled) {
       try {
-        const { DatabaseSync } = await import("node:sqlite");
-        const { runMigrations } = await import("../../storage/index.js");
-        const db = new DatabaseSync(ragDbPath);
-        runMigrations(db as any);
-        db.close();
-      } catch {}
+        const graphDbPath = resolve(THREADCLAW_DATA_DIR, "graph.db");
+        mkdirSync(dirname(graphDbPath), { recursive: true });
+        const { getGraphDb, closeGraphDb } = await import("../../storage/graph-sqlite.js");
+        const graphDb = getGraphDb(graphDbPath);
+        try {
+          const { runGraphMigrations } = await import("../../../memory-engine/src/relations/schema.js");
+          runGraphMigrations(graphDb, graphDbPath);
+        } catch {
+          // Graph migrations run via memory-engine which may not be importable here
+          // The graph DB file is at least created, migrations will run on first start
+        }
+        closeGraphDb();
+      } catch (graphErr) {
+        console.error(t.warn(`  Evidence OS database init failed (non-fatal): ${String(graphErr).slice(0, 200)}`));
+      }
     }
 
     // Write initial manifest so upgrade detection works on next launch
