@@ -675,7 +675,7 @@ export function runGraphMigrations(db: GraphDb, dbPath?: string): void {
   if (anyApplied.cnt === 0) {
     db.exec(FRESH_INSTALL_SQL);
     // Mark all migration versions as applied so the legacy chain never runs
-    for (let v = 1; v <= 20; v++) {
+    for (let v = 1; v <= 23; v++) {
       markMigrationApplied(db, v);
     }
     // File permissions
