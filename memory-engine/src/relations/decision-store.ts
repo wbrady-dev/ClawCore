@@ -59,7 +59,7 @@ export function upsertDecision(db: GraphDb, input: UpsertDecisionInput): UpsertD
     updated_at: now,
   };
 
-  const result = upsertMemoryObject(db, mo);
+  const result = upsertMemoryObject(db, mo, { skipCanonicalDedup: true });
 
   // Auto-supersede the old decision if one existed
   if (existing) {

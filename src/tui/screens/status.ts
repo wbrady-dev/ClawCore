@@ -197,7 +197,7 @@ export async function showStatus(): Promise<void> {
       const mentions = safeCount("SELECT COUNT(*) as cnt FROM provenance_links WHERE predicate = 'mentioned_in'");
       const claims = safeCount("SELECT COUNT(*) as cnt FROM memory_objects WHERE kind = 'claim' AND status = 'active'");
       const decisions = safeCount("SELECT COUNT(*) as cnt FROM memory_objects WHERE kind = 'decision' AND status = 'active'");
-      const loops = safeCount("SELECT COUNT(*) as cnt FROM memory_objects WHERE kind = 'loop' AND status IN ('open','blocked')");
+      const loops = safeCount("SELECT COUNT(*) as cnt FROM memory_objects WHERE kind = 'loop' AND status = 'active'");
       const events = safeCount("SELECT COUNT(*) as cnt FROM evidence_log");
 
       if (entities >= 0) console.log(kvLine("Entities", String(entities)));

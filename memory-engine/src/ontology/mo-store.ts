@@ -74,6 +74,7 @@ function validStatus(val: unknown): MemoryStatus {
 export function upsertMemoryObject(
   db: GraphDb,
   obj: MemoryObject,
+  opts?: { skipCanonicalDedup?: boolean },
 ): { moId: number; isNew: boolean } {
   const structuredJson = obj.structured != null
     ? JSON.stringify(obj.structured)
@@ -91,9 +92,22 @@ export function upsertMemoryObject(
   const branchId = 0; // default branch
 
   // Try upsert by composite_id first
-  const existing = db.prepare(
+  let existing = db.prepare(
     "SELECT id FROM memory_objects WHERE composite_id = ?",
   ).get(obj.id) as { id: number } | undefined;
+
+  // If not found by composite_id, try canonical_key (prevents duplicates from re-extraction)
+  // Skip for stores that manage their own supersession (e.g., decisions)
+  if (!existing && canonicalKey && !opts?.skipCanonicalDedup) {
+    const byCanonical = db.prepare(
+      "SELECT id, composite_id FROM memory_objects WHERE canonical_key = ? AND scope_id = ? AND kind = ? AND status IN ('active','needs_confirmation') LIMIT 1",
+    ).get(canonicalKey, obj.scope_id ?? 1, obj.kind) as { id: number; composite_id: string } | undefined;
+    if (byCanonical) {
+      existing = { id: byCanonical.id };
+      // Update the composite_id on the existing row to the new one
+      db.prepare("UPDATE memory_objects SET composite_id = ? WHERE id = ?").run(obj.id, byCanonical.id);
+    }
+  }
 
   if (existing) {
     // Weighted confidence blend: new * 0.7 + old * 0.3 (gives recent evidence more weight)

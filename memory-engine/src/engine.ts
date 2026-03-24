@@ -1550,7 +1550,6 @@ export class LcmContextEngine implements ContextEngine {
     // NOTE: withWriteTransaction is synchronous and runs inside the
     // fire-and-forget async IIFE. Reconciliation runs before store writes
     // so supersession actions apply to the latest objects.
-    console.info(`[rsma] gate: rsmaWillRun=${rsmaWillRun}, graphDb=${!!this.graphDb}, relationsEnabled=${this.config.relationsEnabled}, role=${stored.role}, contentLen=${stored.content.length}, extractionMode=${this.config.relationsExtractionMode}, deepEnabled=${this.config.relationsDeepExtractionEnabled}, model=${this.config.relationsDeepExtractionModel}`);
     if (rsmaWillRun) {
       const _graphDb = this.graphDb!;
       const _content = stored.content;
@@ -1598,21 +1597,17 @@ export class LcmContextEngine implements ContextEngine {
               provider: extractionProvider,
               maxInputChars: 4000,
             });
-            console.info(`[rsma] LLM extraction succeeded: ${writerResult.objects.length} objects (${writerResult.objects.map(o => o.kind).join(", ")})`);
           } catch (llmErr) {
             // LLM unavailable — fall back to regex
             console.warn("[rsma] LLM extraction failed, falling back to regex:", llmErr instanceof Error ? llmErr.message : String(llmErr));
             const { understandMessage } = await import("./ontology/writer.js");
             writerResult = await understandMessage(_content, _messageId, role);
-            console.info("[rsma] used REGEX fallback");
           }
         } else {
-          console.info("[rsma] using REGEX extraction (LLM not configured)");
           const { understandMessage } = await import("./ontology/writer.js");
           writerResult = await understandMessage(_content, _messageId, role);
         }
 
-        console.info(`[rsma] extraction produced ${writerResult.objects.length} objects: ${writerResult.objects.map(o => o.kind).join(", ")}`);
         if (writerResult.objects.length > 0) {
           const { reconcile } = await import("./ontology/truth.js");
           const { projectProvenance, recordSupersession, recordConflict, recordEvidence } = await import("./ontology/projector.js");
@@ -1624,10 +1619,8 @@ export class LcmContextEngine implements ContextEngine {
             correctionSignal: writerResult.signals.correctionSignal ?? undefined,
           });
 
-          console.info(`[rsma] reconciliation produced ${reconciled.actions.length} actions: ${reconciled.actions.map(a => a.type).join(", ")}`);
           for (const action of reconciled.actions) {
             if (action.type === "insert") {
-              console.info(`[rsma] inserting ${action.object.kind}: ${action.object.content?.substring(0, 60)}`);
               upsertMemoryObject(graphDb, action.object);
               projectProvenance(graphDb, action.object);
             } else if (action.type === "supersede") {
@@ -1687,6 +1680,12 @@ export class LcmContextEngine implements ContextEngine {
               projectProvenance(graphDb, action.conflictObject);
               recordConflict(graphDb, action.conflictObject.id, action.objectIdA, action.objectIdB, action.reason);
             } else if (action.type === "evidence") {
+              // Update existing object's freshness (don't insert duplicate)
+              try {
+                graphDb.prepare(
+                  "UPDATE memory_objects SET last_observed_at = strftime('%Y-%m-%dT%H:%M:%f','now'), updated_at = strftime('%Y-%m-%dT%H:%M:%f','now'), confidence = MIN(1.0, confidence * 0.3 + ? * 0.7) WHERE composite_id = ?"
+                ).run(action.newObject.confidence ?? 0.5, action.existingObjectId);
+              } catch {}
               projectProvenance(graphDb, action.newObject);
               recordEvidence(graphDb, action.newObject.id, action.existingObjectId, action.predicate, 1.0, action.reason);
             }
