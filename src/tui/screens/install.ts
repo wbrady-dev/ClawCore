@@ -111,7 +111,7 @@ export async function runNonInteractiveInstall(): Promise<void> {
   console.log("");
 
   // Determine install root
-  let root = sourceRoot;
+  let root = openclawDir ? resolve(openclawDir, "services", "threadclaw") : resolve(homedir(), ".threadclaw");
   if (openclawDir) {
     const ocRoot = resolve(openclawDir, "services", "threadclaw");
     if (existsSync(resolve(ocRoot, "package.json"))) {
@@ -124,6 +124,8 @@ export async function runNonInteractiveInstall(): Promise<void> {
         filter: (src) => {
           const rel = src.slice(sourceRoot.length + 1).replace(/\\/g, "/");
           if ((rel === "node_modules" || rel.startsWith("node_modules/")) && !rel.startsWith("memory-engine/")) return false;
+          if (rel === ".venv" || rel.startsWith(".venv/")) return false;
+          if (rel === "dist" || rel.startsWith("dist/")) return false;
           if (rel === "data" || rel.startsWith("data/")) return false;
           if (rel === "logs" || rel.startsWith("logs/")) return false;
           if (rel === ".git" || rel.startsWith(".git/")) return false;
@@ -405,9 +407,10 @@ export async function runInstall(): Promise<void> {
     enableOcr,
     enableAudio,
     evidenceConfig,
-    integrateOpenClaw: !isRecommended && Boolean(openclawDir),
+    integrateOpenClaw: Boolean(openclawDir),
     enableObsidian: !isRecommended,
     installWindowsServices: !isRecommended && platform === "windows",
+    huggingFaceToken: "",
   });
 
   await selectMenu([{ label: "Continue to main menu", value: "done", color: t.dim }]);
