@@ -138,143 +138,11 @@ if errorlevel 1 (
     echo [OK] Build complete
 )
 
-:: ── Step 4: Python virtual environment ──
-if not exist "%SCRIPT_DIR%\.venv\Scripts\python.exe" goto :create_venv
-
-:: Verify existing venv works
-"%SCRIPT_DIR%\.venv\Scripts\python.exe" -c "import sys" >nul 2>&1
-if errorlevel 1 (
-    echo [WARN] Existing venv is broken — recreating...
-    rmdir /s /q "%SCRIPT_DIR%\.venv"
-    goto :create_venv
-)
-echo [OK] Python virtual environment already present
-goto :venv_done
-
-:create_venv
-echo.
-echo [install] Creating Python virtual environment...
-python -m venv "%SCRIPT_DIR%\.venv"
-if errorlevel 1 (
-    echo [ERROR] Failed to create Python virtual environment.
-    echo         Make sure 'python -m venv' works on your system.
-    pause
-    exit /b 1
-)
-echo [OK] Virtual environment created
-
-:venv_done
-
-:: ── Step 5: Install pinned Python dependencies ──
-echo.
-echo [install] Installing Python dependencies (this may take several minutes)...
-
-:: Install PyTorch first (platform-specific)
-"%SCRIPT_DIR%\.venv\Scripts\python.exe" -c "import torch" >nul 2>&1
-if not errorlevel 1 (
-    echo [OK] PyTorch already installed
-    goto :torch_done
-)
-
-echo [install] Downloading PyTorch (this may take 5-10 minutes)...
-"%SCRIPT_DIR%\.venv\Scripts\pip.exe" install torch torchvision --index-url https://download.pytorch.org/whl/cu124
-"%SCRIPT_DIR%\.venv\Scripts\python.exe" -c "import torch; print('torch', torch.__version__)" >nul 2>&1
-if not errorlevel 1 (
-    echo [OK] PyTorch installed (GPU)
-    goto :torch_done
-)
-
-echo [install] GPU PyTorch failed, trying CPU version...
-"%SCRIPT_DIR%\.venv\Scripts\pip.exe" install torch torchvision
-"%SCRIPT_DIR%\.venv\Scripts\python.exe" -c "import torch; print('torch', torch.__version__)" >nul 2>&1
-if not errorlevel 1 (
-    echo [OK] PyTorch installed (CPU)
-    goto :torch_done
-)
-
-echo [ERROR] PyTorch installation failed. Could not import torch after install.
-pause
-exit /b 1
-
-:torch_done
-
-:: Install remaining pinned dependencies
-if not exist "%SCRIPT_DIR%\server\requirements-pinned.txt" goto :pip_fallback
-
-:: ── Fix 5: pip errorlevel check on requirements install ──
-echo [install] Installing from requirements-pinned.txt...
-"%SCRIPT_DIR%\.venv\Scripts\pip.exe" install -r "%SCRIPT_DIR%\server\requirements-pinned.txt"
-if errorlevel 1 (
-    echo [WARN] Some dependencies failed. Attempting individual installs...
-    "%SCRIPT_DIR%\.venv\Scripts\pip.exe" install sentence-transformers
-    "%SCRIPT_DIR%\.venv\Scripts\pip.exe" install flask
-    "%SCRIPT_DIR%\.venv\Scripts\pip.exe" install spacy
-    "%SCRIPT_DIR%\.venv\Scripts\pip.exe" install docling
-)
-goto :pip_validate
-
-:pip_fallback
-echo [install] No pinned requirements found, installing core deps...
-"%SCRIPT_DIR%\.venv\Scripts\pip.exe" install sentence-transformers flask spacy docling
-
-:pip_validate
-:: Validate critical imports instead of trusting errorlevel
-"%SCRIPT_DIR%\.venv\Scripts\python.exe" -c "from sentence_transformers import SentenceTransformer" >nul 2>&1
-if errorlevel 1 (
-    echo [WARN] sentence-transformers import failed. Retrying install...
-    "%SCRIPT_DIR%\.venv\Scripts\pip.exe" install sentence-transformers
-)
-"%SCRIPT_DIR%\.venv\Scripts\python.exe" -c "import flask" >nul 2>&1
-if errorlevel 1 (
-    echo [WARN] flask import failed. Retrying install...
-    "%SCRIPT_DIR%\.venv\Scripts\pip.exe" install flask
-)
-
-:: Final validation
-"%SCRIPT_DIR%\.venv\Scripts\python.exe" -c "from sentence_transformers import SentenceTransformer; import flask" >nul 2>&1
-if errorlevel 1 (
-    echo [ERROR] Critical Python dependencies missing after install.
-    echo         Run pip install manually in .venv and check for errors.
-    pause
-    exit /b 1
-)
-echo [OK] Python dependencies installed
-
-:: ── Step 6: spaCy NER model ──
-"%SCRIPT_DIR%\.venv\Scripts\python.exe" -c "import spacy; spacy.load('en_core_web_sm')" >nul 2>&1
-if not errorlevel 1 (
-    echo [OK] spaCy NER model already present
-    goto :spacy_done
-)
-
-echo [install] Downloading spaCy NER model...
-"%SCRIPT_DIR%\.venv\Scripts\python.exe" -m spacy download en_core_web_sm
-"%SCRIPT_DIR%\.venv\Scripts\python.exe" -c "import spacy; spacy.load('en_core_web_sm')" >nul 2>&1
-if errorlevel 1 (
-    echo [WARN] spaCy NER model download failed. Entity extraction will use regex fallback.
-) else (
-    echo [OK] spaCy NER model installed
-)
-
-:spacy_done
-
-:: ── Step 7: Memory-engine dependencies ──
-if exist "%SCRIPT_DIR%\memory-engine\node_modules\@sinclair\typebox" (
-    echo [OK] Memory-engine dependencies already present
-    goto :memengine_done
-)
-echo [install] Installing memory-engine dependencies...
-cd /d "%SCRIPT_DIR%\memory-engine"
-call npm install --no-audit --no-fund
-cd /d "%SCRIPT_DIR%"
-if not exist "%SCRIPT_DIR%\memory-engine\node_modules\@sinclair" (
-    echo [ERROR] Memory-engine dependencies incomplete.
-    pause
-    exit /b 1
-)
-echo [OK] Memory-engine dependencies installed
-
-:memengine_done
+:: ── Python venv, pip, spaCy, and memory-engine deps are handled by the TUI ──
+:: The TUI installer creates .venv at the install root (which may differ from
+:: SCRIPT_DIR) and installs all Python dependencies there. This avoids wasting
+:: 5-10 minutes installing Python deps at the clone location only to have the
+:: TUI re-install them at the actual install directory.
 
 echo.
 echo [launch] Starting ThreadClaw setup...
@@ -284,13 +152,14 @@ echo.
 node "%SCRIPT_DIR%\bin\threadclaw.mjs" install %*
 if errorlevel 1 goto :install_failed
 
-:: ── Step 9: Register global command ──
-:: The Node.js installer (performInstallPlan) already registers the global command
-:: using the correct install root (which may differ from SCRIPT_DIR if files were
-:: copied to .openclaw). Only register here as a fallback if it wasn't done.
+:: ── Step 5: Register global command (fallback) ──
+:: performInstallPlan already registers the global command pointing to the
+:: install root. This fallback only fires if that didn't happen (e.g. user
+:: cancelled during install). Note: SCRIPT_DIR may be the clone location, not
+:: the install root — the TUI's registration is authoritative.
 if not exist "%LOCALAPPDATA%\ThreadClaw\threadclaw.cmd" (
     echo.
-    echo [install] Registering threadclaw command...
+    echo [install] Registering threadclaw command (fallback)...
     if not exist "%LOCALAPPDATA%\ThreadClaw" mkdir "%LOCALAPPDATA%\ThreadClaw"
     (
         echo @echo off
@@ -317,16 +186,6 @@ if not exist "%LOCALAPPDATA%\ThreadClaw\threadclaw.cmd" (
     echo [OK] threadclaw command already registered
 )
 
-:: ── Fix 6: Smoke test with visible output ──
-echo.
-echo [install] Running smoke test...
-node "%SCRIPT_DIR%\bin\threadclaw.mjs" doctor
-if errorlevel 1 (
-    echo [WARN] Smoke test had issues. Review the output above.
-) else (
-    echo [OK] Smoke test passed
-)
-
 :: ── Done ──
 echo.
 echo  ========================================
@@ -339,9 +198,6 @@ echo    2. Open a NEW terminal (PowerShell or Command Prompt)
 echo    3. Type: threadclaw
 echo.
 echo  The 'threadclaw' command only works in NEW terminal windows.
-echo  If it doesn't work, run directly:
-echo    Command Prompt: node "%SCRIPT_DIR%\bin\threadclaw.mjs"
-echo    PowerShell:     node "%SCRIPT_DIR%\bin\threadclaw.mjs"
 echo.
 
 pause

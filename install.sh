@@ -4,7 +4,6 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 cd "$SCRIPT_DIR"
 INSTALL_START=$(date +%s)
-PIP="$SCRIPT_DIR/.venv/bin/pip"
 LOG="$SCRIPT_DIR/logs/install.log"
 
 echo ""
@@ -110,135 +109,11 @@ else
   echo "[OK] Build complete ($(elapsed))"
 fi
 
-# ── Step 4: Python virtual environment ──
-VENV_PYTHON="$SCRIPT_DIR/.venv/bin/python3"
-if [ -f "$VENV_PYTHON" ] && ! "$VENV_PYTHON" -c "import sys" 2>/dev/null; then
-  echo "[WARN] Existing venv is broken — recreating..."
-  rm -rf "$SCRIPT_DIR/.venv"
-fi
-if [ ! -f "$VENV_PYTHON" ]; then
-  echo ""
-  echo "[install] Creating Python virtual environment..."
-  $PYTHON_CMD -m venv "$SCRIPT_DIR/.venv"
-  echo "[OK] Virtual environment created"
-else
-  echo "[OK] Python virtual environment already present"
-fi
-
-# ── Step 5: Install pinned Python dependencies ──
-echo ""
-echo "[install] Installing Python dependencies (this may take several minutes)..."
-echo "          Full output logged to: $LOG"
-
-# Install PyTorch first (platform-specific)
-if ! "$VENV_PYTHON" -c "import torch" 2>/dev/null; then
-  echo "[install] Installing PyTorch..."
-  set +e
-  if [ "$(uname)" = "Darwin" ]; then
-    "$PIP" install torch torchvision >> "$LOG" 2>&1
-    PIP_RC=$?
-  else
-    "$PIP" install torch torchvision --index-url https://download.pytorch.org/whl/cu124 >> "$LOG" 2>&1
-    PIP_RC=$?
-    if [ $PIP_RC -ne 0 ]; then
-      echo "[WARN] CUDA install failed, falling back to default PyTorch..."
-      "$PIP" install torch torchvision >> "$LOG" 2>&1
-      PIP_RC=$?
-    fi
-  fi
-  set -e
-  if [ $PIP_RC -ne 0 ]; then
-    echo "[ERROR] PyTorch pip install failed (exit $PIP_RC). See $LOG"
-    exit 1
-  fi
-  # Verify import works
-  if ! "$VENV_PYTHON" -c "import torch" 2>/dev/null; then
-    echo "[ERROR] PyTorch installed but import failed. See $LOG"
-    exit 1
-  fi
-  echo "[OK] PyTorch installed ($(elapsed))"
-  # Verify MPS (Apple Silicon GPU) availability on macOS
-  if [ "$(uname)" = "Darwin" ] && [ "$(uname -m)" = "arm64" ]; then
-    if "$VENV_PYTHON" -c "import torch; assert torch.backends.mps.is_available()" 2>/dev/null; then
-      echo "[OK] MPS (Apple Silicon GPU) backend available"
-    else
-      echo "[WARN] MPS backend not available — will use CPU"
-    fi
-  fi
-else
-  echo "[OK] PyTorch already installed"
-fi
-
-# Install remaining pinned dependencies
-set +e
-if [ -f "$SCRIPT_DIR/server/requirements-pinned.txt" ]; then
-  "$PIP" install -r "$SCRIPT_DIR/server/requirements-pinned.txt" >> "$LOG" 2>&1
-  PIP_RC=$?
-  if [ $PIP_RC -ne 0 ]; then
-    echo "[WARN] Some deps failed (exit $PIP_RC). Installing core individually..."
-    "$PIP" install sentence-transformers flask spacy docling >> "$LOG" 2>&1
-    PIP_RC=$?
-  fi
-else
-  echo "[install] No pinned requirements found, installing core deps..."
-  "$PIP" install sentence-transformers flask spacy docling >> "$LOG" 2>&1
-  PIP_RC=$?
-fi
-set -e
-
-if [ $PIP_RC -ne 0 ]; then
-  echo "[ERROR] Python dependency install failed (exit $PIP_RC). See $LOG"
-  exit 1
-fi
-
-# Validate core imports
-IMPORT_FAIL=""
-for mod in sentence_transformers flask spacy; do
-  if ! "$VENV_PYTHON" -c "import $mod" 2>/dev/null; then
-    IMPORT_FAIL="$IMPORT_FAIL $mod"
-  fi
-done
-if [ -n "$IMPORT_FAIL" ]; then
-  echo "[ERROR] These Python packages failed to import:$IMPORT_FAIL"
-  echo "        Check $LOG for details."
-  exit 1
-fi
-echo "[OK] Python dependencies installed and verified ($(elapsed))"
-
-# ── Step 6: spaCy NER model ──
-if ! "$VENV_PYTHON" -c "import spacy; spacy.load('en_core_web_sm')" 2>/dev/null; then
-  echo "[install] Downloading spaCy NER model..."
-  set +e
-  "$VENV_PYTHON" -m spacy download en_core_web_sm >> "$LOG" 2>&1
-  SPACY_RC=$?
-  set -e
-  if [ $SPACY_RC -eq 0 ] && "$VENV_PYTHON" -c "import spacy; spacy.load('en_core_web_sm')" 2>/dev/null; then
-    echo "[OK] spaCy NER model installed"
-  else
-    echo "[WARN] spaCy NER model failed. Entity extraction will use regex fallback."
-  fi
-else
-  echo "[OK] spaCy NER model already present"
-fi
-
-# ── Step 7: Memory-engine dependencies ──
-if [ ! -d "$SCRIPT_DIR/memory-engine/node_modules/@sinclair/typebox" ]; then
-  echo "[install] Installing memory-engine dependencies..."
-  set +e
-  (cd "$SCRIPT_DIR/memory-engine" && npm install --no-audit --no-fund >> "$LOG" 2>&1)
-  ME_RC=$?
-  set -e
-  if [ $ME_RC -ne 0 ]; then
-    echo "[WARN] Memory-engine npm install returned exit $ME_RC. See $LOG"
-  fi
-  if [ ! -d "$SCRIPT_DIR/memory-engine/node_modules/@sinclair" ]; then
-    echo "[ERROR] Memory-engine dependencies incomplete."
-    exit 1
-  fi
-  echo "[OK] Memory-engine dependencies installed ($(elapsed))"
-else
-  echo "[OK] Memory-engine dependencies already present"
-fi
+# ── Python venv, pip, spaCy, and memory-engine deps are handled by the TUI ──
+# The TUI installer creates .venv at the install root (which may differ from
+# SCRIPT_DIR) and installs all Python dependencies there. This avoids wasting
+# 5-10 minutes installing Python deps at the clone location only to have the
+# TUI re-install them at the actual install directory.
 
 echo ""
 echo "[launch] Starting ThreadClaw setup..."
@@ -250,19 +125,8 @@ node "$SCRIPT_DIR/bin/threadclaw.mjs" install "$@"
 EXIT_CODE=$?
 set -e
 
-if [ $EXIT_CODE -eq 0 ]; then
-  # ── Smoke test ──
-  echo ""
-  echo "[install] Running smoke test..."
-  set +e
-  node "$SCRIPT_DIR/bin/threadclaw.mjs" doctor >/dev/null 2>&1
-  DOCTOR_RC=$?
-  set -e
-  if [ $DOCTOR_RC -eq 0 ]; then
-    echo "[OK] Smoke test passed"
-  else
-    echo "[WARN] Smoke test had issues. Run 'threadclaw doctor' for details."
-  fi
+if [ $EXIT_CODE -ne 0 ]; then
+  true  # fall through to elapsed time + status below
 fi
 
 INSTALL_END=$(date +%s)
