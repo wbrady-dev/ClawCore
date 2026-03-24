@@ -41,7 +41,7 @@ export function getStateAtTime(
   const claims = (db.prepare(`
     SELECT * FROM memory_objects
     WHERE scope_id = ? AND kind = 'claim' AND created_at <= ?
-      AND (status = 'active' OR updated_at > ?)
+      AND (status = 'active' OR (status IN ('superseded', 'retracted') AND updated_at > ?))
     ORDER BY confidence DESC
     LIMIT 50
   `).all(scopeId, timestamp, timestamp) as Record<string, unknown>[]).map(moRowToClaimRow);
@@ -62,7 +62,7 @@ export function getStateAtTime(
   const openLoops = (db.prepare(`
     SELECT * FROM memory_objects
     WHERE scope_id = ? AND kind = 'loop' AND created_at <= ?
-      AND (status = 'active' OR updated_at > ?)
+      AND (status = 'active' OR (status IN ('superseded', 'retracted') AND updated_at > ?))
     ORDER BY COALESCE(json_extract(structured_json, '$.priority'), 0) DESC
     LIMIT 50
   `).all(scopeId, timestamp, timestamp) as Record<string, unknown>[]).map(moRowToLoopRow);
@@ -72,7 +72,7 @@ export function getStateAtTime(
     SELECT * FROM memory_objects
     WHERE scope_id = ? AND kind = 'invariant' AND created_at <= ?
       AND (status = 'active'
-           OR (status != 'retracted' AND updated_at > ?))
+           OR (status = 'superseded' AND updated_at > ?))
     ORDER BY CASE json_extract(structured_json, '$.severity')
       WHEN 'critical' THEN 0 WHEN 'error' THEN 1 WHEN 'warning' THEN 2 WHEN 'info' THEN 3 ELSE 4
     END ASC

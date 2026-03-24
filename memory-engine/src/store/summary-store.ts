@@ -405,10 +405,16 @@ export class SummaryStore {
        ON CONFLICT (summary_id, message_id) DO NOTHING`,
     );
 
+    // Transaction nesting guard: SQLite does not support nested transactions.
+    // We detect an already-active transaction by catching the error from BEGIN.
+    // Different SQLite/Node versions may produce different error messages:
+    //   - "cannot start a transaction within a transaction"
+    //   - "database is locked"
+    //   - "SQLITE_BUSY"
     let ownTx1 = false;
     try { this.db.exec("BEGIN IMMEDIATE"); ownTx1 = true; } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
-      if (!msg.includes("transaction")) throw err;
+      if (!msg.includes("transaction") && !msg.includes("database is locked") && !msg.includes("SQLITE_BUSY")) throw err;
     }
     try {
       for (let idx = 0; idx < messageIds.length; idx++) {
@@ -429,13 +435,16 @@ export class SummaryStore {
     const stmt = this.db.prepare(
       `INSERT INTO summary_parents (summary_id, parent_summary_id, ordinal)
        VALUES (?, ?, ?)
-       ON CONFLICT (summary_id, parent_summary_id) DO NOTHING`,
+       ON CONFLICT (summary_id, parent_summary_id) DO UPDATE SET ordinal = EXCLUDED.ordinal`,
     );
 
+    // Transaction nesting guard: same pattern as linkSummaryToMessages above.
+    // Tolerates "transaction", "database is locked", and "SQLITE_BUSY" errors
+    // to handle already-active transactions across SQLite/Node versions.
     let ownTx2 = false;
     try { this.db.exec("BEGIN IMMEDIATE"); ownTx2 = true; } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
-      if (!msg.includes("transaction")) throw err;
+      if (!msg.includes("transaction") && !msg.includes("database is locked") && !msg.includes("SQLITE_BUSY")) throw err;
     }
     try {
       for (let idx = 0; idx < parentSummaryIds.length; idx++) {

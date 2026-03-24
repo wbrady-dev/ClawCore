@@ -65,7 +65,7 @@ export function getTimeline(
     SELECT id, scope_id, object_type, object_id, event_type, actor, payload_json, created_at, scope_seq
     FROM evidence_log
     ${whereClause}
-    ORDER BY created_at DESC, id DESC
+    ORDER BY created_at DESC, scope_seq DESC, id DESC
     LIMIT ?
   `).all(...args) as TimelineEvent[];
 }
@@ -82,8 +82,9 @@ export function formatTimelineEvent(event: TimelineEvent): string {
 function summarizePayload(json: string): string {
   try {
     const parsed = JSON.parse(json);
-    const keys = Object.keys(parsed).slice(0, 3);
-    return keys.map((k) => `${k}=${JSON.stringify(parsed[k])}`).join(", ");
+    const allKeys = Object.keys(parsed);
+    const keys = allKeys.slice(0, 3);
+    return keys.map((k) => `${k}=${JSON.stringify(parsed[k])}`).join(", ") + (allKeys.length > 3 ? ", ..." : "");
   } catch {
     return "";
   }

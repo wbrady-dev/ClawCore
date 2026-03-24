@@ -81,11 +81,17 @@ export function deleteCollection(db: Database.Database, id: string): void {
   })();
 
   // Clean up graph data for each document (best-effort, outside transaction since it's a separate DB)
+  // Retry once per document to avoid orphaned graph records on transient failures
   try {
     if (config.relations?.enabled && config.relations?.graphDbPath && docIds.length > 0) {
       const graphDb = getGraphDb(config.relations.graphDbPath);
       for (const docId of docIds) {
-        deleteSourceData(graphDb, "document", docId);
+        try {
+          deleteSourceData(graphDb, "document", docId);
+        } catch (err) {
+          // Retry once on transient failure
+          try { deleteSourceData(graphDb, "document", docId); } catch {}
+        }
       }
     }
   } catch {} // Non-fatal — graph cleanup is best-effort
@@ -169,10 +175,16 @@ export function deleteDocument(db: Database.Database, documentId: string): { chu
   })();
 
   // Clean up graph data if relations enabled
+  // Retry once to avoid orphaned graph records on transient failures
   try {
     if (config.relations?.enabled && config.relations?.graphDbPath) {
       const graphDb = getGraphDb(config.relations.graphDbPath);
-      deleteSourceData(graphDb, "document", documentId);
+      try {
+        deleteSourceData(graphDb, "document", documentId);
+      } catch (err) {
+        // Retry once on transient failure
+        try { deleteSourceData(graphDb, "document", documentId); } catch {}
+      }
     }
   } catch {} // Non-fatal — graph cleanup is best-effort
 
