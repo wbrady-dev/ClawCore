@@ -1610,6 +1610,7 @@ export class LcmContextEngine implements ContextEngine {
         if (writerResult.objects.length > 0) {
           const { reconcile } = await import("./ontology/truth.js");
           const { projectProvenance, recordSupersession, recordConflict, recordEvidence } = await import("./ontology/projector.js");
+          const { upsertMemoryObject } = await import("./ontology/mo-store.js");
           const { withWriteTransaction } = await import("./relations/evidence-log.js");
 
           const reconciled = reconcile(graphDb, writerResult.objects, {
@@ -1619,8 +1620,10 @@ export class LcmContextEngine implements ContextEngine {
 
           for (const action of reconciled.actions) {
             if (action.type === "insert") {
+              upsertMemoryObject(graphDb, action.object);
               projectProvenance(graphDb, action.object);
             } else if (action.type === "supersede") {
+              upsertMemoryObject(graphDb, action.newObject);
               projectProvenance(graphDb, action.newObject);
               recordSupersession(graphDb, action.newObject.id, action.oldObjectId, action.reason);
               // BUG 3 FIX: Actually supersede the old record in the physical table.
@@ -1672,6 +1675,7 @@ export class LcmContextEngine implements ContextEngine {
                 console.debug("[rsma] failed to supersede old record in physical table:", supersErr instanceof Error ? supersErr.message : String(supersErr));
               }
             } else if (action.type === "conflict") {
+              upsertMemoryObject(graphDb, action.conflictObject);
               projectProvenance(graphDb, action.conflictObject);
               recordConflict(graphDb, action.conflictObject.id, action.objectIdA, action.objectIdB, action.reason);
             } else if (action.type === "evidence") {
