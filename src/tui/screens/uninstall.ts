@@ -21,10 +21,14 @@ import {
 export async function runUninstall(): Promise<void> {
   clearScreen();
   console.log(section("Uninstall ThreadClaw"));
-  console.log(t.warn("  This will completely remove ThreadClaw and revert all changes"));
-  console.log(t.warn("  made to OpenClaw. Source files preserved for reinstall.\n"));
-  console.log(t.warn("  Will remove: dependencies, Python venv, config, evidence graph DB,"));
-  console.log(t.warn("  credentials, global command, model cache, OpenClaw integration.\n"));
+  console.log(t.warn("  This will COMPLETELY remove ThreadClaw and leave no trace:"));
+  console.log(t.warn("  • All dependencies (node_modules, .venv, dist)"));
+  console.log(t.warn("  • All config (.env, config.json, manifest)"));
+  console.log(t.warn("  • All data (databases, evidence graph, backups)"));
+  console.log(t.warn("  • Downloaded model cache (~2-6 GB)"));
+  console.log(t.warn("  • Global command and PATH entry"));
+  console.log(t.warn("  • OpenClaw integration\n"));
+  console.log(t.dim("  Source code (git repo) will be preserved for reinstall.\n"));
 
   let cancelled = false;
   const onCancel = () => { cancelled = true; };
@@ -32,7 +36,7 @@ export async function runUninstall(): Promise<void> {
   const { confirm } = await prompts({
     type: "confirm",
     name: "confirm",
-    message: t.err("Are you sure you want to uninstall ThreadClaw?"),
+    message: t.err("Are you sure you want to completely uninstall ThreadClaw?"),
     initial: false,
   }, { onCancel });
 
@@ -41,20 +45,7 @@ export async function runUninstall(): Promise<void> {
     return;
   }
 
-  // Ask about data
-  const { deleteData } = await prompts({
-    type: "confirm",
-    name: "deleteData",
-    message: "Delete the database and all ingested documents?",
-    initial: false,
-  }, { onCancel });
-
-  if (cancelled) {
-    console.log(t.dim("\n  Cancelled.\n"));
-    return;
-  }
-
-  await performUninstall({ deleteData });
+  await performUninstall({ deleteData: true });
 
   // Wait for user to read
   const { selectMenu } = await import("../menu.js");
@@ -205,10 +196,14 @@ export async function performUninstall(options: { deleteData: boolean }): Promis
     resolve(root, "dist"),
     resolve(root, "memory-engine", "node_modules"),
     resolve(root, ".env"),
+    resolve(root, ".env.bak"),
     resolve(root, "server", "config.json"),
     resolve(root, "logs"),
+    resolve(root, "data"),
     resolve(root, ".models.pid"),
     resolve(root, ".threadclaw.pid"),
+    resolve(root, ".install-complete"),
+    resolve(root, "node_modules", ".install-ok"),
   ];
   for (const p of toDelete) {
     if (existsSync(p)) {
@@ -315,24 +310,13 @@ export async function performUninstall(options: { deleteData: boolean }): Promis
   // ── 7. Summary ──
   console.log(section("Uninstall Complete"));
 
-  console.log(t.ok("  OpenClaw has been restored to its original state."));
-  console.log(t.ok("  All ThreadClaw dependencies and configuration removed."));
+  console.log(t.ok("  ThreadClaw has been completely removed."));
+  console.log(t.ok("  OpenClaw restored to its original state."));
+  console.log(t.ok("  All data, config, dependencies, and model cache deleted."));
   console.log("");
-
-  // Check if distribution package exists
-  const distDir = resolve(homedir(), "Documents", "threadclaw");
-  if (existsSync(distDir)) {
-    console.log(t.dim("  Installation package preserved at:"));
-    console.log(t.path(`  ${distDir}`));
-    console.log(t.dim("  Run install.bat / install.sh from there to reinstall.\n"));
-  }
-
-  if (!deleteData) {
-    console.log(t.dim("  Data preserved. To fully clean up later:"));
-    console.log(t.dim("  • HuggingFace model cache:"));
-    console.log(t.path(`    ${resolve(homedir(), ".cache", "huggingface", "hub")}`));
-    console.log("");
-  }
+  console.log(t.dim("  Source code preserved at: " + root));
+  console.log(t.dim("  To reinstall: run install.bat (Windows) or install.sh (Linux/macOS)"));
+  console.log("");
 }
 
 async function waitForPortClosed(port: number, timeoutMs: number): Promise<void> {
