@@ -294,29 +294,47 @@ export async function runInkInstall(): Promise<boolean> {
   });
   if (!ready) return false;
 
-  try {
-    await performInstallPlan({
-      sourceRoot,
-      root,
-      python,
-      platform,
-      openclawDir,
-      isRecommended,
-      embedChoice,
-      rerankChoice,
-      parser,
-      enableOcr,
-      enableAudio,
-      evidenceConfig,
-      integrateOpenClaw,
-      enableObsidian,
-      installWindowsServices,
-      huggingFaceToken,
-    } satisfies InstallPlan);
-  } catch (error) {
-    const msg = error instanceof Error ? error.message : String(error);
-    await showNotice("Installation Failed", `${msg.slice(0, 400)}\n\nCheck the terminal output above for details. You can re-run the installer to try again.`);
-    return false;
+  let installSuccess = false;
+  while (!installSuccess) {
+    try {
+      await performInstallPlan({
+        sourceRoot,
+        root,
+        python,
+        platform,
+        openclawDir,
+        isRecommended,
+        embedChoice,
+        rerankChoice,
+        parser,
+        enableOcr,
+        enableAudio,
+        evidenceConfig,
+        integrateOpenClaw,
+        enableObsidian,
+        installWindowsServices,
+        huggingFaceToken,
+      } satisfies InstallPlan);
+      installSuccess = true;
+    } catch (error) {
+      const fullError = error instanceof Error ? error.message : String(error);
+      const action = await promptMenu({
+        title: "Installation Failed",
+        message: `${fullError}\n\nCheck the terminal output above for details.`,
+        items: [
+          { label: "Retry installation", value: "retry" },
+          { label: "Continue to main menu (incomplete install)", value: "continue" },
+        ],
+      });
+      if (action === "continue" || !action) break;
+      // action === "retry" → loop continues
+    }
+  }
+  if (!installSuccess) return false;
+
+  const markerPath = resolve(root, ".install-complete");
+  if (!existsSync(markerPath)) {
+    await showNotice("Warning", "Install completion marker could not be written. Next launch may re-run installer.");
   }
 
   await promptMenu({

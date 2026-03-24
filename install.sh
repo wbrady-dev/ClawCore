@@ -98,6 +98,18 @@ else
 fi
 export THREADCLAW_SKIP_NODE_INSTALL=1
 
+# ── Step 3b: Build TypeScript ──
+echo "[install] Building ThreadClaw..."
+set +e
+npm run build >> "$LOG" 2>&1
+BUILD_RC=$?
+set -e
+if [ $BUILD_RC -ne 0 ]; then
+  echo "[WARN] Build failed. Install will continue but may run slower."
+else
+  echo "[OK] Build complete ($(elapsed))"
+fi
+
 # ── Step 4: Python virtual environment ──
 VENV_PYTHON="$SCRIPT_DIR/.venv/bin/python3"
 if [ -f "$VENV_PYTHON" ] && ! "$VENV_PYTHON" -c "import sys" 2>/dev/null; then

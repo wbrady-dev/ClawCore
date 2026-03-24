@@ -129,6 +129,15 @@ echo [OK] Node.js dependencies installed
 :npm_done
 set "THREADCLAW_SKIP_NODE_INSTALL=1"
 
+:: ── Step 3b: Build TypeScript ──
+echo [install] Building ThreadClaw...
+call npm run build
+if errorlevel 1 (
+    echo [WARN] Build failed. Install will continue but may run slower.
+) else (
+    echo [OK] Build complete
+)
+
 :: ── Step 4: Python virtual environment ──
 if not exist "%SCRIPT_DIR%\.venv\Scripts\python.exe" goto :create_venv
 
