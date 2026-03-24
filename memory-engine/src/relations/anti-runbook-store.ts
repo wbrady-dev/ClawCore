@@ -41,9 +41,12 @@ export function upsertAntiRunbook(
   const newFailureCount = (input.failureCount ?? 1);
   const totalFailureCount = existingRow ? existingFailureCount + newFailureCount : newFailureCount;
 
-  // Logistic confidence increment: 0.3 + 0.7*(1 - 1/(1 + totalFailureCount * existingConfidence))
+  // Confidence formula: base 0.3 + logistic growth toward 1.0 as failures accumulate.
+  // Uses totalFailureCount alone (not coupled with existingConfidence) so confidence
+  // increases monotonically with failure count regardless of prior value.
+  // Half-life = 3: at 3 failures confidence = 0.65, at 10 = 0.84, at 30 = 0.93.
   const confidence = existingRow
-    ? Math.min(1.0, 0.3 + 0.7 * (1 - 1 / (1 + totalFailureCount * existingConfidence)))
+    ? Math.min(1.0, 0.3 + 0.7 * (totalFailureCount / (totalFailureCount + 3)))
     : (input.confidence ?? 0.5);
 
   const mo: MemoryObject = {

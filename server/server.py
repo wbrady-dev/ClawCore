@@ -343,7 +343,10 @@ def rerank():
     except (TypeError, ValueError):
         top_k = len(documents)
 
-    # Truncate inputs for efficiency — cross-encoders plateau after ~512 tokens
+    # Truncate inputs for efficiency — cross-encoders plateau after ~512 tokens.
+    # NOTE: .split() word counting is an approximation that under-counts tokens
+    # for CJK languages (Chinese, Japanese, Korean) where words aren't
+    # space-delimited. This means CJK text may pass more tokens than intended.
     q_truncated = ' '.join(query[:10000].split()[:200])
     pairs = [(q_truncated, ' '.join(doc[:10000].split()[:512])) for doc in documents]
     scores = None
@@ -380,7 +383,7 @@ def extract_entities():
     if ner_model is None:
         return jsonify({"error": "NER model not available", "hint": "pip install spacy && python -m spacy download en_core_web_sm"}), 503
 
-    data = request.get_json(force=True)
+    data = request.get_json()
     if not data or not isinstance(data, dict):
         return jsonify({"error": "JSON body required"}), 400
 
