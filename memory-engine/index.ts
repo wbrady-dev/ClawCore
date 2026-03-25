@@ -855,8 +855,18 @@ function createLcmDependencies(api: OpenClawPluginApi): LcmDependencies {
   // load ThreadClaw's .env by default.
   try {
     const { resolve, dirname } = require("path");
-    const { readFileSync } = require("fs");
-    const envPath = resolve(dirname(require.resolve("./package.json")), "..", ".env");
+    const { readFileSync, existsSync } = require("fs");
+    // Try multiple paths to find ThreadClaw's .env (plugin may load from various locations)
+    const candidates = [
+      resolve(dirname(require.resolve("./package.json")), "..", ".env"),     // memory-engine/../.env
+      resolve(dirname(require.resolve("./package.json")), ".env"),           // memory-engine/.env (if flat)
+      resolve(process.env.THREADCLAW_ROOT ?? "", ".env"),                    // explicit root override
+      resolve(require("os").homedir(), ".openclaw", "services", "threadclaw", ".env"), // default install
+      resolve(require("os").homedir(), ".threadclaw", ".env"),              // standalone install
+    ];
+    const envPath = candidates.find((p) => existsSync(p));
+    if (!envPath) throw new Error("No .env found");
+    if (process.env.DEBUG) console.log(`[cc-mem] Loading .env from: ${envPath}`);
     const envContent = readFileSync(envPath, "utf8");
     for (const line of envContent.split("\n")) {
       const trimmed = line.trim();
