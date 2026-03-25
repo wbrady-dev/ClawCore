@@ -98,7 +98,8 @@ const LOW_VALUE_SUBJECTS = new Set([
   "copper identity", "conversation history tools", "agent", "bot",
 ]);
 
-// Predicates that describe history/transitions rather than current state
+// Predicates that describe history/transitions rather than current state.
+// These are EXCLUDED from capsules entirely — they waste budget on non-current info.
 const HISTORICAL_PREDICATES = new Set([
   "renamed_to", "renamed_from", "previously", "origin", "former",
   "was", "used_to_be", "migrated_from", "replaced_by", "superseded_by",
@@ -109,29 +110,34 @@ const HISTORICAL_PREDICATES = new Set([
 // filtering noise vs intentional preferences at extraction time.
 
 function claimCapsules(claims: ClaimRow[]): CapsuleCandidate[] {
-  return claims.map((c) => {
+  const results: CapsuleCandidate[] = [];
+  for (const c of claims) {
+    const predicateLower = c.predicate.toLowerCase().trim();
+
+    // Skip historical/transition claims entirely — they're not current state
+    if (HISTORICAL_PREDICATES.has(predicateLower)) continue;
+
     const daysSince = daysSinceIso(c.last_seen_at);
     const conf = effectiveConfidence(c.confidence, 1, daysSince);
     const text = `[claim] ${c.subject} ${c.predicate}: ${c.object_text ?? "(no value)"} (conf=${c.confidence.toFixed(2)})`;
     const tokens = estimateTokens(text);
 
     const subjectLower = c.subject.toLowerCase().trim();
-    const predicateLower = c.predicate.toLowerCase().trim();
 
-    // Demote identity/meta claims and historical/transition claims
+    // Demote identity/meta claims
     let valuePenalty = 1.0;
     if (LOW_VALUE_SUBJECTS.has(subjectLower)) valuePenalty = 0.2;
-    if (HISTORICAL_PREDICATES.has(predicateLower)) valuePenalty = 0.15;
 
     const score = conf * c.trust_score * valuePenalty;
-    return {
+    results.push({
       type: "claim",
       text,
       tokens,
       score,
       scorePerToken: score / Math.max(1, tokens),
-    };
-  });
+    });
+  }
+  return results;
 }
 
 function decisionCapsules(decisions: DecisionRow[]): CapsuleCandidate[] {
@@ -322,13 +328,27 @@ export function compileContextCapsules(
 
   if (candidates.length === 0) return null;
 
+  // Deduplicate: if two capsules have identical text, keep the higher-scoring one
+  const seenTexts = new Set<string>();
+  const deduped: CapsuleCandidate[] = [];
+  // Sort by score first so we keep the best version
+  candidates.sort((a, b) => b.score - a.score);
+  for (const c of candidates) {
+    // Normalize text for dedup: strip confidence suffix since same claim at different conf is a duplicate
+    const dedupKey = c.text.replace(/\(conf=[\d.]+\)/, "").trim();
+    if (!seenTexts.has(dedupKey)) {
+      seenTexts.add(dedupKey);
+      deduped.push(c);
+    }
+  }
+
   // ROI Governor: rank by score-per-token, greedy knapsack fill
-  candidates.sort((a, b) => b.scorePerToken - a.scorePerToken);
+  deduped.sort((a, b) => b.scorePerToken - a.scorePerToken);
 
   const selected: CapsuleCandidate[] = [];
   let spent = 0;
 
-  for (const c of candidates) {
+  for (const c of deduped) {
     if (spent + c.tokens <= budget) {
       selected.push(c);
       spent += c.tokens;
