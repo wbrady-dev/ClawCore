@@ -196,8 +196,15 @@ export function resolveLcmConfig(
 ): LcmConfig {
   const pc = pluginConfig ?? {};
 
-  // Helper: read THREADCLAW_MEMORY_* first, fall back to LCM_* for upstream compat
-  const e = (suffix: string) => env[`THREADCLAW_MEMORY_${suffix}`] ?? env[`LCM_${suffix}`];
+  // Helper: read THREADCLAW_MEMORY_* first, fall back to LCM_* for upstream compat.
+  // Strip surrounding quotes if present — writeEnvMap always quotes values (KEY="value")
+  // and some .env loaders don't strip them before setting process.env.
+  const stripQuotes = (v: string | undefined) => {
+    if (!v) return v;
+    if ((v.startsWith('"') && v.endsWith('"')) || (v.startsWith("'") && v.endsWith("'"))) return v.slice(1, -1);
+    return v;
+  };
+  const e = (suffix: string) => stripQuotes(env[`THREADCLAW_MEMORY_${suffix}`]) ?? stripQuotes(env[`LCM_${suffix}`]);
 
   return {
     enabled:
