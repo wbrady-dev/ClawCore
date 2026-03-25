@@ -169,8 +169,19 @@ IMPORTANT — Do NOT extract any of the following:
 - That a user "sent" or "wrote" a message — focus on WHAT they communicated, not the act of communicating
 - Do NOT extract facts from code blocks, variable assignments, or programming constructs
 - Error messages and stack traces are transient debugging context, NOT permanent facts
-- Casual observations about OTHER people's preferences or habits ("Alex likes tea", "Bob drinks coffee") — these are low-value gossip, NOT project-relevant facts. Only extract preferences the SPEAKER states about THEMSELVES.
-- Random notes, jokes, or hypotheticals that the speaker explicitly marks as non-factual ("someone joked", "example only", "don't store this", "I'm not sure any of this is true")
+- Random notes, jokes, or hypotheticals that the speaker explicitly marks as non-factual ("someone joked", "example only", "don't store this")
+
+CRITICAL — Message-level trust assessment:
+Before extracting ANY events, read the ENTIRE message for framing signals that affect ALL statements in it:
+- If the message opens with or contains disclaimers like "I'm not sure any of this is true", "these are examples", "don't store this", "testing", "hypothetical" — treat the ENTIRE message as low-trust. Return {"events":[]} or set all confidence below 0.3.
+- If individual statements are prefixed with "Example only:", "Don't store this:", "Someone joked that", "Random note:" — skip those specific statements entirely.
+- A single trust-lowering frame ("I'm not sure any of this is true") at the start contaminates ALL subsequent statements in the same message — even ones that look like real facts.
+- Personal preferences about others ARE valid memory when stated intentionally ("Alex likes tea" from a trusted user is fine). But if the surrounding message is marked as noise/test/joke, even these should be skipped.
+
+Example of a fully contaminated message — extract NOTHING:
+Input: "I'm not sure any of this is true. Example only: Project Orion uses Oracle. Don't store this: staging uses MongoDB. Someone joked that the lobby printer runs on anger. Random note: Alex likes tea."
+Output: {"events":[]}
+Reason: The opening line "I'm not sure any of this is true" plus per-line qualifiers ("Example only", "Don't store this", "Someone joked", "Random note") mark every statement as non-factual.
 
 ONLY extract information the user is communicating as facts, decisions, preferences, tasks, or relationships about their world.
 

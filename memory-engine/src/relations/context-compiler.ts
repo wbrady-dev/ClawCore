@@ -104,11 +104,9 @@ const HISTORICAL_PREDICATES = new Set([
   "was", "used_to_be", "migrated_from", "replaced_by", "superseded_by",
 ]);
 
-// Low-value casual predicates (incidental facts about others)
-const CASUAL_PREDICATES = new Set([
-  "likes", "prefers", "enjoys", "dislikes", "favorite", "hobby",
-  "drinks", "eats", "watches", "listens_to",
-]);
+// Note: casual predicates (likes, prefers, enjoys) are NOT penalized here.
+// Legitimate preferences are valuable memory. The extraction prompt handles
+// filtering noise vs intentional preferences at extraction time.
 
 function claimCapsules(claims: ClaimRow[]): CapsuleCandidate[] {
   return claims.map((c) => {
@@ -120,11 +118,10 @@ function claimCapsules(claims: ClaimRow[]): CapsuleCandidate[] {
     const subjectLower = c.subject.toLowerCase().trim();
     const predicateLower = c.predicate.toLowerCase().trim();
 
-    // Demote identity/meta claims, historical/transition claims, and casual facts
+    // Demote identity/meta claims and historical/transition claims
     let valuePenalty = 1.0;
     if (LOW_VALUE_SUBJECTS.has(subjectLower)) valuePenalty = 0.2;
     if (HISTORICAL_PREDICATES.has(predicateLower)) valuePenalty = 0.15;
-    if (CASUAL_PREDICATES.has(predicateLower)) valuePenalty = 0.1;
 
     const score = conf * c.trust_score * valuePenalty;
     return {
