@@ -1618,14 +1618,17 @@ export class LcmContextEngine implements ContextEngine {
               }
             }
 
-            // Query known subjects from active claims so LLM normalizes against them
+            // Query known subjects from active claims so LLM normalizes against them.
+            // Ordered by most recently updated so LIMIT 50 captures relevant entities.
             let knownSubjects: string[] = [];
             try {
               const rows = graphDb.prepare(
-                `SELECT DISTINCT JSON_EXTRACT(structured_json, '$.subject') as subj
+                `SELECT JSON_EXTRACT(structured_json, '$.subject') as subj
                  FROM memory_objects
                  WHERE kind = 'claim' AND status = 'active' AND scope_id = ?
                    AND JSON_EXTRACT(structured_json, '$.subject') IS NOT NULL
+                 GROUP BY subj
+                 ORDER BY MAX(updated_at) DESC
                  LIMIT 50`,
               ).all(_config.relationsScopeId ?? 1) as Array<{ subj: string }>;
               knownSubjects = rows.map((r) => r.subj).filter((s) => s && s.length >= 2);

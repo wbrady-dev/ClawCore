@@ -197,6 +197,61 @@ Input: "[3/23/2026 2:51 PM] Wesley Brady: Remember: Project Maple uses PostgreSQ
 Output: {"events":[{"type":"fact","content":"Project Maple uses PostgreSQL","subject":"Project Maple","predicate":"uses","value":"PostgreSQL","confidence":0.95}]}
 Note: Do NOT extract "Wesley Brady sent a message", "message timestamp is 2:51 PM", or "message contains text" — these are message metadata, not user facts. Only extract what the user is communicating.`;
 
+// ── Post-Extraction Subject Normalizer ──────────────────────────────────────
+
+/**
+ * Deterministic post-extraction normalizer.
+ * After the LLM extracts events, check each subject against known subjects
+ * using containment and case-insensitive matching. This is the safety net
+ * that catches LLM drift — the LLM handles hard semantic equivalence,
+ * this handles the easy string-matching cases deterministically.
+ */
+function normalizeSubjectsAgainstKnown(
+  events: SemanticExtractionResponse["events"],
+  knownSubjects: string[],
+): void {
+  if (knownSubjects.length === 0) return;
+
+  // Build lowercase lookup map: normalized → original
+  const knownMap = new Map<string, string>();
+  for (const s of knownSubjects) {
+    knownMap.set(s.toLowerCase().trim(), s);
+  }
+
+  for (const event of events) {
+    if (!event.subject) continue;
+    const subjectLower = event.subject.toLowerCase().trim();
+
+    // Exact match (case-insensitive) — already normalized
+    if (knownMap.has(subjectLower)) {
+      event.subject = knownMap.get(subjectLower)!;
+      continue;
+    }
+
+    // Containment match: "project orion" contains known "orion",
+    // or known "project orion" contains extracted "orion"
+    let bestMatch: string | undefined;
+    let bestLen = 0;
+    for (const [knownLower, knownOriginal] of knownMap) {
+      // Extracted subject contains a known entity name (longer match wins)
+      if (subjectLower.includes(knownLower) && knownLower.length > bestLen) {
+        bestMatch = knownOriginal;
+        bestLen = knownLower.length;
+      }
+      // Known entity name contains the extracted subject
+      if (knownLower.includes(subjectLower) && subjectLower.length >= 3 && subjectLower.length > bestLen) {
+        bestMatch = knownOriginal;
+        bestLen = subjectLower.length;
+      }
+    }
+
+    if (bestMatch) {
+      console.debug(`[rsma] subject normalizer: "${event.subject}" → "${bestMatch}"`);
+      event.subject = bestMatch;
+    }
+  }
+}
+
 // ── Core Extraction ─────────────────────────────────────────────────────────
 
 /**
@@ -255,6 +310,11 @@ export async function semanticExtract(
     const parsed = parseExtractionResponse(content);
 
     if (parsed && parsed.events.length > 0) {
+      // Post-extraction normalizer: deterministic fuzzy-match against known subjects.
+      // Catches cases where the LLM ignores the known entities instruction.
+      if (config.knownSubjects && config.knownSubjects.length > 0) {
+        normalizeSubjectsAgainstKnown(parsed.events, config.knownSubjects);
+      }
       return convertToWriterResult(parsed, sourceId, role, signals);
     }
 
