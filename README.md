@@ -10,81 +10,195 @@
 
 ---
 
-**ThreadClaw** brings a knowledge and memory backbone to [OpenClaw](https://openclaw.ai), built on the **RSMA (Reconciled Semantic Memory Architecture)** — a multi-layer agent architecture that combines retrieval, summary lineage, knowledge graphs, awareness, evidence-backed state, delta tracking, attempt memory, branch governance, and low-token context compilation. It gives your AI agent persistent, inspectable, evidence-backed memory.
+## What Is ThreadClaw?
 
-### Evidence OS
+ThreadClaw gives your AI agent **real memory** — not just conversation history, but structured knowledge that persists, self-corrects, and improves over time.
 
-ThreadClaw's Evidence OS extracts structured knowledge from conversations, documents, and tool results — then surfaces it at the right time via an ROI-governed context compiler.
+Without ThreadClaw, your AI forgets everything between conversations. With ThreadClaw, it remembers your projects, your decisions, your preferences, and your documents — and it knows which facts are current vs outdated.
 
-- **Entity Awareness** — Extracts entities from text, detects mismatches across sources, surfaces contextual notes
-- **Claims & Decisions** — Tracks factual claims with evidence chains, manages decision history with automatic supersession
-- **Entity Relations** — Extracts relationships between people, things, and concepts ("Cassidy works for Sam")
-- **Open Loops** — Tracks pending tasks, questions, and dependencies with priority ordering
-- **Invariants & Capabilities** — Stores durable constraints and tracks available tools/services
-- **Attempt Ledger** — Records tool outcomes, calculates success rates per tool
-- **Runbooks & Anti-Runbooks** — Learns success patterns and failure patterns from tool history
-- **Branch Promotion** — Speculative memory with policy-validated promotion to shared scope
-- **Timeline & Snapshots** — Event timeline materialization and point-in-time state reconstruction
-- **Semantic Extraction** — Two modes: **Smart** (LLM-based, understands natural language without magic prefixes) and **Fast** (regex-only, no LLM, <5ms). Configurable via `THREADCLAW_MEMORY_RELATIONS_EXTRACTION_MODE=smart|fast`
-- **Extraction Quality Filters** — Multi-layer junk rejection: code block stripping, LLM prompt rules, post-extraction filters (rejects message metadata, file paths, URLs, low-confidence noise, transient debugging context)
-- **Typed Structured Interfaces** — `StructuredClaim`, `StructuredDecision`, `StructuredLoop`, `StructuredEntity` — compile-time type safety prevents field-name mismatches between extraction and storage
-- **Unified Ontology** — `memory_objects` + `provenance_links` replace 15+ legacy tables. Single `MemoryObject` type with 13 kinds, unified CRUD via mo-store.ts (upsert with weighted confidence blending), 19 migrations (v1-v19) including full legacy data copy and table rename
-- **TruthEngine** — Reconciles new knowledge against existing beliefs: supersession, conflict creation, confidence blending, value contradiction detection (Jaccard + containment), correction guards, and provisional handling
-- **Context Compiler** — ROI-scored capsule compilation with configurable token budgets (110-280 tokens)
-- **12 Agent Tools** — `cc_grep`, `cc_describe`, `cc_expand`, `cc_recall`, `cc_claims`, `cc_decisions`, `cc_loops`, `cc_attempts`, `cc_branch`, `cc_procedures`, `cc_diagnostics`, `cc_memory`
+ThreadClaw works standalone or as a plugin for [OpenClaw](https://openclaw.ai).
 
-### RSMA Architecture
+---
 
-> `RSMA = RAG + DAG + KG + AL + SL + DE + AOM + BSG + EEL + CCL`
+## Why Does This Matter? (Real Examples)
 
-**R**etrieval-Augmented Generation, **D**irected **A**cyclic **G**raph summary lineage, **K**nowledge **G**raphs, **A**wareness **L**ayer, **S**tate **L**ayer, **D**elta tracking / **D**eep **E**xtraction, **A**ttempt/**O**utcome **M**emory, **B**ranch/**S**cope **G**overnance, **E**vidence **E**vent **L**og, **C**ontext **C**ompilation **L**ayer.
+Your AI agent's responses change dramatically depending on what memory system it has. Here's the same question asked across three setups:
 
-## Features
+### You ask: *"What database does staging use?"*
 
-- **Hybrid Search** — dense vector + BM25 keyword matching fused via Reciprocal Rank Fusion
-- **Cross-Encoder Reranking** — re-scores results with a cross-encoder for precision
-- **Smart Rerank Skip** — bypasses reranking when the top result is already a clear winner; graceful BM25-only fallback when embedding server is down
-- **Token-Efficient Output** — `--brief` (~200 tokens), `--titles` (~30 tokens), `--full` (~1500 tokens)
-- **Search Highlighting** — matched query terms in bold for brief mode
-- **Query Cache** — 50-entry LRU, 5-minute TTL, SHA-256 keys (includes model name). Repeat queries cost zero tokens
-- **Query Expansion** — optional HyDE + decomposition + multi-query via local LLM
-- **Query Analytics** — track search quality, latency, confidence; zero-result queries recorded for improvement
-- **Semantic Deduplication** — near-duplicate chunks detected via cosine similarity during ingest; multi-embedding duplicates deduplicated before RRF
-- **Incremental Re-indexing** — re-chunk and re-embed documents when settings change
-- **20+ File Formats** — PDF, DOCX, PPTX (with data descriptor support), HTML, Markdown, CSV, JSON, Email (multi-recipient), Code, EPUB, and more
-- **Incremental Indexing** — detects unchanged files by content hash, never re-processes
-- **Auto-Ingestion** — file watcher monitors directories with chokidar `awaitWriteFinish` debouncing
-- **Named Entity Recognition** — spaCy NER extracts people, organizations, locations, dates from ingested content
-- **Source Adapters** — Google Drive, Notion, Apple Notes, Obsidian, local files — with removal detection and parallel startup
-- **Collections** — organize documents into named collections with concurrent-safe creation
-- **Interactive TUI** — terminal UI for configuration, status, service management, reset, and uninstall
-- **CLI** — full command-line interface with path validation for scripting and automation
-- **HTTP API** — REST endpoints with timing-safe API key auth, rate limiting, and isLocalRequest guards
-- **MCP Server** — Model Context Protocol with path validation for native tool access from AI agents
-- **Memory Engine** — DAG-based lossless conversation context with singleton engine caching per database
-- **OpenClaw Integration** — one-command setup as knowledge skill + memory engine
-- **Cross-Platform** — Windows (Task Scheduler), macOS (launchd), Linux (systemd --user, no sudo)
-- **Local-First** — all models run on your hardware. No data leaves your machine.
+---
 
-## Documentation
+**Setup 1: OpenClaw alone (no ThreadClaw)**
 
-**Getting Started:**
-[Install](docs/install.md) | [Quick Start](docs/quickstart.md) | [Configuration](docs/configuration.md) | [Migration](docs/migration.md)
+Your AI has only the current conversation. If you told it last week, it's gone.
 
-**Reference:**
-[Tools (12)](docs/tools.md) | [Schema](docs/schema.md) | [API](docs/api.md) | [FAQ](docs/faq.md)
+```
+I don't have information about your staging database.
+Could you tell me what database staging uses?
+```
 
-**Concepts:**
-[Core Concepts](docs/concepts.md) | [Architecture](docs/architecture.md) | [Scopes & Branches](docs/scopes-and-branches.md) | [Promotion Policies](docs/promotion-policies.md)
+It asks YOU because it has no memory beyond this conversation.
 
-**Advanced:**
-[Runbooks & Anti-Runbooks](docs/runbooks-and-negative-memory.md) | [Invariants](docs/invariants.md) | [Capabilities](docs/capability-registry.md) | [Evaluation](docs/evaluation.md)
+---
 
-**Operations:**
-[Security & Privacy](docs/security-and-privacy.md) | [Performance](docs/performance.md) | [Observability](docs/observability.md) | [Replay & Rebuild](docs/replay-and-rebuild.md) | [Troubleshooting](docs/troubleshooting.md)
+**Setup 2: OpenClaw + ThreadClaw RAG (document search)**
 
-**Contributing:**
-[Contributor Guide](docs/contributor-guide.md) | [Testing](docs/testing.md) | [Release Process](docs/release-process.md)
+ThreadClaw indexes your documents, notes, and files. It can search them.
+
+```
+Based on your infrastructure notes (last updated January 15):
+
+  "Staging environment runs PostgreSQL 15 on AWS RDS."
+
+Source: infrastructure/staging-setup.md
+```
+
+Better — it found an answer in your docs. But if you changed the database last week in a conversation and never updated the doc, it gives you the **old** answer.
+
+---
+
+**Setup 3: OpenClaw + ThreadClaw Full (RAG + Evidence OS)**
+
+ThreadClaw extracts facts from your conversations automatically. When you said "we switched staging to SQLite" last Tuesday, it recorded that as a claim, superseded the old PostgreSQL claim, and tracked the change.
+
+```
+Staging uses SQLite.
+
+  [Resolved Facts — current state]
+  • staging uses: SQLite (conf=0.95)
+
+  [Active Decisions]
+  • Switch staging from PostgreSQL to SQLite
+
+  [Conversation History — may contain outdated info]
+  • March 18: "we switched staging to SQLite for the prototype phase"
+  • January 15: infrastructure notes mention PostgreSQL (superseded)
+```
+
+It knows the **current** answer, **why** it changed, **when** it changed, and what the **old** answer was — all without you manually updating anything.
+
+---
+
+### You ask: *"Does Nina report to Alex?"*
+
+**Without Evidence OS:**
+```
+I don't have information about your team structure.
+```
+
+**With Evidence OS (after you mentioned it in conversation):**
+```
+No — Nina does not report to Alex.
+
+You initially mentioned Nina works under Alex, but later corrected
+this. The current state is that Nina does not report to Alex.
+
+  [Resolved Facts — current state]
+  • Nina reports_to: (none) (conf=0.90)
+```
+
+The system understood the negation ("Nina does NOT report to Alex"), superseded the old claim, and presents the corrected state.
+
+---
+
+### You ask: *"What did we decide about caching?"*
+
+**RAG only (searched your docs but found nothing):**
+```
+I couldn't find any documents about caching decisions.
+```
+
+**With Evidence OS:**
+```
+You decided to use Redis for caching.
+
+  [Active Decisions]
+  • Use Redis for caching
+
+  [Conversation History]
+  • March 15: "we use Valkey for cache"
+  • March 16: "Ignore that — caching is not Valkey, it's Redis"
+  • March 18: "Final decision: caching uses Redis"
+```
+
+It tracked the full decision history — initial choice, correction, and final decision — automatically.
+
+---
+
+## How It Works
+
+ThreadClaw has three layers that work together:
+
+### Layer 1: RAG (Retrieval-Augmented Generation)
+**What it does:** Indexes your files and lets the AI search them.
+
+You point ThreadClaw at folders, Obsidian vaults, Google Drive, or Notion — it reads your documents, breaks them into searchable chunks, and lets your AI find relevant information when answering questions.
+
+- Supports 20+ file formats (PDF, DOCX, PPTX, HTML, Markdown, CSV, JSON, code files, EPUB, email)
+- Hybrid search: combines keyword matching with semantic understanding
+- Watches your folders for changes and re-indexes automatically
+
+### Layer 2: Conversation Memory (DAG)
+**What it does:** Remembers what was said across conversations.
+
+Instead of forgetting everything when a conversation ends, ThreadClaw stores the full conversation history in a structured format. It can summarize old conversations and recall relevant context.
+
+- Lossless storage — nothing is lost
+- Smart summarization — old conversations are condensed but searchable
+- Cross-conversation recall — the AI can reference things from weeks ago
+
+### Layer 3: Evidence OS (Knowledge Engine)
+**What it does:** Extracts and manages structured knowledge automatically.
+
+This is the key differentiator. Evidence OS listens to your conversations and automatically extracts:
+
+| What | Example | Why it matters |
+|------|---------|---------------|
+| **Facts** | "staging uses SQLite" | Remembers project details without you writing docs |
+| **Decisions** | "we're going with Redis" | Tracks what was decided and why |
+| **Corrections** | "actually, not MySQL — use Postgres" | Supersedes old facts automatically |
+| **Relationships** | "Cassidy is my wife", "Bob manages auth" | Understands your world |
+| **Preferences** | "I prefer short replies" | Personalizes responses |
+| **Tasks** | "need to rotate the API key by Friday" | Tracks open items |
+| **Negations** | "Nina does NOT report to Alex" | Correctly handles "not" statements |
+
+**How extraction works:**
+
+You just talk naturally. No special commands or prefixes needed.
+
+- **Smart mode** (default): Uses an LLM to understand your messages. Catches nuance, corrections, sarcasm, and mixed intent.
+- **Fast mode**: Regex-only, no LLM needed. Under 5ms per message. Good for high-volume or offline use.
+
+**How conflicts are resolved:**
+
+When you say something that contradicts what was previously known, the **TruthEngine** kicks in:
+
+1. Detects the contradiction (e.g., "staging uses SQLite" vs old "staging uses PostgreSQL")
+2. Supersedes the old claim — marks it inactive, not deleted
+3. Records the change as a delta (old value → new value)
+4. Updates the evidence chain so you can always trace back
+
+**How it surfaces knowledge:**
+
+The **Context Compiler** scores every piece of knowledge by relevance, confidence, and freshness — then assembles the most important facts into a compact injection for the AI's context window. It stays within a configurable token budget (110-280 tokens) so it never overwhelms the conversation.
+
+The output is clearly labeled:
+- **[Resolved Facts — current state]** — authoritative, these are what the AI should treat as true
+- **[Active Decisions]** — choices that were made and are still in effect
+- **[Relationships]** — connections between people, projects, and things
+- **[Conversation History — may contain outdated info]** — raw context, useful but may include superseded information
+
+---
+
+## What You DON'T Need to Do
+
+- **No manual tagging.** ThreadClaw extracts facts automatically.
+- **No special syntax.** Just talk normally — "we decided to use Redis", not "Decision: Redis".
+- **No data entry.** Your conversations become your knowledge base.
+- **No cloud.** Everything runs locally on your machine. Nothing leaves your hardware.
+- **No maintenance.** Old facts get superseded automatically. Stale data decays over time.
+
+---
 
 ## Quick Start
 
@@ -119,8 +233,11 @@ The installer will:
 3. Install dependencies, download models, OCR, audio transcription, and NER
 4. Detect and connect Obsidian vaults
 5. Optionally integrate with OpenClaw
+6. Create all databases and register the `threadclaw` command globally
 
 After install, open a **new terminal** and run `threadclaw` to launch the TUI.
+
+---
 
 ## Model Tiers
 
@@ -133,15 +250,149 @@ After install, open a **new terminal** and run `threadclaw` to launch the TUI.
 
 All models run locally. Cloud providers (OpenAI, Cohere, Voyage AI, Google) also supported.
 
+---
+
+## Evidence OS — Deep Dive
+
+Evidence OS is the intelligence layer that makes ThreadClaw more than a search engine. Here's what each component does:
+
+### Entity Awareness
+Extracts named entities (people, projects, tools, services) from text and tracks them. When you mention "Project Orion" and later say "Orion", it knows they're the same thing.
+
+### Claims & Decisions
+Every fact you state becomes a **claim** with a confidence score and evidence chain. Every choice you make becomes a **decision**. When facts change, old claims are superseded — not deleted — so you always have history.
+
+### TruthEngine
+The reconciliation engine that decides what happens when new information conflicts with existing knowledge:
+- **Supersession** — new fact replaces old fact (same subject, same topic, different value)
+- **Conflict creation** — contradictory facts from different sources are flagged
+- **Confidence blending** — repeated confirmations increase confidence
+- **Correction guards** — explicit corrections ("actually, not X — use Y") get priority
+
+### Canonical Key System
+How ThreadClaw knows two facts are about the same thing. Uses LLM-generated **topic labels** (not hardcoded rules) to group related claims:
+- "staging uses PostgreSQL" and "staging runs on Postgres" → same topic: **database**
+- "Nina reports to Alex" and "Nina works under Alex" → same topic: **manager**
+
+When two claims share the same subject + topic, the newer one supersedes the old one.
+
+### Context Compiler (ROI Governor)
+Not everything in memory is worth surfacing. The context compiler scores every piece of knowledge by:
+- **Relevance** — how useful is this right now?
+- **Confidence** — how certain is this fact?
+- **Freshness** — how recent is this?
+- **Token cost** — how many tokens does it consume?
+
+It fills a budget greedily: highest value-per-token first. Default budgets: Lite (110 tokens), Standard (190 tokens), Premium (280 tokens).
+
+### Extraction Quality Filters
+Not everything said should become a fact. ThreadClaw filters out:
+- Code blocks, file paths, URLs
+- Message metadata ("Wesley sent a message at 2:51 PM")
+- Sarcasm and jokes ("the printer runs on magic")
+- Hypotheticals ("what if we used MongoDB?")
+- Explicitly marked non-facts ("example only", "don't store this", "I'm not sure any of this is true")
+- Error messages and stack traces
+
+### Attempt Ledger & Anti-Runbooks
+Tracks what tools succeeded and failed. If a tool fails repeatedly with the same pattern, ThreadClaw creates an **anti-runbook** — a warning that says "don't try this approach, it failed 3 times already." This prevents the AI from repeating known mistakes.
+
+### Open Loops
+Tracks things that need follow-up: pending tasks, unanswered questions, things you said you'd do "by Friday." These surface in the context injection with priority ordering.
+
+### Branch Promotion
+Speculative memory for exploratory conversations. Facts stay in a "branch" until validated, then get promoted to the shared scope. Prevents test data or brainstorming from polluting your main knowledge base.
+
+---
+
+## RSMA Architecture
+
+ThreadClaw is built on **RSMA (Reconciled Semantic Memory Architecture)** — a ten-layer system:
+
+> `RSMA = RAG + DAG + KG + AL + SL + DE + AOM + BSG + EEL + CCL`
+
+| Layer | Full Name | What It Does |
+|-------|-----------|-------------|
+| **RAG** | Retrieval-Augmented Generation | Searches your documents with hybrid vector + keyword matching |
+| **DAG** | Directed Acyclic Graph | Lossless conversation memory with smart summarization |
+| **KG** | Knowledge Graph | Structured entity-relationship tracking |
+| **AL** | Awareness Layer | Entity extraction, mismatch detection, contextual notes |
+| **SL** | State Layer | Claims, decisions, invariants — current state of the world |
+| **DE** | Delta / Deep Extraction | Tracks changes over time, LLM-powered extraction |
+| **AOM** | Attempt/Outcome Memory | Tool success/failure tracking, anti-runbooks |
+| **BSG** | Branch/Scope Governance | Speculative branches, promotion policies |
+| **EEL** | Evidence Event Log | Append-only audit trail of every knowledge change |
+| **CCL** | Context Compilation Layer | ROI-scored capsule injection within token budgets |
+
+---
+
+## Features
+
+### Search & Retrieval
+- **Hybrid Search** — dense vector + BM25 keyword matching fused via Reciprocal Rank Fusion
+- **Cross-Encoder Reranking** — re-scores results with a cross-encoder for precision
+- **Smart Rerank Skip** — bypasses reranking when the top result is already a clear winner
+- **Token-Efficient Output** — `--brief` (~200 tokens), `--titles` (~30 tokens), `--full` (~1500 tokens)
+- **Search Highlighting** — matched query terms in bold
+- **Query Cache** — 50-entry LRU with 5-minute TTL. Repeat queries cost zero tokens
+- **Query Expansion** — optional HyDE + decomposition + multi-query via local LLM
+- **Semantic Deduplication** — near-duplicate chunks detected during ingest
+
+### Document Ingestion
+- **20+ File Formats** — PDF, DOCX, PPTX, HTML, Markdown, CSV, JSON, Email, Code, EPUB, and more
+- **Incremental Indexing** — detects unchanged files by content hash, never re-processes
+- **Auto-Ingestion** — file watcher monitors directories for new/changed files
+- **Named Entity Recognition** — spaCy NER extracts people, organizations, locations, dates
+- **Incremental Re-indexing** — re-chunk and re-embed documents when settings change
+
+### Source Adapters
+
+| Source | Type | Setup |
+|--------|------|-------|
+| **Local Files** | Realtime (chokidar) | WATCH_PATHS in .env |
+| **Obsidian** | Realtime | Auto-detected during install |
+| **Google Drive** | Polling | OAuth flow in TUI Sources screen |
+| **OneDrive** | Polling | OAuth or local sync folder (in development) |
+| **Notion** | Polling | API key in TUI Sources screen |
+| **Apple Notes** | Polling | macOS only, AppleScript |
+
+### Integration
+- **Interactive TUI** — terminal UI for configuration, status, service management, reset, and uninstall
+- **CLI** — full command-line interface with path validation for scripting
+- **HTTP API** — REST endpoints with timing-safe API key auth and rate limiting
+- **MCP Server** — Model Context Protocol for native tool access from AI agents
+- **OpenClaw Plugin** — one-command setup as knowledge skill + memory engine
+- **Cross-Platform** — Windows (Task Scheduler), macOS (launchd), Linux (systemd --user)
+- **Local-First** — all models run on your hardware. No data leaves your machine.
+
+### Agent Tools (12)
+
+| Tool | What it does |
+|------|-------------|
+| `cc_memory` | Unified smart search — finds facts, decisions, relationships, and conversation history |
+| `cc_grep` | Full-text search across conversation memory |
+| `cc_describe` | Describe the current knowledge state |
+| `cc_expand` | Deep-dive into a topic with recursive expansion |
+| `cc_recall` | Recall a specific conversation or summary |
+| `cc_claims` | Query structured claims (facts) |
+| `cc_decisions` | Query active decisions |
+| `cc_loops` | Query open tasks and follow-ups |
+| `cc_attempts` | Query tool success/failure history |
+| `cc_branch` | Manage speculative branches |
+| `cc_procedures` | Query runbooks and anti-runbooks |
+| `cc_diagnostics` | RSMA health check and Evidence OS stats |
+
+---
+
 ## Databases
 
-ThreadClaw uses three SQLite databases, each with a distinct purpose:
+ThreadClaw uses three SQLite databases:
 
 | Database | Path | Purpose |
 |----------|------|---------|
-| **threadclaw.db** | `~/.threadclaw/data/threadclaw.db` | RAG knowledge base: documents, chunks, vectors, metadata |
-| **graph.db** | `~/.threadclaw/data/graph.db` | Evidence OS: claims, decisions, loops, entities, relations, provenance |
-| **memory.db** | `~/.threadclaw/data/memory.db` | Conversation memory: messages, summaries, context items |
+| **threadclaw.db** | `~/.threadclaw/data/threadclaw.db` | RAG: documents, chunks, vectors, search metadata |
+| **graph.db** | `~/.threadclaw/data/graph.db` | Evidence OS: claims, decisions, loops, entities, relations |
+| **memory.db** | `~/.threadclaw/data/memory.db` | Conversations: messages, summaries, context items |
 
 ### Reset Options (TUI)
 
@@ -151,14 +402,16 @@ ThreadClaw uses three SQLite databases, each with a distinct purpose:
 | **Reset KB + Evidence OS** | Cleared | Cleared | Preserved |
 | **FULL WIPE** | Cleared | Cleared | Cleared |
 
-The Full Wipe requires typing "DELETE EVERYTHING" to confirm and shows a detailed summary of what was deleted (document counts, message counts, etc.).
+The Full Wipe requires typing "DELETE EVERYTHING" to confirm.
+
+---
 
 ## Usage
 
 ### CLI
 
 ```bash
-# Search
+# Search your knowledge base
 threadclaw query "what is VLSM?" --collection networking --brief
 
 # Ingest a file
@@ -194,31 +447,7 @@ threadclaw
 | Titles | `--titles` | ~30 | Exploration. "What docs do I have?" |
 | Full | `--full` | ~1500 | Read the actual content. |
 
-## Source Adapters
-
-| Source | Type | Setup |
-|--------|------|-------|
-| **Local Files** | Realtime (chokidar) | WATCH_PATHS in .env |
-| **Obsidian** | Realtime | Auto-detected during install |
-| **Google Drive** | Polling | OAuth flow in TUI Sources screen |
-| **OneDrive** | Polling | OAuth or local sync folder (in development) |
-| **Notion** | Polling | API key in TUI Sources screen |
-| **Apple Notes** | Polling | macOS only, AppleScript |
-
-Configure from `Sources` in the TUI. All indexing runs locally. Cloud adapters detect file removals and clean up the local knowledge base automatically.
-
-## OpenClaw Integration
-
-ThreadClaw integrates with OpenClaw as both a **knowledge skill** and **memory engine**:
-
-1. **Knowledge Engine** — agents search your documents via `threadclaw query`
-2. **Memory Engine** — DAG-based conversation context (replaces built-in memory-core)
-
-The installer handles this automatically, or run manually:
-
-```bash
-python server/integrate_openclaw.py ~/.openclaw ./threadclaw nvidia/llama-nv-embed-reasoning-3b
-```
+---
 
 ## HTTP API
 
@@ -253,6 +482,8 @@ Rate limited: 300 requests/minute per IP (configurable via `RATE_LIMIT_MAX`).
 
 Authentication: set `THREADCLAW_API_KEY` to require `Authorization: Bearer <key>` on all endpoints (timing-safe comparison).
 
+---
+
 ## Architecture
 
 ```
@@ -280,6 +511,8 @@ Authentication: set `THREADCLAW_API_KEY` to require `Authorization: Bearer <key>
                     +-------------------------------+
 ```
 
+---
+
 ## Security
 
 - **API Key Auth** — timing-safe SHA-256 comparison via `crypto.timingSafeEqual`
@@ -289,6 +522,8 @@ Authentication: set `THREADCLAW_API_KEY` to require `Authorization: Bearer <key>
 - **Rate Limiting** — sliding window per IP with configurable limits
 - **Python Path Blocklist** — segment-aware matching mirrors the Node.js validation
 - **OAuth Security** — localhost-only callback servers, CSRF state validation
+
+---
 
 ## Testing
 
@@ -322,6 +557,30 @@ cd memory-engine && npm test # 858 memory-engine tests
 | **Relations Integration** | 8 | Full pipeline: extraction → entity_relations table |
 | **Security Hardening** | 14 | Path validation, model server discovery, file permissions |
 | **API Routes** | 89 | All HTTP endpoints, auth, rate limiting, validation |
+
+---
+
+## Documentation
+
+**Getting Started:**
+[Install](docs/install.md) | [Quick Start](docs/quickstart.md) | [Configuration](docs/configuration.md) | [Migration](docs/migration.md)
+
+**Reference:**
+[Tools (12)](docs/tools.md) | [Schema](docs/schema.md) | [API](docs/api.md) | [FAQ](docs/faq.md)
+
+**Concepts:**
+[Core Concepts](docs/concepts.md) | [Architecture](docs/architecture.md) | [Scopes & Branches](docs/scopes-and-branches.md) | [Promotion Policies](docs/promotion-policies.md)
+
+**Advanced:**
+[Runbooks & Anti-Runbooks](docs/runbooks-and-negative-memory.md) | [Invariants](docs/invariants.md) | [Capabilities](docs/capability-registry.md) | [Evaluation](docs/evaluation.md)
+
+**Operations:**
+[Security & Privacy](docs/security-and-privacy.md) | [Performance](docs/performance.md) | [Observability](docs/observability.md) | [Replay & Rebuild](docs/replay-and-rebuild.md) | [Troubleshooting](docs/troubleshooting.md)
+
+**Contributing:**
+[Contributor Guide](docs/contributor-guide.md) | [Testing](docs/testing.md) | [Release Process](docs/release-process.md)
+
+---
 
 ## Requirements
 
