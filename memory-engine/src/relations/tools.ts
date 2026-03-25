@@ -642,7 +642,7 @@ export function createCcMemoryTool(input: {
               lines.push(line);
             }
             if (lines.length > 0) {
-              sections.push("[Known Facts]\n" + lines.join("\n"));
+              sections.push("[Resolved Facts — current state]\n" + lines.join("\n"));
             }
           }
         }
@@ -673,7 +673,7 @@ export function createCcMemoryTool(input: {
               lines.push(line);
             }
             if (lines.length > 0) {
-              sections.push("[Decisions]\n" + lines.join("\n"));
+              sections.push("[Active Decisions]\n" + lines.join("\n"));
             }
           }
         }
@@ -748,7 +748,7 @@ export function createCcMemoryTool(input: {
                 lines.push(line);
               }
               if (lines.length > 0) {
-                sections.push("[From Summaries]\n" + lines.join("\n"));
+                sections.push("[Conversation History — may contain outdated info]\n" + lines.join("\n"));
               }
             }
 
@@ -765,7 +765,7 @@ export function createCcMemoryTool(input: {
                 lines.push(line);
               }
               if (lines.length > 0) {
-                sections.push("[From Conversation]\n" + lines.join("\n"));
+                sections.push("[Conversation History — may contain outdated info]\n" + lines.join("\n"));
               }
             }
           } catch {
@@ -806,8 +806,16 @@ export function createCcMemoryTool(input: {
           });
         }
 
+        // Add guidance preamble when mixing resolved facts with conversation history
+        const hasResolved = sources.some((s) => s === "claims" || s === "decisions" || s === "relationships");
+        const hasHistory = sources.some((s) => s === "summaries" || s === "messages");
+        let preamble = "";
+        if (hasResolved && hasHistory) {
+          preamble = "Note: Resolved Facts/Decisions/Relationships are the authoritative current state. Conversation History shows what was discussed — it may contain outdated or superseded information.\n\n";
+        }
+
         return {
-          content: [{ type: "text", text: sections.join("\n\n") }],
+          content: [{ type: "text", text: preamble + sections.join("\n\n") }],
           details: {
             mode: "cc_memory",
             sources,

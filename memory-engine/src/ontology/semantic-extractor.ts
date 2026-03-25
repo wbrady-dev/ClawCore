@@ -173,6 +173,15 @@ IMPORTANT — Do NOT extract any of the following:
 - Error messages and stack traces are transient debugging context, NOT permanent facts
 - Random notes, jokes, or hypotheticals that the speaker explicitly marks as non-factual ("someone joked", "example only", "don't store this")
 
+CRITICAL — Distinguishing examples from real statements:
+- "For example, we could use Redis" → do NOT extract (hypothetical, not a decision)
+- "We decided to use Redis. For example, the session cache uses it now." → DO extract (real fact, "for example" illustrates the decision)
+- "Like if we switched to Oracle" → do NOT extract (hypothetical)
+- "What if we used MongoDB instead?" → do NOT extract (question/hypothetical)
+- Sarcasm/irony: "Oh sure, the printer definitely runs on magic" → do NOT extract (sarcastic)
+- Quoting others: "Dave said staging uses Oracle but I don't think that's right" → extract with low confidence (0.3) and is_uncertain: true
+- Mixed: "Remember this: Orion uses PostgreSQL. But I'm not sure about the caching layer." → extract Orion fact at full confidence, mark caching as uncertain
+
 CRITICAL — Message-level trust assessment:
 Before extracting ANY events, read the ENTIRE message for framing signals that affect ALL statements in it:
 - If the message opens with or contains disclaimers like "I'm not sure any of this is true", "these are examples", "don't store this", "testing", "hypothetical" — treat the ENTIRE message as low-trust. Return {"events":[]} or set all confidence below 0.3.
