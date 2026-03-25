@@ -169,6 +169,8 @@ IMPORTANT — Do NOT extract any of the following:
 - That a user "sent" or "wrote" a message — focus on WHAT they communicated, not the act of communicating
 - Do NOT extract facts from code blocks, variable assignments, or programming constructs
 - Error messages and stack traces are transient debugging context, NOT permanent facts
+- Casual observations about OTHER people's preferences or habits ("Alex likes tea", "Bob drinks coffee") — these are low-value gossip, NOT project-relevant facts. Only extract preferences the SPEAKER states about THEMSELVES.
+- Random notes, jokes, or hypotheticals that the speaker explicitly marks as non-factual ("someone joked", "example only", "don't store this", "I'm not sure any of this is true")
 
 ONLY extract information the user is communicating as facts, decisions, preferences, tasks, or relationships about their world.
 

@@ -98,19 +98,33 @@ const LOW_VALUE_SUBJECTS = new Set([
   "copper identity", "conversation history tools", "agent", "bot",
 ]);
 
+// Predicates that describe history/transitions rather than current state
+const HISTORICAL_PREDICATES = new Set([
+  "renamed_to", "renamed_from", "previously", "origin", "former",
+  "was", "used_to_be", "migrated_from", "replaced_by", "superseded_by",
+]);
+
+// Low-value casual predicates (incidental facts about others)
+const CASUAL_PREDICATES = new Set([
+  "likes", "prefers", "enjoys", "dislikes", "favorite", "hobby",
+  "drinks", "eats", "watches", "listens_to",
+]);
+
 function claimCapsules(claims: ClaimRow[]): CapsuleCandidate[] {
   return claims.map((c) => {
     const daysSince = daysSinceIso(c.last_seen_at);
-    // Use 1 as mentionCount — claims don't have entity mentions.
-    // trust_score is applied separately in the final score below.
     const conf = effectiveConfidence(c.confidence, 1, daysSince);
     const text = `[claim] ${c.subject} ${c.predicate}: ${c.object_text ?? "(no value)"} (conf=${c.confidence.toFixed(2)})`;
     const tokens = estimateTokens(text);
 
-    // Demote identity/meta claims so project facts rank higher
     const subjectLower = c.subject.toLowerCase().trim();
-    const isLowValue = LOW_VALUE_SUBJECTS.has(subjectLower);
-    const valuePenalty = isLowValue ? 0.2 : 1.0;
+    const predicateLower = c.predicate.toLowerCase().trim();
+
+    // Demote identity/meta claims, historical/transition claims, and casual facts
+    let valuePenalty = 1.0;
+    if (LOW_VALUE_SUBJECTS.has(subjectLower)) valuePenalty = 0.2;
+    if (HISTORICAL_PREDICATES.has(predicateLower)) valuePenalty = 0.15;
+    if (CASUAL_PREDICATES.has(predicateLower)) valuePenalty = 0.1;
 
     const score = conf * c.trust_score * valuePenalty;
     return {
