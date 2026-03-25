@@ -1,4 +1,4 @@
-# ThreadClaw — Stateful Evidence Engine
+# 🦞 ThreadClaw — Stateful Evidence Engine
 
 **Persistent, evidence-backed memory for AI agents.**
 
