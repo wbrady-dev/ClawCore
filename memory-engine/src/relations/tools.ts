@@ -21,6 +21,7 @@ import { getBranches, createBranch, promoteBranch, discardBranch, checkPromotion
 import { getRunbooks, getRunbookWithEvidence } from "./runbook-store.js";
 import { getAwarenessStats } from "./eval.js";
 import { compileContextCapsules } from "./context-compiler.js";
+import { getRelationGraph, getRelationsForEntity } from "./relation-store.js";
 import type { LcmContextEngine } from "../engine.js";
 
 
@@ -595,8 +596,8 @@ export function createCcMemoryTool(input: {
     name: "cc_memory",
     label: "ThreadClaw Memory",
     description:
-      "Search ThreadClaw's memory for any fact, decision, relationship, or past conversation. " +
-      "Automatically searches claims, decisions, relationships, and conversation history. " +
+      "Search ThreadClaw's memory for any fact, entity, relationship, decision, or past conversation. " +
+      "Automatically searches claims, entities, entity-to-entity relations, decisions, and conversation history. " +
       "Just describe what you're looking for — the system routes to the right source.",
     parameters: CcMemorySchema,
     async execute(_toolCallId, params) {
@@ -678,12 +679,81 @@ export function createCcMemoryTool(input: {
           }
         }
 
-        // ── 3. Search relationships (claims with relational predicates) ──
+        // ── 3. Search entities ──
         if (claimTerms.length > 0) {
+          const entConditions = claimTerms.map(() => "(content LIKE ? ESCAPE '\\' OR structured_json LIKE ? ESCAPE '\\')").join(" OR ");
+          const entArgs = claimTerms.flatMap((t) => [`%${escapeLike(t)}%`, `%${escapeLike(t)}%`]);
+
+          const entities = db.prepare(`
+            SELECT id, canonical_key,
+                   COALESCE(json_extract(structured_json, '$.displayName'), json_extract(structured_json, '$.name'), canonical_key) as name,
+                   json_extract(structured_json, '$.type') as entity_type
+            FROM memory_objects WHERE kind = 'entity' AND status = 'active'
+              AND (${entConditions})
+            ORDER BY confidence DESC LIMIT 5
+          `).all(...entArgs) as Array<{
+            id: number; canonical_key: string; name: string; entity_type: string | null;
+          }>;
+
+          if (entities.length > 0) {
+            sources.push("entities");
+            const lines: string[] = [];
+            for (const e of entities) {
+              const typeLabel = e.entity_type ? ` (${e.entity_type})` : "";
+              const line = `• ${e.name}${typeLabel}`;
+              const cost = Math.ceil(line.length / 4);
+              if (tokenBudget - cost < 0) break;
+              tokenBudget -= cost;
+              lines.push(line);
+
+              // Pull relations for each matched entity
+              try {
+                const entityRels = getRelationsForEntity(db, e.id, "both");
+                for (const r of entityRels.slice(0, 3)) {
+                  const relLine = `    → ${r.subject_name} —[${r.predicate}]→ ${r.object_name} (conf=${r.confidence.toFixed(2)})`;
+                  const relCost = Math.ceil(relLine.length / 4);
+                  if (tokenBudget - relCost < 0) break;
+                  tokenBudget -= relCost;
+                  lines.push(relLine);
+                }
+              } catch { /* entity relation lookup non-fatal */ }
+            }
+            if (lines.length > 0) {
+              sections.push("[Entities]\n" + lines.join("\n"));
+            }
+          }
+        }
+
+        // ── 3b. Search entity-to-entity relations (provenance_links) ──
+        if (claimTerms.length > 0) {
+          try {
+            const allRels = getRelationGraph(db, 1, { limit: 30 });
+            const matchedRels = allRels.filter((r) => {
+              const text = `${r.subject_name} ${r.predicate} ${r.object_name}`.toLowerCase();
+              return claimTerms.some((t) => text.includes(t));
+            });
+
+            if (matchedRels.length > 0) {
+              sources.push("relations");
+              const lines: string[] = [];
+              for (const r of matchedRels.slice(0, 8)) {
+                const line = `• ${r.subject_name} —[${r.predicate}]→ ${r.object_name} (conf=${r.confidence.toFixed(2)})`;
+                const cost = Math.ceil(line.length / 4);
+                if (tokenBudget - cost < 0) break;
+                tokenBudget -= cost;
+                lines.push(line);
+              }
+              if (lines.length > 0) {
+                sections.push("[Relations — entity connections]\n" + lines.join("\n"));
+              }
+            }
+          } catch { /* relation graph lookup non-fatal */ }
+
+          // Also keep claim-based relational predicates as a supplementary source
           const relConditions = claimTerms.map(() => "(content LIKE ? ESCAPE '\\' OR structured_json LIKE ? ESCAPE '\\')").join(" OR ");
           const relArgs = claimTerms.flatMap((t) => [`%${escapeLike(t)}%`, `%${escapeLike(t)}%`]);
 
-          const rels = db.prepare(`
+          const claimRels = db.prepare(`
             SELECT json_extract(structured_json, '$.subject') as subject,
                    json_extract(structured_json, '$.predicate') as predicate,
                    json_extract(structured_json, '$.objectText') as object_text
@@ -695,10 +765,10 @@ export function createCcMemoryTool(input: {
             subject: string; predicate: string; object_text: string | null;
           }>;
 
-          if (rels.length > 0) {
+          if (claimRels.length > 0 && !sources.includes("relations")) {
             sources.push("relationships");
             const lines: string[] = [];
-            for (const r of rels) {
+            for (const r of claimRels) {
               const line = `• ${r.subject} —[${r.predicate}]→ ${r.object_text ?? ""}`;
               const cost = Math.ceil(line.length / 4);
               if (tokenBudget - cost < 0) break;
@@ -706,7 +776,7 @@ export function createCcMemoryTool(input: {
               lines.push(line);
             }
             if (lines.length > 0) {
-              sections.push("[Relationships]\n" + lines.join("\n"));
+              sections.push("[Relationships — from claims]\n" + lines.join("\n"));
             }
           }
         }
@@ -802,16 +872,16 @@ export function createCcMemoryTool(input: {
           return jsonResult({
             answer: "Nothing found in memory or documents for this query." + hint,
             mode: "no_results",
-            searched: ["claims", "decisions", "relationships", "messages", "documents"],
+            searched: ["claims", "decisions", "entities", "relations", "relationships", "messages", "documents"],
           });
         }
 
         // Add guidance preamble when mixing resolved facts with conversation history
-        const hasResolved = sources.some((s) => s === "claims" || s === "decisions" || s === "relationships");
+        const hasResolved = sources.some((s) => s === "claims" || s === "decisions" || s === "relationships" || s === "relations" || s === "entities");
         const hasHistory = sources.some((s) => s === "summaries" || s === "messages");
         let preamble = "";
         if (hasResolved && hasHistory) {
-          preamble = "Note: Resolved Facts/Decisions/Relationships are the authoritative current state. Conversation History shows what was discussed — it may contain outdated or superseded information.\n\n";
+          preamble = "Note: Resolved Facts/Entities/Relations/Decisions are the authoritative current state. Conversation History shows what was discussed — it may contain outdated or superseded information.\n\n";
         }
 
         return {
