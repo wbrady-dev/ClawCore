@@ -49,6 +49,22 @@ if ! bash "$ROOT/scripts/backup.sh"; then
 fi
 
 # ── Pull latest ──
+# Check if this is a git repo (install locations may not have .git/)
+if [ ! -d "$ROOT/.git" ]; then
+  echo "[update] This install location is not a git repository."
+  echo "         To update ThreadClaw:"
+  echo ""
+  echo "         1. Go to your original git clone directory"
+  echo "         2. Run: git pull"
+  echo "         3. Run: ./install.sh"
+  echo "            (the installer will update the install location)"
+  echo ""
+  echo "         Or clone fresh:"
+  echo "         git clone https://github.com/wbrady-dev/ThreadClaw.git"
+  echo "         cd ThreadClaw && ./install.sh"
+  exit 1
+fi
+
 echo "[update] Pulling latest from GitHub..."
 if ! git pull; then
   echo "[ERROR] git pull failed. Auto-rolling back to $OLD_HASH..."

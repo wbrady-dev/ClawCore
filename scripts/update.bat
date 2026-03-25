@@ -61,9 +61,26 @@ if exist "%ROOT%\scripts\backup.bat" (
 )
 
 :: ── Pull latest ──
+:: Check if this is a git repo (install locations may not have .git/)
+if not exist "%ROOT%\.git" (
+    echo [update] This install location is not a git repository.
+    echo          To update ThreadClaw:
+    echo.
+    echo          1. Go to your original git clone directory
+    echo          2. Run: git pull
+    echo          3. Run: install.bat
+    echo             ^(the installer will update the install location^)
+    echo.
+    echo          Or clone fresh:
+    echo          git clone https://github.com/wbrady-dev/ThreadClaw.git
+    echo          cd ThreadClaw ^&^& install.bat
+    pause
+    exit /b 1
+)
+
 echo [update] Pulling latest from GitHub...
 git pull
-if %errorlevel% neq 0 (
+if !errorlevel! neq 0 (
     echo [ERROR] git pull failed. Auto-rolling back to %OLD_HASH%...
     git reset --hard %OLD_HASH%
     pause
@@ -147,5 +164,7 @@ echo.
 echo [OK] ThreadClaw updated successfully.
 echo      Version: %OLD_VERSION% -^> %NEW_VERSION%
 echo.
-echo   Recent commits:
-git log --oneline -5
+if exist "%ROOT%\.git" (
+    echo   Recent commits:
+    git log --oneline -5
+)
