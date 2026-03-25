@@ -12,11 +12,11 @@ Covers architecture, query pipeline, ingestion, storage, evidence store, source 
 
 ```
 ┌──────────────────────────────────────────────────────────┐
-│                         ThreadClaw                         │
+│                         ThreadClaw                       │
 │                                                          │
 │  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌──────────┐  │
 │  │ CLI/TUI  │  │ HTTP API │  │   MCP    │  │ Watcher  │  │
-│  │ threadclaw │  │  :18800  │  │  stdio   │  │ chokidar │  │
+│  │ threadclaw │  │  :18800  │  │  stdio   │  │ chokidar  │
 │  └────┬─────┘  └────┬─────┘  └────┬─────┘  └────┬─────┘  │
 │       │             │             │             │        │
 │       └─────────────┴──────┬──────┴─────────────┘        │
