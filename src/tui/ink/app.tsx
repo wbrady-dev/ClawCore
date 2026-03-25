@@ -586,24 +586,27 @@ function HomeScreen({ onAction }: { onAction: (action: string) => void }) {
     const watchPaths = ec.match(/WATCH_PATHS=(.+)/)?.[1]?.trim() ?? "";
     const sourceIcons: string[] = [];
     if (watchPaths) sourceIcons.push(`${t.ok("●")} Local Files`);
-    if (ec.includes("OBSIDIAN_ENABLED=true")) sourceIcons.push(`${t.ok("●")} Obsidian`);
-    if (ec.includes("GDRIVE_ENABLED=true")) sourceIcons.push(`${t.ok("●")} Google Drive`);
-    if (ec.includes("ONEDRIVE_ENABLED=true")) sourceIcons.push(`${t.ok("●")} OneDrive`);
-    if (ec.includes("NOTION_ENABLED=true")) sourceIcons.push(`${t.ok("●")} Notion`);
-    if (ec.includes("APPLE_NOTES_ENABLED=true")) sourceIcons.push(`${t.ok("●")} Apple Notes`);
+    const isEnabled = (key: string) => ec.includes(`${key}=true`) || ec.includes(`${key}="true"`);
+    if (isEnabled("OBSIDIAN_ENABLED")) sourceIcons.push(`${t.ok("●")} Obsidian`);
+    if (isEnabled("GDRIVE_ENABLED")) sourceIcons.push(`${t.ok("●")} Google Drive`);
+    if (isEnabled("ONEDRIVE_ENABLED")) sourceIcons.push(`${t.ok("●")} OneDrive`);
+    if (isEnabled("NOTION_ENABLED")) sourceIcons.push(`${t.ok("●")} Notion`);
+    if (isEnabled("APPLE_NOTES_ENABLED")) sourceIcons.push(`${t.ok("●")} Apple Notes`);
+    // Helper to extract env value, stripping optional quotes: KEY="value" or KEY=value
+    const envVal = (key: string): string => ec.match(new RegExp(`${key}="?([^"\\n]+)"?`))?.[1] ?? "";
     cachedParsedEnv = {
-      deepEnabled: ec.match(/THREADCLAW_MEMORY_RELATIONS_DEEP_EXTRACTION_ENABLED=(\w+)/)?.[1] === "true",
-      relationsEnabled: ec.match(/THREADCLAW_RELATIONS_ENABLED=(\w+)/)?.[1] === "true" || ec.match(/THREADCLAW_MEMORY_RELATIONS_ENABLED=(\w+)/)?.[1] === "true",
-      awarenessEnabled: ec.match(/THREADCLAW_MEMORY_RELATIONS_AWARENESS_ENABLED=(\w+)/)?.[1] === "true",
-      claimsEnabled: ec.match(/THREADCLAW_MEMORY_RELATIONS_CLAIM_EXTRACTION_ENABLED=(\w+)/)?.[1] === "true",
-      attemptEnabled: ec.match(/THREADCLAW_MEMORY_RELATIONS_ATTEMPT_TRACKING_ENABLED=(\w+)/)?.[1] === "true",
-      qeEnabled: ec.match(/QUERY_EXPANSION_ENABLED=(\w+)/)?.[1] ?? "",
-      qeModel: ec.match(/QUERY_EXPANSION_MODEL=(.+)/)?.[1]?.trim() ?? "",
+      deepEnabled: envVal("THREADCLAW_MEMORY_RELATIONS_DEEP_EXTRACTION_ENABLED") === "true",
+      relationsEnabled: envVal("THREADCLAW_RELATIONS_ENABLED") === "true" || envVal("THREADCLAW_MEMORY_RELATIONS_ENABLED") === "true",
+      awarenessEnabled: envVal("THREADCLAW_MEMORY_RELATIONS_AWARENESS_ENABLED") === "true",
+      claimsEnabled: envVal("THREADCLAW_MEMORY_RELATIONS_CLAIM_EXTRACTION_ENABLED") === "true",
+      attemptEnabled: envVal("THREADCLAW_MEMORY_RELATIONS_ATTEMPT_TRACKING_ENABLED") === "true",
+      qeEnabled: envVal("QUERY_EXPANSION_ENABLED"),
+      qeModel: envVal("QUERY_EXPANSION_MODEL"),
       watchCount: watchPaths ? watchPaths.split(",").filter(Boolean).length : 0,
       watchPaths,
       sourceIcons,
-      audioEnabled: ec.match(/AUDIO_TRANSCRIPTION_ENABLED=(\w+)/)?.[1] === "true",
-      whisperModel: ec.match(/WHISPER_MODEL=(\w+)/)?.[1] ?? "base",
+      audioEnabled: envVal("AUDIO_TRANSCRIPTION_ENABLED") === "true",
+      whisperModel: envVal("WHISPER_MODEL") || "base",
     };
 
     // Service status: always update (port unreachable = service is down)
