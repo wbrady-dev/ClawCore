@@ -81,53 +81,70 @@ Each event has these fields:
 - type: "fact" | "decision" | "correction" | "preference" | "task" | "reminder" | "observation" | "uncertainty" | "relationship"
 - content: the core statement (string)
 - subject: what this is about — use a consistent, canonical name (string, optional)
-- predicate: the relationship type — MUST use a standardized predicate from the list below (string, optional)
+- predicate: the relationship type (string, optional)
 - value: the value/target (string, optional)
+- topic: a 2-4 word canonical label for WHAT ASPECT of the subject this describes (string, REQUIRED for facts/decisions/corrections)
 - confidence: how certain this is (0.0-1.0)
 - is_correction_of: what prior belief this corrects (string, optional — only if type is "correction")
 - is_uncertain: true if the speaker expresses doubt (boolean, optional)
 - temporal: temporal expression if present, e.g. "by Friday", "next Monday" (string, optional)
 - entities: named entities mentioned (string[], optional)
 
-STANDARDIZED PREDICATES — always use these exact strings:
-  For technology/tools: "uses" (NOT "runs_on", "technology", "built_with", "powered_by")
-  For people reporting: "reports_to" (NOT "works_under", "managed_by", "supervised_by")
-  For people managing: "manages" (NOT "leads", "supervises", "runs")
-  For employment: "works_at" (NOT "employed_by", "works_for")
-  For ownership: "owns" (NOT "has", "possesses")
-  For location: "located_at" (NOT "based_in", "lives_in", "found_at")
-  For status: "status" (NOT "state", "condition", "health")
-  For naming: "name" (NOT "called", "known_as", "titled")
-  For marriage/partners: "married_to" (NOT "spouse_of", "partner_of")
-  For any other relationship: use the simplest, most generic verb form
+CRITICAL — The "topic" field:
+  This is the most important field for deduplication. Two claims about the SAME subject and SAME topic will be merged — the newer one wins. Use a SHORT, STABLE label that captures what aspect you're describing.
+  Examples:
+  - "staging uses PostgreSQL" → topic: "database"
+  - "staging runs on Postgres" → topic: "database" (SAME topic — these are about the same thing!)
+  - "staging is in us-east-1" → topic: "region" (different topic — different fact)
+  - "Nina reports to Alex" → topic: "manager"
+  - "Nina works under Alex" → topic: "manager" (SAME topic — same relationship!)
+  - "lobby printer is broken" → topic: "status"
+  - "lobby printer is working" → topic: "status" (SAME topic — supersedes the old one)
+  - "we use Redis for caching" → topic: "technology"
+  - "caching uses Valkey now" → topic: "technology" (SAME topic — supersedes Redis)
+
+  If two statements are about the same aspect of the same subject, they MUST have the same topic string.
 
 CRITICAL — Subject normalization:
-  - Always use the SAME subject string for the same entity across all events
+  Always use the SAME subject string for the same entity across all events.
   - "staging database", "staging db", "staging" → normalize to "staging"
   - "Project Orion", "Orion project", "orion" → normalize to "Project Orion"
   - "the lobby printer", "office printer", "printer" → normalize to "lobby printer" (use most specific)
+  - "the caching layer", "cache", "caching" → normalize to "caching"
 
 Examples:
 Input: "We're going with Postgres for staging"
-Output: {"events":[{"type":"decision","content":"Use Postgres for staging","subject":"staging","predicate":"uses","value":"Postgres","confidence":0.9}]}
+Output: {"events":[{"type":"decision","content":"Use Postgres for staging","subject":"staging","predicate":"uses","value":"Postgres","topic":"database","confidence":0.9}]}
 
 Input: "Actually, not MySQL anymore, switch to Postgres"
-Output: {"events":[{"type":"correction","content":"Switch from MySQL to Postgres","subject":"database","predicate":"uses","value":"Postgres","confidence":0.9,"is_correction_of":"MySQL"}]}
+Output: {"events":[{"type":"correction","content":"Switch from MySQL to Postgres","subject":"database","predicate":"uses","value":"Postgres","topic":"database","confidence":0.9,"is_correction_of":"MySQL"}]}
+
+Input: "Staging runs on Postgres now"
+Output: {"events":[{"type":"correction","content":"Staging uses Postgres","subject":"staging","predicate":"uses","value":"Postgres","topic":"database","confidence":0.9,"is_correction_of":"previous database"}]}
 
 Input: "Nina does not report to Alex"
-Output: {"events":[{"type":"correction","content":"Nina does not report to Alex","subject":"Nina","predicate":"reports_to","value":"(none)","confidence":0.9,"is_correction_of":"Alex"}]}
+Output: {"events":[{"type":"correction","content":"Nina does not report to Alex","subject":"Nina","predicate":"reports_to","value":"(none)","topic":"manager","confidence":0.9,"is_correction_of":"Alex"}]}
+
+Input: "Nina works under Alex"
+Output: {"events":[{"type":"relationship","content":"Nina reports to Alex","subject":"Nina","predicate":"reports_to","value":"Alex","topic":"manager","confidence":0.9,"entities":["Nina","Alex"]}]}
 
 Input: "Actually the printer is working fine now"
-Output: {"events":[{"type":"correction","content":"Printer is working","subject":"lobby printer","predicate":"status","value":"working","confidence":0.9,"is_correction_of":"broken"}]}
+Output: {"events":[{"type":"correction","content":"Printer is working","subject":"lobby printer","predicate":"status","value":"working","topic":"status","confidence":0.9,"is_correction_of":"broken"}]}
 
 Input: "I think the port might be 8080"
-Output: {"events":[{"type":"uncertainty","content":"Port is 8080","subject":"service","predicate":"port","value":"8080","confidence":0.4,"is_uncertain":true}]}
+Output: {"events":[{"type":"uncertainty","content":"Port is 8080","subject":"service","predicate":"port","value":"8080","topic":"port","confidence":0.4,"is_uncertain":true}]}
 
 Input: "I prefer short replies, and never suggest cloud hosting"
-Output: {"events":[{"type":"preference","content":"Prefer short replies","subject":"replies","predicate":"style","value":"short","confidence":0.95},{"type":"preference","content":"Never suggest cloud hosting","subject":"hosting","predicate":"constraint","value":"no cloud","confidence":0.95}]}
+Output: {"events":[{"type":"preference","content":"Prefer short replies","subject":"replies","predicate":"style","value":"short","topic":"style","confidence":0.95},{"type":"preference","content":"Never suggest cloud hosting","subject":"hosting","predicate":"constraint","value":"no cloud","topic":"policy","confidence":0.95}]}
 
 Input: "Need to rotate the API key before Friday"
-Output: {"events":[{"type":"task","content":"Rotate the API key","subject":"API key","predicate":"action","value":"rotate","confidence":0.9,"temporal":"before Friday"}]}
+Output: {"events":[{"type":"task","content":"Rotate the API key","subject":"API key","predicate":"action","value":"rotate","topic":"rotation","confidence":0.9,"temporal":"before Friday"}]}
+
+Input: "We use Redis for caching"
+Output: {"events":[{"type":"decision","content":"Use Redis for caching","subject":"caching","predicate":"uses","value":"Redis","topic":"technology","confidence":0.9}]}
+
+Input: "Switch caching to Valkey"
+Output: {"events":[{"type":"correction","content":"Switch caching to Valkey","subject":"caching","predicate":"uses","value":"Valkey","topic":"technology","confidence":0.9,"is_correction_of":"Redis"}]}
 
 Rules:
 - Extract ALL events, not just the first one
@@ -433,11 +450,13 @@ function convertToWriterResult(
       };
       structured = loop;
     } else {
-      const claim: StructuredClaim = {
+      const claim: StructuredClaim & { topic?: string } = {
         subject: event.subject ?? "general",
         predicate: event.predicate ?? "states",
         objectText: event.value ?? event.content,
       };
+      // Pass through LLM's topic field for canonical key generation
+      if (event.topic) claim.topic = event.topic;
       structured = claim;
     }
 

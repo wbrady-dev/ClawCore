@@ -87,12 +87,16 @@ export function buildCanonicalKey(
 ): string | undefined {
   switch (kind) {
     case "claim": {
-      // subject::predicate (normalized + predicate aliased)
+      // subject::topic (preferred) or subject::predicate (fallback)
+      // Topic is a semantic label from the LLM ("database", "manager", "status")
+      // that groups related claims regardless of predicate wording.
       const s = structured as StructuredClaim | undefined;
       const subject = normalize(s?.subject);
+      const topic = normalize((s as any)?.topic);
       const predicate = s?.predicate ? normalizePredicate(s.predicate) : "";
-      if (!subject || !predicate) return undefined;
-      return `claim::${subject}::${predicate}`;
+      const aspect = topic || predicate;
+      if (!subject || !aspect) return undefined;
+      return `claim::${subject}::${aspect}`;
     }
 
     case "decision": {
