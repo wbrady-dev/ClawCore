@@ -106,20 +106,20 @@ export async function runInkInstall(): Promise<boolean> {
       const { cpSync, mkdirSync } = await import("fs");
       mkdirSync(root, { recursive: true });
       console.log(t.dim(`\n  Copying ThreadClaw source to ${root}...`));
-      console.log(t.dim("  (node_modules, .venv, data, and .git are skipped — they will be created fresh)\n"));
+      console.log(t.dim("  (node_modules, .venv, and data are skipped — they will be created fresh)\n"));
       let fileCount = 0;
       cpSync(sourceRoot, root, {
         recursive: true,
         filter: (src) => {
           // Skip heavy/runtime dirs that will be recreated by the installer.
           // Keep memory-engine/node_modules (monorepo deps can't be npm-installed).
+          // Keep .git/ so install location is a proper git repo (enables threadclaw update).
           const rel = src.slice(sourceRoot.length + 1).replace(/\\/g, "/");
           if ((rel === "node_modules" || rel.startsWith("node_modules/")) && !rel.startsWith("memory-engine/")) return false;
           if (rel === ".venv" || rel.startsWith(".venv/")) return false;
           if (rel === "dist" || rel.startsWith("dist/")) return false;
           if (rel === "data" || rel.startsWith("data/")) return false;
           if (rel === "logs" || rel.startsWith("logs/")) return false;
-          if (rel === ".git" || rel.startsWith(".git/")) return false;
           if (rel === ".env") return false;
           if (rel) {
             fileCount++;
