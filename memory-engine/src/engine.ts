@@ -1618,11 +1618,25 @@ export class LcmContextEngine implements ContextEngine {
               }
             }
 
+            // Query known subjects from active claims so LLM normalizes against them
+            let knownSubjects: string[] = [];
+            try {
+              const rows = graphDb.prepare(
+                `SELECT DISTINCT JSON_EXTRACT(structured_json, '$.subject') as subj
+                 FROM memory_objects
+                 WHERE kind = 'claim' AND status = 'active' AND scope_id = ?
+                   AND JSON_EXTRACT(structured_json, '$.subject') IS NOT NULL
+                 LIMIT 50`,
+              ).all(_config.relationsScopeId ?? 1) as Array<{ subj: string }>;
+              knownSubjects = rows.map((r) => r.subj).filter((s) => s && s.length >= 2);
+            } catch { /* non-fatal — extraction still works without entity context */ }
+
             writerResult = await semanticExtract(_content, _messageId, role, {
               complete: completeFn,
               model: extractionModel,
               provider: extractionProvider,
               maxInputChars: 4000,
+              knownSubjects,
             });
           } catch (llmErr) {
             // LLM unavailable — fall back to regex

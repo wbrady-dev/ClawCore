@@ -71,6 +71,8 @@ export interface SemanticExtractorConfig {
   maxInputChars?: number;
   /** Timeout for LLM call in ms. Default: 10000. */
   timeoutMs?: number;
+  /** Known entity/subject names from the DB — LLM normalizes against these. */
+  knownSubjects?: string[];
 }
 
 // ── System Prompt ───────────────────────────────────────────────────────────
@@ -217,15 +219,24 @@ export async function semanticExtract(
   try {
     const maxChars = config.maxInputChars ?? 4000;
 
+    // Build system prompt with known entities for subject normalization
+    let systemPrompt = EXTRACTION_SYSTEM_PROMPT;
+
+    // Inject known subjects so the LLM normalizes to existing entity names
+    if (config.knownSubjects && config.knownSubjects.length > 0) {
+      const subjectList = config.knownSubjects.slice(0, 50).join(", ");
+      systemPrompt += `\n\nKNOWN ENTITIES already in memory: ${subjectList}\nWhen the user refers to one of these entities (even with a different name, abbreviation, or variation), you MUST use the EXACT subject name from this list. For example, if "orion" is in the list and the user says "Project Orion", use subject: "orion". This ensures deduplication works correctly.`;
+    }
+
     // For assistant messages, add a stricter instruction to only extract verified facts
-    const systemPrompt = role === "assistant"
-      ? EXTRACTION_SYSTEM_PROMPT + `\n\nIMPORTANT: This text is from an AI assistant, NOT a user. Apply strict filtering:
+    if (role === "assistant") {
+      systemPrompt += `\n\nIMPORTANT: This text is from an AI assistant, NOT a user. Apply strict filtering:
 - ONLY extract verified facts that came from tool results or confirmed data lookups
 - Do NOT extract the assistant's opinions, guesses, promises, or narrative
 - Do NOT extract phrases like "I think", "my guess is", "I'll remind you", "let me check"
 - Do NOT extract the assistant describing what it will do or what it found unless it's a concrete verified fact
-- If in doubt, do NOT extract. Return an empty events array.`
-      : EXTRACTION_SYSTEM_PROMPT;
+- If in doubt, do NOT extract. Return an empty events array.`;
+    }
 
     // Strip code blocks — they contain code, not user facts
     const textForExtraction = text.replace(/```[\s\S]*?```/g, '[code block removed]');
