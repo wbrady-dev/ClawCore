@@ -325,12 +325,12 @@ export async function runGDriveOAuth(clientId: string, clientSecret: string): Pr
   console.log(`\n  Opening browser for Google sign-in...`);
   console.log(`  If browser doesn't open, visit:\n  ${authUrl}\n`);
 
-  // Open browser — use execFile to avoid shell injection via authUrl.
-  // Windows: `start` treats `&` in URLs as command separator, so we must
-  // quote the URL. Using `start "" "url"` ensures the full URL is opened.
+  // Open browser — Windows needs special handling because `start` treats
+  // `&` in URLs as a command separator. Use rundll32 which takes the URL
+  // as a single argument with no shell interpretation issues.
   const { execFile } = await import("child_process");
   if (process.platform === "win32") {
-    execFile("cmd", ["/c", `start "" "${authUrl}"`]);
+    execFile("rundll32", ["url.dll,FileProtocolHandler", authUrl]);
   } else if (process.platform === "darwin") {
     execFile("open", [authUrl]);
   } else {
