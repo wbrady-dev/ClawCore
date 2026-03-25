@@ -158,6 +158,12 @@ echo  ========================================
 echo   Installation complete!
 echo  ========================================
 echo.
+echo  IMPORTANT: Close this window and open a
+echo  NEW terminal, then type: threadclaw
+echo.
+echo  The command will NOT work in this window
+echo  because PATH updates require a new session.
+echo.
 
 pause
 exit /b 0
