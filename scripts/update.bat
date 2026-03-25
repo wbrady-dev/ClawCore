@@ -1,4 +1,5 @@
 @echo off
+setlocal enabledelayedexpansion
 title ThreadClaw - Update
 cd /d "%~dp0\.."
 set "ROOT=%cd%"
