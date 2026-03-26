@@ -1584,7 +1584,6 @@ export class LcmContextEngine implements ContextEngine {
             });
           }
         } catch { /* non-fatal */ }
-        });
       } catch (err) {
         console.warn("[cc-mem] regex extraction failed:", err instanceof Error ? err.message : String(err));
       }
