@@ -1561,10 +1561,16 @@ export class LcmContextEngine implements ContextEngine {
               });
             }
 
-            // Invariant extraction: "Never ...", "Always ...", "Rule: ..."
-            try {
-              const { upsertInvariant } = await import("./relations/invariant-store.js");
-              const invariants = extractInvariantsFromText(stored.content, String(msgRecord.messageId));
+          }
+        });
+
+        // Invariant extraction (outside transaction — requires async import)
+        try {
+          const { upsertInvariant } = await import("./relations/invariant-store.js");
+          const invariants = extractInvariantsFromText(stored.content, String(msgRecord.messageId));
+          if (invariants.length > 0) {
+            const { withWriteTransaction: wt4 } = await import("./relations/evidence-log.js");
+            wt4(graphDb, () => {
               for (const inv of invariants) {
                 upsertInvariant(graphDb, {
                   scopeId: 1,
@@ -1575,8 +1581,9 @@ export class LcmContextEngine implements ContextEngine {
                   sourceId: inv.sourceId,
                 });
               }
-            } catch { /* non-fatal */ }
+            });
           }
+        } catch { /* non-fatal */ }
         });
       } catch (err) {
         console.warn("[cc-mem] regex extraction failed:", err instanceof Error ? err.message : String(err));
