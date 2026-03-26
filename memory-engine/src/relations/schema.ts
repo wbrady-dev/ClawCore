@@ -1594,7 +1594,8 @@ export function runGraphMigrations(db: GraphDb, dbPath?: string): void {
                   ?, ?, ?, 0, ?, ?)
         `);
 
-        const tx = db.transaction(() => {
+        db.exec("BEGIN IMMEDIATE");
+        try {
           for (const row of rows) {
             const subjParts = String(row.subject_id ?? "").split(":");
             const objParts = String(row.object_id ?? "").split(":");
@@ -1659,8 +1660,11 @@ export function runGraphMigrations(db: GraphDb, dbPath?: string): void {
               createdAt, createdAt, createdAt, createdAt, createdAt,
             );
           }
-        });
-        tx();
+          db.exec("COMMIT");
+        } catch (txErr) {
+          try { db.exec("ROLLBACK"); } catch { /* rollback non-fatal */ }
+          throw txErr;
+        }
       }
 
       // Expression indexes for fast relation lookups
