@@ -112,9 +112,9 @@ export function upsertMemoryObject(
   if (existing) {
     // Weighted confidence blend: new * 0.7 + old * 0.3 (gives recent evidence more weight)
     const oldRow = db.prepare("SELECT confidence FROM memory_objects WHERE id = ?").get(existing.id) as { confidence: number } | undefined;
-    const oldConf = oldRow?.confidence ?? 0.5;
-    const newConf = obj.confidence ?? 0.5;
-    const blendedConfidence = newConf * 0.7 + oldConf * 0.3;
+    const oldConf = Math.min(1.0, Math.max(0.0, Number(oldRow?.confidence ?? 0.5)));
+    const newConf = Math.min(1.0, Math.max(0.0, Number(obj.confidence ?? 0.5)));
+    const blendedConfidence = Math.min(1.0, Math.max(0.0, newConf * 0.7 + oldConf * 0.3));
 
     db.prepare(`
       UPDATE memory_objects SET

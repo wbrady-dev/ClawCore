@@ -190,6 +190,8 @@ export function getOpenLoops(
     statusClause = "status = 'superseded'";
   } else if (statusFilter === "stale") {
     statusClause = "status = 'stale'";
+  } else if (statusFilter === "blocked") {
+    statusClause = "status = 'active' AND structured_json LIKE '%\"loopStatus\":\"blocked\"%'";
   } else {
     // Default: open + blocked → active
     statusClause = "status = 'active'";

@@ -149,7 +149,7 @@ export function addClaimEvidence(db: GraphDb, input: AddClaimEvidenceInput): num
       // Boost with diminishing returns — harder to push past 0.9
       db.prepare(
         `UPDATE memory_objects SET
-           confidence = MIN(1.0, confidence + ? * (1.0 - confidence) * 0.5),
+           confidence = MIN(1.0, confidence + ? * (1.0 - confidence) * 0.7),
            updated_at = strftime('%Y-%m-%dT%H:%M:%f','now')
          WHERE id = ?`,
       ).run(weight, input.claimId);

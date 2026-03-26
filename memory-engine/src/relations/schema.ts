@@ -603,6 +603,10 @@ CREATE INDEX IF NOT EXISTS idx_prov_scope ON provenance_links(scope_id);
 CREATE INDEX IF NOT EXISTS idx_prov_pred_subj ON provenance_links(predicate, subject_id);
 CREATE INDEX IF NOT EXISTS idx_prov_pred_obj ON provenance_links(predicate, object_id);
 
+-- Relation expression indexes (for json_extract queries on kind='relation')
+CREATE INDEX IF NOT EXISTS idx_mo_rel_subject ON memory_objects(json_extract(structured_json, '$.subjectCompositeId')) WHERE kind = 'relation';
+CREATE INDEX IF NOT EXISTS idx_mo_rel_object ON memory_objects(json_extract(structured_json, '$.objectCompositeId')) WHERE kind = 'relation';
+
 -- Leases
 CREATE TABLE IF NOT EXISTS work_leases (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -1664,8 +1668,12 @@ export function runGraphMigrations(db: GraphDb, dbPath?: string): void {
         db.exec(`CREATE INDEX IF NOT EXISTS idx_mo_rel_subject ON memory_objects(json_extract(structured_json, '$.subjectCompositeId')) WHERE kind = 'relation'`);
         db.exec(`CREATE INDEX IF NOT EXISTS idx_mo_rel_object ON memory_objects(json_extract(structured_json, '$.objectCompositeId')) WHERE kind = 'relation'`);
       } catch { /* expression indexes may not be supported on older SQLite */ }
-    } catch { /* non-fatal */ }
-    markMigrationApplied(db, 25);
+
+      markMigrationApplied(db, 25);
+    } catch (migErr) {
+      // Migration failed — do NOT mark as applied so it retries on next startup
+      console.warn("[schema] migration v25 failed:", migErr instanceof Error ? migErr.message : String(migErr));
+    }
   }
 
   // File permissions: chmod 600 on Unix/macOS, skip on Windows

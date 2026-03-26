@@ -26,6 +26,7 @@ import {
   createCcProceduresTool,
   createCcDiagnosticsTool,
   createCcMemoryTool,
+  createCcSynthesizeTool,
 } from "./src/relations/tools.js";
 import type { LcmDependencies } from "./src/types.js";
 

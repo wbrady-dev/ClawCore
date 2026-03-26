@@ -17,8 +17,8 @@
  * 9. NER enrichment (spaCy HTTP, async, non-blocking)
  * 10. Deep extraction (LLM, async, fire-and-forget)
  *
- * Phase 3: Shadow mode — produces MemoryObjects but does NOT modify
- * existing state. The TruthEngine logs what it WOULD do.
+ * Phase 3: Produces MemoryObjects with full TruthEngine reconciliation.
+ * Used as regex fallback when LLM semantic extraction is unavailable.
  */
 
 import { randomUUID } from "node:crypto";

@@ -488,12 +488,14 @@ export function createCcDiagnosticsTool(input: {
         const arbooks = safe("SELECT COUNT(*) as cnt FROM memory_objects WHERE kind = 'procedure' AND status = 'active' AND json_extract(structured_json, '$.isNegative') = 1");
         const evEvents = safe("SELECT COUNT(*) as cnt FROM evidence_log");
         const rels = safe("SELECT COUNT(*) as cnt FROM memory_objects WHERE kind = 'relation' AND status = 'active'");
+        const invariants = safe("SELECT COUNT(*) as cnt FROM memory_objects WHERE kind = 'invariant' AND status = 'active'");
         const n = (v: number) => v >= 0 ? String(v) : "n/a";
 
         sections.push(`[Evidence Graph]
   Entities: ${n(entities)}  |  Mentions: ${n(mentions)}  |  Relations: ${n(rels)}
   Claims: ${n(claims)}  |  Decisions: ${n(decisions)}  |  Loops: ${n(loops)}
-  Attempts: ${n(attempts)}  |  Runbooks: ${n(rbooks)}  |  Anti-Runbooks: ${n(arbooks)}
+  Invariants: ${n(invariants)}  |  Attempts: ${n(attempts)}
+  Runbooks: ${n(rbooks)}  |  Anti-Runbooks: ${n(arbooks)}
   Evidence Events: ${n(evEvents)}`);
 
         // ── Awareness Stats ──
@@ -613,7 +615,7 @@ export function createCcMemoryTool(input: {
         const db = input.graphDb;
         const sections: string[] = [];
         const sources: string[] = [];
-        let tokenBudget = 600;
+        let tokenBudget = 900;
 
         const queryLower = query.toLowerCase();
 
@@ -635,7 +637,6 @@ export function createCcMemoryTool(input: {
           }>;
 
           if (claims.length > 0) {
-            sources.push("claims");
             const lines: string[] = [];
             for (const c of claims) {
               const line = `• ${c.subject} ${c.predicate}: ${c.object_text ?? "(empty)"}`;
@@ -645,7 +646,10 @@ export function createCcMemoryTool(input: {
               lines.push(line);
             }
             if (lines.length > 0) {
-              sections.push("[Resolved Facts — current state]\n" + lines.join("\n"));
+              const header = "[Resolved Facts — current state]\n";
+              tokenBudget -= Math.ceil(header.length / 4);
+              sources.push("claims");
+              sections.push(header + lines.join("\n"));
             }
           }
         }
@@ -666,7 +670,6 @@ export function createCcMemoryTool(input: {
           }>;
 
           if (decisions.length > 0) {
-            sources.push("decisions");
             const lines: string[] = [];
             for (const d of decisions) {
               const line = `• ${d.decision_text}`;
@@ -676,7 +679,10 @@ export function createCcMemoryTool(input: {
               lines.push(line);
             }
             if (lines.length > 0) {
-              sections.push("[Active Decisions]\n" + lines.join("\n"));
+              const header = "[Active Decisions]\n";
+              tokenBudget -= Math.ceil(header.length / 4);
+              sources.push("decisions");
+              sections.push(header + lines.join("\n"));
             }
           }
         }
@@ -698,7 +704,6 @@ export function createCcMemoryTool(input: {
           }>;
 
           if (entities.length > 0) {
-            sources.push("entities");
             const lines: string[] = [];
             for (const e of entities) {
               const typeLabel = e.entity_type ? ` (${e.entity_type})` : "";
@@ -709,7 +714,10 @@ export function createCcMemoryTool(input: {
               lines.push(line);
             }
             if (lines.length > 0) {
-              sections.push("[Entities]\n" + lines.join("\n"));
+              const header = "[Entities]\n";
+              tokenBudget -= Math.ceil(header.length / 4);
+              sources.push("entities");
+              sections.push(header + lines.join("\n"));
             }
           }
         }
@@ -728,7 +736,6 @@ export function createCcMemoryTool(input: {
               });
               scored.sort((a, b) => b.score - a.score || b.rel.confidence - a.rel.confidence);
 
-              sources.push("relations");
               const lines: string[] = [];
               for (const { rel: r } of scored.slice(0, 12)) {
                 const line = `• ${r.subject_name} —[${r.predicate}]→ ${r.object_name} (conf=${r.confidence.toFixed(2)})`;
@@ -738,7 +745,10 @@ export function createCcMemoryTool(input: {
                 lines.push(line);
               }
               if (lines.length > 0) {
-                sections.push("[Relations — entity connections]\n" + lines.join("\n"));
+                const header = "[Relations — entity connections]\n";
+                tokenBudget -= Math.ceil(header.length / 4);
+                sources.push("relations");
+                sections.push(header + lines.join("\n"));
               }
             }
           } catch { /* relation graph lookup non-fatal */ }

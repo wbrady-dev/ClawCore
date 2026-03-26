@@ -5,8 +5,8 @@
  * and projects them into the appropriate physical stores (graph.db, memory.db,
  * threadclaw.db) plus the unified provenance_links table.
  *
- * Phase 2: Dual-write mode — writes to BOTH old tables AND provenance_links.
- * Phase 5: provenance_links becomes sole source for cross-object relationships.
+ * Phase 3: Writes provenance_links for cross-object relationships.
+ * Engine.ts handles legacy physical table status updates for backward compat.
  */
 
 import type { GraphDb } from "../relations/types.js";

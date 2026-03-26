@@ -42,6 +42,11 @@ export interface RelationRow {
 
 /** Resolve entity display name and composite_id from numeric row ID. */
 function resolveEntity(db: GraphDb, entityId: number): { name: string; compositeId: string } {
+  if (entityId <= 0) {
+    console.warn(`[relation-store] invalid entityId: ${entityId}`);
+    return { name: String(entityId), compositeId: `entity:unknown:${entityId}:${Date.now()}` };
+  }
+
   try {
     const row = db.prepare(
       "SELECT composite_id, content, structured_json FROM memory_objects WHERE id = ? AND kind = 'entity'",
@@ -57,6 +62,7 @@ function resolveEntity(db: GraphDb, entityId: number): { name: string; composite
     }
   } catch { /* fall through */ }
 
+  console.warn(`[relation-store] entity ${entityId} not found in memory_objects`);
   return { name: String(entityId), compositeId: `entity:${entityId}` };
 }
 

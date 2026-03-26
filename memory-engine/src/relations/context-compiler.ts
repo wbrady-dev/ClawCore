@@ -16,6 +16,7 @@ import { getOpenLoops, type LoopRow } from "./loop-store.js";
 import { getRecentDeltas, type DeltaRow } from "./delta-store.js";
 import { getActiveInvariants, type InvariantRow } from "./invariant-store.js";
 import { getAntiRunbooks, type AntiRunbookRow } from "./anti-runbook-store.js";
+import { getRunbooks } from "./runbook-store.js";
 import { getRelationGraph } from "./relation-store.js";
 import { applyDecay, type DecayConfig } from "./decay.js";
 import { runArchive } from "./archive.js";
@@ -225,6 +226,23 @@ function antiRunbookCapsules(antiRunbooks: AntiRunbookRow[]): CapsuleCandidate[]
   });
 }
 
+function runbookCapsules(runbooks: Array<{ tool_name: string; pattern: string; confidence: number; success_count: number; failure_count: number }>): CapsuleCandidate[] {
+  return runbooks.map((rb) => {
+    const rate = (rb.success_count + rb.failure_count) > 0
+      ? ((rb.success_count / (rb.success_count + rb.failure_count)) * 100).toFixed(0) : "N/A";
+    const text = `[runbook] ${rb.tool_name}: ${rb.pattern} (${rate}% success)`;
+    const tokens = estimateTokens(text);
+    const score = rb.confidence * 0.85;
+    return {
+      type: "runbook",
+      text,
+      tokens,
+      score,
+      scorePerToken: score / Math.max(1, tokens),
+    };
+  });
+}
+
 function relationCapsules(relations: Array<{ subject_name: string; predicate: string; object_name: string; confidence: number }>): CapsuleCandidate[] {
   return relations.map((r) => {
     const text = `[relation] ${r.subject_name} ${r.predicate} ${r.object_name}`;
@@ -342,6 +360,11 @@ export function compileContextCapsules(
   try {
     const antiRbs = getAntiRunbooks(db, scopeId, { limit: 5 });
     candidates.push(...antiRunbookCapsules(antiRbs));
+  } catch { /* non-fatal */ }
+
+  try {
+    const rbs = getRunbooks(db, scopeId, { limit: 5 });
+    candidates.push(...runbookCapsules(rbs));
   } catch { /* non-fatal */ }
 
   try {

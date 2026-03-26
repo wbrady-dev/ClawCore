@@ -23,7 +23,7 @@ export {
 
 export { extractFast } from "./entity-extract.js";
 
-export { loadTerms, clearTermsCache } from "./terms.js";
+export { loadTerms } from "./terms.js";
 
 export {
   upsertEntity,
@@ -35,7 +35,7 @@ export {
 
 export { effectiveConfidence } from "./confidence.js";
 
-export { getGraphConnection, closeGraphConnection } from "./graph-connection.js";
+export { getGraphConnection } from "./graph-connection.js";
 
 export {
   buildAwarenessNote,
@@ -95,7 +95,7 @@ export { recordAttempt, getAttemptHistory, getToolSuccessRate } from "./attempt-
 export { upsertRunbook, demoteRunbook, getRunbooks, getRunbooksForTool } from "./runbook-store.js";
 export { upsertAntiRunbook, getAntiRunbooks, getAntiRunbooksForTool, addAntiRunbookEvidence, getAntiRunbookEvidence } from "./anti-runbook-store.js";
 export { applyDecay, decayAntiRunbooks, decayRunbooks } from "./decay.js";
-export { runArchive, getArchiveStats, closeArchiveDb, restoreFromArchive } from "./archive.js";
+export { runArchive, getArchiveStats, restoreFromArchive } from "./archive.js";
 
 // Horizon 3: Types
 export type {
@@ -114,6 +114,6 @@ export { getTimeline, formatTimelineEvent } from "./timeline.js";
 export { getStateAtTime, getEvidenceAtTime } from "./snapshot.js";
 
 // Horizon 5: Deep Extraction
-export { upsertRelation, getRelationsForEntity, getRelationGraph } from "./relation-store.js";
+export { upsertRelation, getRelationGraph } from "./relation-store.js";
 export { extractClaimsDeep, extractRelationsDeep } from "./deep-extract.js";
 export { synthesizeScope } from "./synthesis.js";

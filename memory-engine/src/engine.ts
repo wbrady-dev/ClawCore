@@ -2185,6 +2185,11 @@ export class LcmContextEngine implements ContextEngine {
         } catch { /* non-fatal */ }
       }
 
+      // Account for system prompt additions in token estimate
+      if (result.systemPromptAddition) {
+        result.estimatedTokens += Math.ceil(result.systemPromptAddition.length / 4);
+      }
+
       return result;
     } catch {
       return {

@@ -273,12 +273,12 @@ export function inferRunbookFromAttempts(
 ): { runbookId: number; inferred: boolean } | null {
   // Query attempts from memory_objects
   const successes = db.prepare(`
-    SELECT id, structured_json FROM memory_objects
+    SELECT id, composite_id, structured_json FROM memory_objects
     WHERE scope_id = ? AND kind = 'attempt' AND status = 'active'
       AND structured_json LIKE ? ESCAPE '\\'
       AND structured_json LIKE '%"status":"success"%'
     ORDER BY created_at DESC LIMIT ?
-  `).all(scopeId, `%"toolName":"${escapeLikeValue(toolName)}"%`, minSuccesses) as Array<{ id: number; structured_json: string | null }>;
+  `).all(scopeId, `%"toolName":"${escapeLikeValue(toolName)}"%`, minSuccesses) as Array<{ id: number; composite_id: string; structured_json: string | null }>;
 
   if (successes.length < minSuccesses) return null;
 
@@ -310,7 +310,7 @@ export function inferRunbookFromAttempts(
       runbookId,
       attemptId: s.id,
       sourceType: "attempt",
-      sourceId: String(s.id),
+      sourceId: s.composite_id ?? String(s.id),
     });
   }
 

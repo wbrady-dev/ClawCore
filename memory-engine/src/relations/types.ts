@@ -214,7 +214,7 @@ export interface UpsertCapabilityInput {
 // ---------------------------------------------------------------------------
 
 export type InvariantSeverity = "info" | "warning" | "error" | "critical";
-export type EnforcementMode = "advisory" | "warn" | "block";
+export type EnforcementMode = "strict" | "advisory";
 export type InvariantStatus = "active" | "suspended" | "retired";
 
 export interface UpsertInvariantInput {

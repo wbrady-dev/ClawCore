@@ -46,6 +46,7 @@ interface SemanticExtractionResponse {
     confidence: number;
     is_correction_of?: string;
     is_uncertain?: boolean;
+    topic?: string;
     temporal?: string;
     entities?: string[];
     severity?: "critical" | "error" | "warning" | "info";
@@ -305,7 +306,10 @@ export async function semanticExtract(
 
     // Inject known subjects so the LLM normalizes to existing entity names
     if (config.knownSubjects && config.knownSubjects.length > 0) {
-      const subjectList = config.knownSubjects.slice(0, 50).join(", ");
+      const subjectList = config.knownSubjects.slice(0, 50)
+        .map(s => s.replace(/[\n\r"\\]/g, " ").trim())
+        .filter(s => s.length > 0 && s.length < 100)
+        .join(", ");
       systemPrompt += `\n\nKNOWN ENTITIES already in memory: ${subjectList}\nWhen the user refers to one of these entities (even with a different name, abbreviation, or variation), you MUST use the EXACT subject name from this list. For example, if "orion" is in the list and the user says "Project Orion", use subject: "orion". This ensures deduplication works correctly.`;
     }
 
@@ -553,7 +557,7 @@ function convertToWriterResult(
     let structured: StructuredClaim | StructuredDecision | StructuredLoop | StructuredInvariant;
     if (kind === "decision") {
       const dec: StructuredDecision = {
-        topic: event.subject ?? event.content.substring(0, 60),
+        topic: event.topic ?? event.subject ?? event.content.substring(0, 60),
         decisionText: event.content,
       };
       structured = dec;

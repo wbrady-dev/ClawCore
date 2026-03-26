@@ -272,12 +272,18 @@ function archiveOldEvents(
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
 
-    for (const e of batch) {
-      insert.run(
-        e.id, e.scope_id, e.branch_id, e.object_type, e.object_id,
-        e.event_type, e.actor, e.run_id, e.idempotency_key,
-        e.payload_json, e.created_at, e.scope_seq, runId,
-      );
+    // Archive inserts must succeed before we delete from hot DB
+    try {
+      for (const e of batch) {
+        insert.run(
+          e.id, e.scope_id, e.branch_id, e.object_type, e.object_id,
+          e.event_type, e.actor, e.run_id, e.idempotency_key,
+          e.payload_json, e.created_at, e.scope_seq, runId,
+        );
+      }
+    } catch (insertErr) {
+      console.error("[cc-mem] archive: INSERT to archive failed, skipping delete:", insertErr instanceof Error ? insertErr.message.slice(0, 500) : "unknown error");
+      break;
     }
 
     const maxId = batch[batch.length - 1].id;
@@ -388,8 +394,15 @@ export function runArchive(
     }
   } catch (e: any) { errors.push(`loops: ${e.message}`); }
 
+  // Archive superseded/stale relations
+  let relationsResult = { archived: 0, candidates: 0 };
+  try {
+    relationsResult = archiveSupersededObjects(hotDb, archiveDb, runId, "relation",
+      opts?.decisionStaleDays ?? 90);
+  } catch (e: any) { errors.push(`relations: ${e.message}`); }
+
   const durationMs = Date.now() - start;
-  const totalArchived = claimsResult.archived + decisionsResult.archived + eventsResult.archived + loopsResult.archived;
+  const totalArchived = claimsResult.archived + decisionsResult.archived + eventsResult.archived + loopsResult.archived + relationsResult.archived;
 
   // Record run completion
   archiveDb.prepare(`
@@ -464,15 +477,15 @@ export function restoreFromArchive(
   let rows: any[];
   if (filter.ids && filter.ids.length > 0) {
     const placeholders = filter.ids.map(() => "?").join(",");
-    const kindClause = kind ? ` AND kind = '${kind}'` : "";
+    const kindClause = kind ? " AND kind = ?" : "";
     rows = archiveDb.prepare(
       `SELECT * FROM archived_memory_objects WHERE id IN (${placeholders})${kindClause}`,
-    ).all(...filter.ids) as any[];
+    ).all(...filter.ids, ...(kind ? [kind] : [])) as any[];
   } else if (filter.runId) {
-    const kindClause = kind ? ` AND kind = '${kind}'` : "";
+    const kindClause = kind ? " AND kind = ?" : "";
     rows = archiveDb.prepare(
       `SELECT * FROM archived_memory_objects WHERE archive_run_id = ?${kindClause}`,
-    ).all(filter.runId) as any[];
+    ).all(filter.runId, ...(kind ? [kind] : [])) as any[];
   } else if (kind) {
     // No specific filter — restore nothing to avoid accidental mass restore
     return { restored: 0, type: filter.type ?? "none" };
@@ -506,8 +519,8 @@ export function restoreFromArchive(
     const placeholders = filter.ids.map(() => "?").join(",");
     archiveDb.prepare(`DELETE FROM archived_memory_objects WHERE id IN (${placeholders})`).run(...filter.ids);
   } else if (filter.runId) {
-    const kindClause = kind ? ` AND kind = '${kind}'` : "";
-    archiveDb.prepare(`DELETE FROM archived_memory_objects WHERE archive_run_id = ?${kindClause}`).run(filter.runId);
+    const kindClause = kind ? " AND kind = ?" : "";
+    archiveDb.prepare(`DELETE FROM archived_memory_objects WHERE archive_run_id = ?${kindClause}`).run(filter.runId, ...(kind ? [kind] : []));
   }
 
   return { restored: rows.length, type: filter.type ?? "all" };

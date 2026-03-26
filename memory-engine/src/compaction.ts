@@ -1068,6 +1068,8 @@ export class CompactionEngine {
           createdAt: msg.createdAt,
           tokenCount: this.resolveMessageTokenCount(msg),
         });
+      } else {
+        console.warn(`[compaction] message ${item.messageId} missing during leaf pass — skipped`);
       }
     }
 

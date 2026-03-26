@@ -10,7 +10,7 @@
  */
 
 import { createHash } from "node:crypto";
-import type { MemoryKind, StructuredInvariant } from "./types.js";
+import type { MemoryKind, StructuredInvariant, StructuredClaim } from "./types.js";
 
 // ── Normalization ───────────────────────────────────────────────────────────
 
@@ -50,11 +50,6 @@ export function normalizePredicate(predicate: string): string {
 }
 
 // ── Per-Kind Key Strategies ─────────────────────────────────────────────────
-
-interface StructuredClaim {
-  subject?: string;
-  predicate?: string;
-}
 
 interface StructuredDecision {
   topic?: string;
