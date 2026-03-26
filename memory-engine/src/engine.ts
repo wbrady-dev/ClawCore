@@ -1939,7 +1939,12 @@ export class LcmContextEngine implements ContextEngine {
           console.info(`[rsma] health: ${_rsmaSuccessCount} successful extractions, ${_rsmaFailCount} failures`);
         }
       }
-      })(); // fire-and-forget — don't await
+      })().catch((err) => {
+        // Safety net: catch any unhandled rejection from the fire-and-forget IIFE.
+        // Without this, an unhandled promise rejection kills the entire process
+        // (no process.on('unhandledRejection') handler exists in OpenClaw plugins).
+        console.warn("[rsma] unhandled extraction error:", err instanceof Error ? err.message : String(err));
+      }); // fire-and-forget — don't await
     }
 
     return { ingested: true };

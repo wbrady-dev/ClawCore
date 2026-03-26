@@ -7,6 +7,21 @@
 if (process.env.DEBUG || process.env.THREADCLAW_DEBUG) {
   console.log("[cc-mem] ████ ThreadClaw Memory Engine v0.3.2-unified loaded ████");
 }
+
+// Global safety nets — prevent unhandled errors from crashing the entire
+// OpenClaw gateway process. ThreadClaw memory operations are non-critical;
+// a failure should degrade gracefully, not kill Copper's session.
+if (!process.listenerCount("unhandledRejection")) {
+  process.on("unhandledRejection", (reason) => {
+    console.warn("[cc-mem] unhandled promise rejection (swallowed):", reason instanceof Error ? reason.message : String(reason));
+  });
+}
+if (!process.listenerCount("uncaughtException")) {
+  process.on("uncaughtException", (err) => {
+    console.error("[cc-mem] uncaught exception (swallowed):", err.message, err.stack?.split("\n").slice(0, 3).join("\n"));
+    // Do NOT re-throw — let the process survive
+  });
+}
 import { readFileSync, writeFileSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
