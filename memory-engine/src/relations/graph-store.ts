@@ -1,7 +1,7 @@
 /**
  * Graph store — entity CRUD, mention storage, re-ingestion cleanup.
  *
- * Phase 2: upsertEntity and insertMention delegate to mo-store.ts.
+ * Phase 3: upsertEntity and insertMention delegate to mo-store.ts.
  * deleteGraphDataForSource uses deleteMemoryObjectsBySource.
  * storeExtractionResult delegates to the rewritten functions.
  *

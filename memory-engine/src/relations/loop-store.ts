@@ -1,7 +1,7 @@
 /**
  * Open loop store — tracking tasks, questions, and dependencies.
  *
- * Phase 2: All writes delegate to mo-store.ts (memory_objects table).
+ * Phase 3: All writes delegate to mo-store.ts (memory_objects table).
  * Reads query memory_objects directly. Legacy table writes removed.
  *
  * Function signatures are UNCHANGED — callers don't need to change.

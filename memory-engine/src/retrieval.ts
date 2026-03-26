@@ -335,6 +335,7 @@ export class RetrievalEngine {
 
         const msg = await this.conversationStore.getMessageById(msgId);
         if (!msg) {
+          console.warn(`[retrieval] message ${msgId} missing during expand — skipped`);
           continue;
         }
 

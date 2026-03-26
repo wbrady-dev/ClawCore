@@ -53,9 +53,9 @@ export function decayAntiRunbooks(
         FROM memory_objects mo2
         WHERE mo2.scope_id = ? AND mo2.kind = 'attempt' AND mo2.status = 'active'
         AND json_extract(mo2.structured_json, '$.status') = 'success'
-        AND mo2.created_at > datetime('now', ?)
+        AND mo2.created_at > datetime('now', '-' || ? || ' days')
       )
-  `).run(toolSuccessMultiplier, scopeId, toolSuccessFloor, scopeId, `-${decayDays} days`);
+  `).run(toolSuccessMultiplier, scopeId, toolSuccessFloor, scopeId, decayDays);
 
   // Second: staleness decay — exclude rows already decayed by tool-success above
   const decayed = db.prepare(`
@@ -67,8 +67,8 @@ export function decayAntiRunbooks(
       AND json_extract(structured_json, '$.isNegative') = 1
       AND status = 'active'
       AND confidence > ?
-      AND updated_at < datetime('now', ?)
-  `).run(stalenessMultiplier, scopeId, stalenessFloor, `-${decayDays} days`);
+      AND updated_at < datetime('now', '-' || ? || ' days')
+  `).run(stalenessMultiplier, scopeId, stalenessFloor, decayDays);
 
   // Mark very low confidence for review
   const reviewed = db.prepare(`
@@ -119,8 +119,8 @@ export function decayRunbooks(db: GraphDb, scopeId: number, staleDays = 180): nu
       AND CAST(COALESCE(json_extract(structured_json, '$.failureCount'), 0) AS REAL)
           / (COALESCE(json_extract(structured_json, '$.successCount'), 0)
              + COALESCE(json_extract(structured_json, '$.failureCount'), 0)) > 0.5
-      AND updated_at < datetime('now', ?)
-  `).run(scopeId, `-${Math.floor(staleDays / 2)} days`);
+      AND updated_at < datetime('now', '-' || ? || ' days')
+  `).run(scopeId, Math.floor(staleDays / 2));
 
   // Mark stale if no usage in staleDays
   const staled = db.prepare(`
@@ -132,8 +132,8 @@ export function decayRunbooks(db: GraphDb, scopeId: number, staleDays = 180): nu
       AND (json_extract(structured_json, '$.isNegative') IS NULL
            OR json_extract(structured_json, '$.isNegative') = 0)
       AND status = 'active'
-      AND updated_at < datetime('now', ?)
-  `).run(scopeId, `-${staleDays} days`);
+      AND updated_at < datetime('now', '-' || ? || ' days')
+  `).run(scopeId, staleDays);
 
   if (Number(demoted.changes) > 0 || Number(staled.changes) > 0) {
     logEvidence(db, {

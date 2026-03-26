@@ -10,7 +10,7 @@
  * When multiple strategies match the same name, the highest confidence wins.
  */
 
-import type { ExtractionResult, ExtractionStrategy } from "./types.js";
+import type { ExtractionResult } from "./types.js";
 
 // ---------------------------------------------------------------------------
 // Common false-positive filters

@@ -82,6 +82,7 @@ export interface StructuredClaim {
   objectText: string;
   objectJson?: string;
   valueType?: string;
+  topic?: string;
 }
 
 /** Structured data for kind="decision" — recorded choices. */

@@ -1295,6 +1295,8 @@ export class CompactionEngine {
       const rec = await this.summaryStore.getSummary(item.summaryId);
       if (rec) {
         summaryRecords.push(rec);
+      } else {
+        console.warn(`[compaction] summary ${item.summaryId} missing during condensed pass — skipped`);
       }
     }
 

@@ -44,7 +44,7 @@ export interface RelationRow {
 function resolveEntity(db: GraphDb, entityId: number): { name: string; compositeId: string } {
   if (entityId <= 0) {
     console.warn(`[relation-store] invalid entityId: ${entityId}`);
-    return { name: String(entityId), compositeId: `entity:unknown:${entityId}:${Date.now()}` };
+    return { name: String(entityId), compositeId: `entity:invalid:${entityId}` };
   }
 
   try {
@@ -63,7 +63,7 @@ function resolveEntity(db: GraphDb, entityId: number): { name: string; composite
   } catch { /* fall through */ }
 
   console.warn(`[relation-store] entity ${entityId} not found in memory_objects`);
-  return { name: String(entityId), compositeId: `entity:${entityId}` };
+  return { name: String(entityId), compositeId: `entity:missing:${entityId}` };
 }
 
 /** Parse structured_json safely. */
@@ -107,11 +107,11 @@ export function upsertRelation(
 
   const predNorm = normalizePredicate(input.predicate);
   const compositeId = `relation:${input.scopeId}:${input.subjectEntityId}:${predNorm}:${input.objectEntityId}`;
-  const content = `${subject.name} ${input.predicate} ${object.name}`;
+  const content = `${subject.name} ${predNorm} ${object.name}`;
 
   const canonicalKey = buildCanonicalKey("relation", content, {
     subjectName: subject.name,
-    predicate: input.predicate,
+    predicate: predNorm,
     objectName: object.name,
   });
 
@@ -121,7 +121,7 @@ export function upsertRelation(
     content,
     structured: {
       subjectName: subject.name,
-      predicate: input.predicate,
+      predicate: predNorm,
       objectName: object.name,
       subjectCompositeId: subject.compositeId,
       objectCompositeId: object.compositeId,

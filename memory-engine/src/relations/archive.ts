@@ -129,6 +129,8 @@ export interface ArchiveResult {
   decisionsCandidates: number;
   eventsCandidates: number;
   loopsCandidates: number;
+  relationsArchived: number;
+  relationsCandidates: number;
   errors: string[];
   durationMs: number;
 }
@@ -441,6 +443,8 @@ export function runArchive(
     decisionsCandidates: decisionsResult.candidates,
     eventsCandidates: eventsResult.candidates,
     loopsCandidates: loopsResult.candidates,
+    relationsArchived: relationsResult.archived,
+    relationsCandidates: relationsResult.candidates,
     errors,
     durationMs,
   };

@@ -1,7 +1,7 @@
 /**
  * Invariant store — durable constraints and contract memory.
  *
- * Phase 2: All writes delegate to mo-store.ts (memory_objects table).
+ * Phase 3: All writes delegate to mo-store.ts (memory_objects table).
  * Reads query memory_objects directly. Legacy table writes removed.
  *
  * Function signatures are UNCHANGED — callers don't need to change.
@@ -46,7 +46,7 @@ export function upsertInvariant(
     confidence: 0.5,
     freshness: 1.0,
     provisional: false,
-    status: ({ active: "active", suspended: "stale", retired: "retracted" } as Record<string, string>)[input.status ?? "active"] as MemoryStatus ?? "active" as MemoryStatus,
+    status: (({ active: "active", suspended: "stale", retired: "retracted" } as Record<string, string>)[input.status ?? "active"] ?? "active") as MemoryStatus,
     observed_at: new Date().toISOString(),
     scope_id: input.scopeId,
     influence_weight: "standard",

@@ -74,6 +74,8 @@ const CAPSULE_ORDER: Record<string, number> = {
   claim: 3,
   loop: 4,
   delta: 5,
+  runbook: 6,
+  relation: 7,
 };
 
 // ---------------------------------------------------------------------------

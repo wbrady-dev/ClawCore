@@ -396,13 +396,14 @@ export function buildAwarenessNote(
                    COALESCE(json_extract(structured_json, '$.mentionCount'), 1) AS mention_count
             FROM memory_objects
             WHERE kind = 'entity' AND status = 'active'
+              AND COALESCE(json_extract(structured_json, '$.mentionCount'), 1) >= ?
             ORDER BY CAST(COALESCE(json_extract(structured_json, '$.mentionCount'), 1) AS INTEGER) DESC
             LIMIT 3
-          `).all() as Array<{ name: string; mention_count: number }>,
+          `).all(config.minMentions) as Array<{ name: string; mention_count: number }>,
           25,
         );
         for (const hv of highValue) {
-          if (noteLines.length >= config.maxNotes) break;
+          if (noteLines.length >= config.maxNotes || tokenBudget <= 0) break;
           const line = `Background: "${hv.name}" (${hv.mention_count} mentions) — high-activity entity`;
           const cost = estimateTokens(line);
           if (cost > tokenBudget) continue;

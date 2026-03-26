@@ -770,7 +770,6 @@ export function createCcMemoryTool(input: {
           }>;
 
           if (claimRels.length > 0 && !sources.includes("relations")) {
-            sources.push("relationships");
             const lines: string[] = [];
             for (const r of claimRels) {
               const line = `• ${r.subject} —[${r.predicate}]→ ${r.object_text ?? ""}`;
@@ -780,7 +779,10 @@ export function createCcMemoryTool(input: {
               lines.push(line);
             }
             if (lines.length > 0) {
-              sections.push("[Relationships — from claims]\n" + lines.join("\n"));
+              const header = "[Relationships — from claims]\n";
+              tokenBudget -= Math.ceil(header.length / 4);
+              sources.push("relationships");
+              sections.push(header + lines.join("\n"));
             }
           }
         }
@@ -811,7 +813,6 @@ export function createCcMemoryTool(input: {
 
             // Summaries first
             if (grepResult.summaries.length > 0) {
-              sources.push("summaries");
               const lines: string[] = [];
               for (const s of grepResult.summaries.slice(0, 3)) {
                 const snippet = s.snippet ?? "(no snippet)";
@@ -822,13 +823,15 @@ export function createCcMemoryTool(input: {
                 lines.push(line);
               }
               if (lines.length > 0) {
-                sections.push("[Conversation History — may contain outdated info]\n" + lines.join("\n"));
+                const header = "[Conversation History — may contain outdated info]\n";
+                tokenBudget -= Math.ceil(header.length / 4);
+                sources.push("summaries");
+                sections.push(header + lines.join("\n"));
               }
             }
 
             // Messages if budget remains
             if (grepResult.messages.length > 0 && tokenBudget > 50) {
-              sources.push("messages");
               const lines: string[] = [];
               for (const m of grepResult.messages.slice(0, 3)) {
                 const snippet = m.snippet ?? "(no snippet)";
@@ -839,7 +842,10 @@ export function createCcMemoryTool(input: {
                 lines.push(line);
               }
               if (lines.length > 0) {
-                sections.push("[Conversation History — may contain outdated info]\n" + lines.join("\n"));
+                const header = "[Conversation History — may contain outdated info]\n";
+                tokenBudget -= Math.ceil(header.length / 4);
+                sources.push("messages");
+                sections.push(header + lines.join("\n"));
               }
             }
           } catch {
@@ -862,8 +868,11 @@ export function createCcMemoryTool(input: {
               const ragData = await ragResult.json() as { context?: string; sources?: Array<{ source: string }> };
               const ragText = (ragData.context ?? "").trim();
               if (ragText && ragText !== "No relevant documents found.") {
+                const header = "[From Documents]\n";
+                const maxChars = Math.max(100, tokenBudget * 4);
+                tokenBudget -= Math.ceil(header.length / 4);
                 sources.push("documents");
-                sections.push("[From Documents]\n" + ragText.substring(0, tokenBudget * 4));
+                sections.push(header + ragText.substring(0, maxChars));
               }
             }
           } catch {

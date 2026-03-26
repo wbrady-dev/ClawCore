@@ -89,7 +89,7 @@ export function buildCanonicalKey(
       // that groups related claims regardless of predicate wording.
       const s = structured as StructuredClaim | undefined;
       const subject = normalize(s?.subject);
-      const topic = normalize((s as any)?.topic);
+      const topic = normalize(s?.topic);
       const predicate = s?.predicate ? normalizePredicate(s.predicate) : "";
       const aspect = topic || predicate;
       if (!subject || !aspect) return undefined;

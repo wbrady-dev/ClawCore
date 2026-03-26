@@ -44,7 +44,7 @@ export {
 export type { QueryMemoryObjectsOpts } from "./mo-store.js";
 
 // Canonical keys
-export { buildCanonicalKey, normalize, hashPrefix } from "./canonical.js";
+export { buildCanonicalKey, normalize, hashPrefix, normalizePredicate } from "./canonical.js";
 
 // Reader
 export type { MemoryReaderOptions } from "./reader.js";
