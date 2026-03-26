@@ -97,6 +97,18 @@ function chunkByLines(text: string, maxTokens: number): Chunk[] {
 
   for (const line of lines) {
     const lt = estimateTokens(line);
+    // Hard split if a single line exceeds maxTokens (e.g., minified JS, base64)
+    if (lt > maxTokens && buf.length === 0) {
+      for (let ci = 0; ci < line.length; ci += maxTokens * 4) {
+        const slice = line.slice(ci, ci + maxTokens * 4);
+        chunks.push({
+          text: slice,
+          position: chunks.length,
+          tokenCount: estimateTokens(slice),
+        });
+      }
+      continue;
+    }
     if (bufTokens + lt > maxTokens && buf.length > 0) {
       chunks.push({
         text: buf.join("\n"),

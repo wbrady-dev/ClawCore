@@ -86,7 +86,7 @@ export class NotionAdapter extends PollingAdapterBase {
 
           items.push({
             id: pageId,
-            name: pageId,
+            name: extractPageTitle(page),
             lastModified: lastEdited,
             collection,
             tags: ["notion"],

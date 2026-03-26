@@ -53,7 +53,10 @@ export function registerHealthRoutes(server: FastifyInstance, onShutdown?: () =>
     if (onShutdown) {
       setImmediate(() => onShutdown());
     } else {
-      setTimeout(() => process.exit(0), 200);
+      setImmediate(() => {
+        try { server.close(); } catch {}
+        setTimeout(() => process.exit(0), 500);
+      });
     }
   });
 

@@ -8,8 +8,8 @@ import type { FastifyInstance, FastifyRequest, FastifyReply } from "fastify";
  *   RATE_LIMIT_ENABLED=true (set to "false" to disable)
  */
 
-const MAX_REQUESTS = parseInt(process.env.RATE_LIMIT_MAX ?? "300", 10);
-const WINDOW_MS = parseInt(process.env.RATE_LIMIT_WINDOW ?? "60000", 10);
+const MAX_REQUESTS = parseInt(process.env.RATE_LIMIT_MAX ?? "300", 10) || 300;
+const WINDOW_MS = parseInt(process.env.RATE_LIMIT_WINDOW ?? "60000", 10) || 60000;
 const ENABLED = process.env.RATE_LIMIT_ENABLED !== "false";
 
 interface WindowEntry {
@@ -61,7 +61,7 @@ export function registerRateLimit(server: FastifyInstance): void {
     entry.timestamps = entry.timestamps.filter((t) => now - t < WINDOW_MS);
 
     if (entry.timestamps.length >= MAX_REQUESTS) {
-      const retryAfter = Math.ceil((entry.timestamps[0] + WINDOW_MS - now) / 1000);
+      const retryAfter = Math.max(1, Math.ceil((entry.timestamps[0] + WINDOW_MS - now) / 1000));
       reply
         .status(429)
         .header("Retry-After", String(retryAfter))

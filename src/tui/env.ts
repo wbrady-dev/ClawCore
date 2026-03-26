@@ -155,8 +155,10 @@ export function updateEnvValues(root: string, updates: EnvMap): void {
         }
         return ""; // remove duplicate lines
       });
-      // Clean up blank lines left by removed duplicates
+      // Clean up blank lines left by removed duplicates (2+ empty lines → 1)
       content = content.replace(/\n{3,}/g, "\n\n");
+      // Also clean single empty lines from duplicate removal (empty string between two newlines)
+      content = content.replace(/\n\n\n/g, "\n\n");
     } else {
       content = content.trimEnd() + `\n${quoted}\n`;
     }
@@ -165,6 +167,10 @@ export function updateEnvValues(root: string, updates: EnvMap): void {
   const tmpPath = envPath + ".tmp";
   writeFileSync(tmpPath, content);
   renameSync(tmpPath, envPath);
+  // Restore restrictive permissions on non-Windows (rename preserves tmp file's permissions)
+  if (process.platform !== "win32") {
+    try { chmodSync(envPath, 0o600); } catch {}
+  }
 }
 
 function escapeRegExp(value: string): string {

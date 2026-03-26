@@ -44,6 +44,20 @@ export function chunkProse(
 
       for (const sent of sentences) {
         const st = estimateTokens(sent);
+        // Hard split if a single sentence exceeds maxTokens (e.g., minified content)
+        if (st > maxTokens && sentBuf.length === 0) {
+          // Character-level split for oversized single sentences
+          const chars = sent;
+          for (let ci = 0; ci < chars.length; ci += maxTokens * 4) {
+            const slice = chars.slice(ci, ci + maxTokens * 4);
+            chunks.push({
+              text: slice,
+              position: chunks.length,
+              tokenCount: estimateTokens(slice),
+            });
+          }
+          continue;
+        }
         if (sentTokens + st > maxTokens && sentBuf.length > 0) {
           chunks.push({
             text: sentBuf.join(" "),

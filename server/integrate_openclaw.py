@@ -220,7 +220,8 @@ exec: threadclaw ingest "path/to/file" --collection default
 
             import re
             if "WATCH_PATHS=" in env_content:
-                env_content = re.sub(r"WATCH_PATHS=.*", f"WATCH_PATHS={watch_value}", env_content)
+                # Use re.escape on replacement to prevent backslash interpretation on Windows paths
+                env_content = re.sub(r"WATCH_PATHS=.*", re.escape(f"WATCH_PATHS={watch_value}"), env_content)
             else:
                 env_content += f"\nWATCH_PATHS={watch_value}\n"
 

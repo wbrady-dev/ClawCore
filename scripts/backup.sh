@@ -28,7 +28,12 @@ GRAPH_DB="$DATA_DIR/graph.db"
 # Backup ThreadClaw knowledge DB
 if [ -f "$THREADCLAW_DB" ]; then
   echo "  Backing up threadclaw.db..."
-  sqlite3 "$THREADCLAW_DB" "VACUUM INTO '$BACKUP_DIR/threadclaw.db'"
+  if command -v sqlite3 &>/dev/null; then
+    sqlite3 "$THREADCLAW_DB" "VACUUM INTO '$BACKUP_DIR/threadclaw.db'"
+  else
+    cp "$THREADCLAW_DB" "$BACKUP_DIR/threadclaw.db"
+    echo "  (sqlite3 not found — used file copy instead of hot backup)"
+  fi
   SIZE=$(du -sh "$BACKUP_DIR/threadclaw.db" | cut -f1)
   echo "  ✓ threadclaw.db ($SIZE)"
 else
@@ -38,7 +43,11 @@ fi
 # Backup Memory DB
 if [ -f "$MEMORY_DB" ]; then
   echo "  Backing up memory.db..."
-  sqlite3 "$MEMORY_DB" "VACUUM INTO '$BACKUP_DIR/memory.db'"
+  if command -v sqlite3 &>/dev/null; then
+    sqlite3 "$MEMORY_DB" "VACUUM INTO '$BACKUP_DIR/memory.db'"
+  else
+    cp "$MEMORY_DB" "$BACKUP_DIR/memory.db"
+  fi
   SIZE=$(du -sh "$BACKUP_DIR/memory.db" | cut -f1)
   echo "  ✓ memory.db ($SIZE)"
 else
@@ -48,7 +57,11 @@ fi
 # Backup Graph DB
 if [ -f "$GRAPH_DB" ]; then
   echo "  Backing up graph.db..."
-  sqlite3 "$GRAPH_DB" "VACUUM INTO '$BACKUP_DIR/graph.db'"
+  if command -v sqlite3 &>/dev/null; then
+    sqlite3 "$GRAPH_DB" "VACUUM INTO '$BACKUP_DIR/graph.db'"
+  else
+    cp "$GRAPH_DB" "$BACKUP_DIR/graph.db"
+  fi
   SIZE=$(du -sh "$BACKUP_DIR/graph.db" | cut -f1)
   echo "  ✓ graph.db ($SIZE)"
 else
@@ -60,7 +73,7 @@ RETENTION_DAYS=30
 if [ -d "$BACKUP_ROOT" ]; then
   OLD=$(find "$BACKUP_ROOT" -maxdepth 1 -type d -mtime +$RETENTION_DAYS 2>/dev/null | wc -l)
   if [ "$OLD" -gt 0 ]; then
-    find "$BACKUP_ROOT" -maxdepth 1 -type d -mtime +$RETENTION_DAYS -exec rm -rf {} +
+    find "$BACKUP_ROOT" -mindepth 1 -maxdepth 1 -type d -mtime +$RETENTION_DAYS -exec rm -rf {} +
     echo "  Pruned $OLD backups older than $RETENTION_DAYS days"
   fi
 fi

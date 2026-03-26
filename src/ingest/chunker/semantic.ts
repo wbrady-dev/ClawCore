@@ -99,7 +99,7 @@ function addOverlap(chunks: Chunk[], overlapTokens: number): Chunk[] {
     // Extract tail of previous chunk as overlap context
     const prevWords = prev.text.split(/\s+/);
     // ~1 token per word (conservative) for overlap sizing
-    const overlapWordCount = Math.min(overlapTokens, Math.floor(prevWords.length * 0.3));
+    const overlapWordCount = Math.max(overlapTokens > 0 && prevWords.length > 0 ? 1 : 0, Math.min(overlapTokens, Math.floor(prevWords.length * 0.3)));
 
     if (overlapWordCount > 0) {
       const overlapText = prevWords.slice(-overlapWordCount).join(" ");
@@ -128,7 +128,7 @@ function mergeSmallChunks(chunks: Chunk[], minTokens: number): Chunk[] {
       // Merge with previous chunk
       const prev = merged[merged.length - 1];
       prev.text = prev.text + "\n\n" + chunk.text;
-      prev.contextPrefix = prev.contextPrefix || chunk.contextPrefix;
+      prev.contextPrefix = [prev.contextPrefix, chunk.contextPrefix].filter(Boolean).join(" | ") || undefined;
       prev.tokenCount = estimateTokens(prev.text);
     } else {
       merged.push({ ...chunk });

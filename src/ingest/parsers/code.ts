@@ -54,11 +54,11 @@ export async function parseCode(filePath: string): Promise<ParsedDocument> {
   const structure: StructureHint[] = [];
 
   // Find function/class definitions
-  const pattern = DEFINITION_PATTERNS[language];
+  // Clone per-call to avoid shared lastIndex state across concurrent calls
+  const basePattern = DEFINITION_PATTERNS[language];
 
-  if (pattern) {
-    // Reset regex state
-    pattern.lastIndex = 0;
+  if (basePattern) {
+    const pattern = new RegExp(basePattern.source, basePattern.flags);
     let match;
     while ((match = pattern.exec(text)) !== null) {
       structure.push({

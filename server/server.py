@@ -222,7 +222,7 @@ def embeddings():
     if embed_model is None:
         return jsonify({"error": "Embedding model not loaded"}), 503
 
-    data = request.json
+    data = request.get_json(silent=True)
     if not data or not isinstance(data, dict):
         return jsonify({"error": "JSON body required"}), 400
 
@@ -318,7 +318,7 @@ def rerank():
     if rerank_model is None:
         return jsonify({"error": "Rerank model not loaded"}), 503
 
-    data = request.json
+    data = request.get_json(silent=True)
     if not data or not isinstance(data, dict):
         return jsonify({"error": "JSON body required"}), 400
 
@@ -352,7 +352,8 @@ def rerank():
     scores = None
     for bs in [64, 16, 4, 1]:
         try:
-            scores = rerank_model.predict(pairs, batch_size=bs, show_progress_bar=False).tolist()
+            raw_scores = rerank_model.predict(pairs, batch_size=bs, show_progress_bar=False)
+            scores = np.atleast_1d(raw_scores).tolist()
             break
         except RuntimeError as e:
             err_str = str(e).lower()
@@ -435,7 +436,7 @@ def parse_document():
     except ImportError:
         return jsonify({"error": "Docling not installed. Run: pip install docling"}), 503
 
-    data = request.json
+    data = request.get_json(silent=True)
     if not data or not isinstance(data, dict):
         return jsonify({"error": "JSON body required"}), 400
 
@@ -630,7 +631,7 @@ if __name__ == "__main__":
     try:
         from waitress import serve
         logger.info("Using Waitress WSGI server (single-threaded for CUDA safety)")
-        serve(app, host=host, port=PORT, threads=1, channel_timeout=120)
+        serve(app, host=host, port=PORT, threads=1, channel_timeout=360)
     except ImportError:
         logger.warning("Waitress not installed — using Flask dev server (pip install waitress)")
         app.run(host=host, port=PORT, threaded=False)

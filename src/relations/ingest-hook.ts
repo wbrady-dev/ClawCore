@@ -171,7 +171,7 @@ function storeEntities(
     ) VALUES (
       ?, 'entity', ?, ?, ?,
       ?, 0.5, 0.5, 1.0, 'active',
-      1, 0, 'standard',
+      ?, 0, 'standard',
       ${now}, ${now}, ${now}, ${now}
     )
     ON CONFLICT(composite_id) DO UPDATE SET
@@ -239,7 +239,7 @@ function storeEntities(
     // Upsert — INSERT values + ON CONFLICT update values
     upsertStmt.run(
       compositeId, displayName, structuredJson, canonicalKey,
-      provenanceJson,
+      provenanceJson, scopeId,
       structuredJson, // for the ON CONFLICT UPDATE
     );
 
@@ -247,10 +247,9 @@ function storeEntities(
     const row = selectStmt.get(compositeId) as { id: number; structured_json: string | null } | undefined;
     if (!row) continue;
 
-    const ctJson = entity.contextTerms?.length ? JSON.stringify(entity.contextTerms) : null;
     const objectId = `${sourceType}:${sourceId}`;
     const metadataJson = JSON.stringify({
-      context_terms: ctJson,
+      context_terms: entity.contextTerms?.length ? entity.contextTerms : null,
       actor: "system",
       run_id: null,
     });

@@ -4,7 +4,10 @@ import { logger } from "../utils/logger.js";
 
 // ── Semantic Deduplication ──
 
-const SIMILARITY_THRESHOLD = config.extraction.dedupSimilarityThreshold;
+// Read per-call to support hot-reload of config
+function getSimilarityThreshold(): number {
+  return config.extraction.dedupSimilarityThreshold;
+}
 
 /**
  * Find duplicate chunk indices within a batch of new embeddings.
@@ -27,7 +30,7 @@ export function findIntraBatchDuplicates(embeddings: number[][]): Set<number> {
     if (dupes.has(i)) continue;
     for (let j = 0; j < i; j++) {
       if (dupes.has(j)) continue;
-      if (cosineSimilarity(embeddings[i], embeddings[j]) >= SIMILARITY_THRESHOLD) {
+      if (cosineSimilarity(embeddings[i], embeddings[j]) >= getSimilarityThreshold()) {
         dupes.add(i);
         break;
       }
@@ -52,7 +55,10 @@ export function findExistingDuplicates(
   collectionId: string,
 ): Set<number> {
   const dupes = new Set<number>();
-  const L2_THRESHOLD = 0.316; // corresponds to cosine similarity 0.95
+  // Compute L2 threshold from configurable cosine similarity threshold
+  // For normalized vectors: cos_sim = 1 - (L2^2 / 2), so L2 = sqrt(2 * (1 - cos_sim))
+  const simThreshold = getSimilarityThreshold();
+  const L2_THRESHOLD = Math.sqrt(2 * (1 - simThreshold));
 
   let stmt: ReturnType<Database.Database["prepare"]>;
   try {

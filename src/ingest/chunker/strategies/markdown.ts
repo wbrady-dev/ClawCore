@@ -16,14 +16,30 @@ export function chunkMarkdown(
     .sort((a, b) => a.startOffset - b.startOffset);
 
   if (headings.length === 0) {
-    // No headings — treat as prose
-    return [
-      {
-        text,
-        position: 0,
-        tokenCount: estimateTokens(text),
-      },
-    ];
+    // No headings — fall through to paragraph-based splitting
+    const tokens = estimateTokens(text);
+    if (tokens <= maxTokens) {
+      return [{ text, position: 0, tokenCount: tokens }];
+    }
+    // Split oversized headingless content by paragraphs
+    const paragraphs = text.split(/\n\s*\n/);
+    const fallbackChunks: Chunk[] = [];
+    let buf: string[] = [];
+    let bufTokens = 0;
+    for (const para of paragraphs) {
+      const pt = estimateTokens(para);
+      if (bufTokens + pt > maxTokens && buf.length > 0) {
+        fallbackChunks.push({ text: buf.join("\n\n"), position: fallbackChunks.length, tokenCount: bufTokens });
+        buf = [];
+        bufTokens = 0;
+      }
+      buf.push(para);
+      bufTokens += pt;
+    }
+    if (buf.length > 0) {
+      fallbackChunks.push({ text: buf.join("\n\n"), position: fallbackChunks.length, tokenCount: bufTokens });
+    }
+    return fallbackChunks;
   }
 
   const sections: { text: string; prefix: string }[] = [];
