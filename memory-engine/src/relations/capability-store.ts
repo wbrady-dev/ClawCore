@@ -11,6 +11,7 @@ import type { GraphDb, UpsertCapabilityInput } from "./types.js";
 import { logEvidence } from "./evidence-log.js";
 import { upsertMemoryObject } from "../ontology/mo-store.js";
 import type { MemoryObject } from "../ontology/types.js";
+import { safeParseStructured } from "../ontology/json-utils.js";
 
 export function upsertCapability(
   db: GraphDb,
@@ -75,7 +76,7 @@ export interface CapabilityRow {
 function moRowToCapabilityRow(row: Record<string, unknown>): CapabilityRow {
   let structured: Record<string, unknown> = {};
   if (row.structured_json != null && typeof row.structured_json === "string") {
-    try { structured = JSON.parse(row.structured_json); } catch { /* empty */ }
+    structured = safeParseStructured(row.structured_json);
   }
   return {
     id: Number(row.id),

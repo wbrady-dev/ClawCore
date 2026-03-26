@@ -90,6 +90,9 @@ export { createDirectComplete } from "./direct-llm.js";
 export type { CompleteFn, SemanticExtractorConfig } from "./semantic-extractor.js";
 export { semanticExtract } from "./semantic-extractor.js";
 
+// JSON/SQL helpers
+export { safeParseStructured, safeParseMetadata, escapeLikeValue } from "./json-utils.js";
+
 // Signal detection
 export type { SignalDetectionResult, TemporalSignal } from "./correction.js";
 export {

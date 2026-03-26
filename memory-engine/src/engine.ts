@@ -25,6 +25,7 @@ import {
   removeDelegatedExpansionGrantForSession,
   revokeDelegatedExpansionGrantForSession,
 } from "./expansion-auth.js";
+import { DEFAULT_SCOPE_ID } from "./ontology/types.js";
 import { isMigrationNeeded as isProvenanceMigrationNeeded, migrateToProvenanceLinks } from "./ontology/migration.js";
 import {
   extensionFromNameOrMime,
@@ -1431,7 +1432,7 @@ export class LcmContextEngine implements ContextEngine {
 
         withWriteTransaction(graphDb, () => {
           recordAttempt(graphDb, {
-            scopeId: 1,
+            scopeId: DEFAULT_SCOPE_ID,
             toolName: toolName.substring(0, 100),
             status,
             errorText,
@@ -1484,7 +1485,7 @@ export class LcmContextEngine implements ContextEngine {
               const claimResults = extractClaimsFromToolResult(toolName, toolResult, String(msgRecord.messageId));
               if (claimResults.length > 0) {
                 storeClaimExtractionResults(gdb, claimResults, {
-                  scopeId: 1,
+                  scopeId: DEFAULT_SCOPE_ID,
                   sourceType: "tool_result",
                   sourceId: String(msgRecord.messageId),
                 });
@@ -1531,7 +1532,7 @@ export class LcmContextEngine implements ContextEngine {
                 : []);
           if (claimResults.length > 0) {
             storeClaimExtractionResults(graphDb, claimResults, {
-              scopeId: 1,
+              scopeId: DEFAULT_SCOPE_ID,
               sourceType: "message",
               sourceId: String(msgRecord.messageId),
             });
@@ -1542,7 +1543,7 @@ export class LcmContextEngine implements ContextEngine {
             const decisions = extractDecisionsFromText(stored.content, String(msgRecord.messageId));
             for (const d of decisions) {
               upsertDecision(graphDb, {
-                scopeId: 1,
+                scopeId: DEFAULT_SCOPE_ID,
                 topic: d.topic,
                 decisionText: d.decisionText,
                 sourceType: d.sourceType,
@@ -1553,7 +1554,7 @@ export class LcmContextEngine implements ContextEngine {
             const loops = extractLoopsFromText(stored.content, String(msgRecord.messageId));
             for (const l of loops) {
               openLoop(graphDb, {
-                scopeId: 1,
+                scopeId: DEFAULT_SCOPE_ID,
                 loopType: l.loopType,
                 text: l.text,
                 sourceType: l.sourceType,
@@ -1573,7 +1574,7 @@ export class LcmContextEngine implements ContextEngine {
             wt4(graphDb, () => {
               for (const inv of invariants) {
                 upsertInvariant(graphDb, {
-                  scopeId: 1,
+                  scopeId: DEFAULT_SCOPE_ID,
                   invariantKey: inv.key,
                   description: inv.description,
                   severity: inv.severity as "critical" | "error" | "warning" | "info",
@@ -1759,7 +1760,7 @@ export class LcmContextEngine implements ContextEngine {
               try {
                 const { recordStateDelta } = await import("./relations/delta-store.js");
                 recordStateDelta(graphDb, {
-                  scopeId: action.newObject.scope_id ?? 1,
+                  scopeId: action.newObject.scope_id ?? DEFAULT_SCOPE_ID,
                   deltaType: "supersession",
                   entityKey: action.newObject.canonical_key ?? action.newObject.id,
                   summary: action.reason,
@@ -1818,7 +1819,7 @@ export class LcmContextEngine implements ContextEngine {
                 const objEntity = upsertEntity(graphDb, { name: objectText });
                 if (subjEntity.entityId && objEntity.entityId) {
                   upsertRelation(graphDb, {
-                    scopeId: 1,
+                    scopeId: DEFAULT_SCOPE_ID,
                     subjectEntityId: subjEntity.entityId,
                     predicate: predicate,
                     objectEntityId: objEntity.entityId,
@@ -1860,7 +1861,7 @@ export class LcmContextEngine implements ContextEngine {
                     const objEntity = upsertEnt(graphDb, { name: rel.object });
                     if (subjEntity.entityId && objEntity.entityId) {
                       upsertRel(graphDb, {
-                        scopeId: 1,
+                        scopeId: DEFAULT_SCOPE_ID,
                         subjectEntityId: subjEntity.entityId,
                         predicate: rel.predicate,
                         objectEntityId: objEntity.entityId,
@@ -1892,7 +1893,7 @@ export class LcmContextEngine implements ContextEngine {
                   const { withWriteTransaction: wt2 } = await import("./relations/evidence-log.js");
                   wt2(graphDb, () => {
                     storeClaimExtractionResults(graphDb, deepClaims, {
-                      scopeId: 1,
+                      scopeId: DEFAULT_SCOPE_ID,
                       sourceType: "deep_extraction",
                       sourceId: _messageId,
                     });
@@ -1915,7 +1916,7 @@ export class LcmContextEngine implements ContextEngine {
               wt3(graphDb, () => {
                 for (const inv of invariants) {
                   upsertInvariant(graphDb, {
-                    scopeId: 1,
+                    scopeId: DEFAULT_SCOPE_ID,
                     invariantKey: inv.key,
                     description: inv.description,
                     severity: inv.severity as "critical" | "error" | "warning" | "info",
@@ -2154,7 +2155,7 @@ export class LcmContextEngine implements ContextEngine {
         try {
           const compiled = compileContextCapsules(this.graphDb, {
             tier: this.config.relationsContextTier,
-            scopeId: 1, // global scope
+            scopeId: DEFAULT_SCOPE_ID, // global scope
             autoArchiveIntervalMs: this.config.relationsAutoArchiveIntervalMs,
             autoArchiveEventThreshold: this.config.relationsAutoArchiveEventThreshold,
             decayDays: this.config.relationsDecayIntervalDays,

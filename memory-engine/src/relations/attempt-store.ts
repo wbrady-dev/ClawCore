@@ -11,11 +11,7 @@ import type { GraphDb, RecordAttemptInput } from "./types.js";
 import { logEvidence } from "./evidence-log.js";
 import { upsertMemoryObject } from "../ontology/mo-store.js";
 import type { MemoryObject } from "../ontology/types.js";
-
-/** Escape LIKE meta-characters (%, _, \) so the value is treated literally. */
-function escapeLikeValue(s: string): string {
-  return s.replace(/\\/g, "\\\\").replace(/%/g, "\\%").replace(/_/g, "\\_");
-}
+import { safeParseStructured, escapeLikeValue } from "../ontology/json-utils.js";
 
 export function recordAttempt(db: GraphDb, input: RecordAttemptInput): number {
   const branchId = input.branchId ?? 0;
@@ -80,7 +76,7 @@ export interface AttemptRow {
 function moRowToAttemptRow(row: Record<string, unknown>): AttemptRow {
   let structured: Record<string, unknown> = {};
   if (row.structured_json != null && typeof row.structured_json === "string") {
-    try { structured = JSON.parse(row.structured_json); } catch { /* empty */ }
+    structured = safeParseStructured(row.structured_json);
   }
   return {
     id: Number(row.id),
@@ -154,7 +150,7 @@ export function getToolSuccessRate(
 
   for (const row of rows) {
     let s: Record<string, unknown> = {};
-    try { if (row.structured_json) s = JSON.parse(row.structured_json); } catch { continue; }
+    s = safeParseStructured(row.structured_json); if (!Object.keys(s).length) continue;
     total++;
     if (s.status === "success") successes++;
     if (s.status === "failure") failures++;

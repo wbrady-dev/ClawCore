@@ -1,5 +1,5 @@
 import type { DatabaseSync } from "node:sqlite";
-import { sanitizeFts5Query, sanitizeFts5QueryOr, FTS_RELAXATION_THRESHOLD } from "./fts5-sanitize.js";
+import { sanitizeFts5Query, sanitizeFts5QueryOr, sanitizeFts5QueryPrefix, FTS_RELAXATION_THRESHOLD } from "./fts5-sanitize.js";
 import { buildLikeSearchPlan, createFallbackSnippet } from "./full-text-fallback.js";
 import { buildConversationFilter } from "./conversation-filter.js";
 
@@ -789,7 +789,7 @@ export class SummaryStore {
           // Fallback: if query has enough tokens and strict returned nothing, retry with OR
           const tokenCount = input.query.trim().split(/\s+/).length;
           if (tokenCount >= FTS_RELAXATION_THRESHOLD) {
-            return this.searchFullText(
+            const orResults = this.searchFullText(
               input.query,
               limit,
               input.conversationId,
@@ -798,6 +798,25 @@ export class SummaryStore {
               cIds,
               true, // useOrMode
             );
+            if (orResults.length > 0) return orResults;
+          }
+
+          // Prefix fallback: for single-token queries, try prefix matching
+          if (tokenCount === 1) {
+            const prefixQuery = sanitizeFts5QueryPrefix(input.query);
+            if (prefixQuery) {
+              const prefixResults = this.searchFullText(
+                input.query,
+                limit,
+                input.conversationId,
+                input.since,
+                input.before,
+                cIds,
+                false,
+                prefixQuery,
+              );
+              if (prefixResults.length > 0) return prefixResults;
+            }
           }
           return strict;
         } catch (err) {
@@ -825,8 +844,9 @@ export class SummaryStore {
     before?: Date,
     conversationIds?: number[],
     useOrMode = false,
+    sanitizedOverride?: string,
   ): SummarySearchResult[] {
-    const sanitized = useOrMode ? sanitizeFts5QueryOr(query) : sanitizeFts5Query(query);
+    const sanitized = sanitizedOverride ?? (useOrMode ? sanitizeFts5QueryOr(query) : sanitizeFts5Query(query));
     if (sanitized == null) return [];
     const where: string[] = ["summaries_fts MATCH ?"];
     const args: Array<string | number> = [sanitized];

@@ -27,6 +27,7 @@ import type { GraphDb } from "../relations/types.js";
 import type { MemoryObject, MemoryKind } from "./types.js";
 import { CORRECTION_TRUST_BONUS } from "./types.js";
 import { buildCanonicalKey } from "./canonical.js";
+import { safeParseStructured } from "./json-utils.js";
 
 // ── Types ───────────────────────────────────────────────────────────────────
 
@@ -118,7 +119,7 @@ function extractValueFromRow(row: Record<string, unknown>): string | null {
   const kind = String(row.kind ?? "");
   let structured: Record<string, unknown> = {};
   if (row.structured_json != null && typeof row.structured_json === "string") {
-    try { structured = JSON.parse(row.structured_json as string); } catch { /* empty */ }
+    structured = safeParseStructured(row.structured_json);
   }
   if (kind === "claim" && typeof structured.objectText === "string") return structured.objectText;
   if (kind === "decision" && typeof structured.decisionText === "string") return structured.decisionText;

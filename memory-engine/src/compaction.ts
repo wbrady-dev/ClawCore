@@ -12,6 +12,7 @@ import { storeClaimExtractionResults } from "./relations/claim-store.js";
 import { upsertDecision } from "./relations/decision-store.js";
 import { openLoop } from "./relations/loop-store.js";
 import { withWriteTransaction, isIdempotencyConflict } from "./relations/evidence-log.js";
+import { DEFAULT_SCOPE_ID } from "./ontology/types.js";
 
 // ── Public types ─────────────────────────────────────────────────────────────
 
@@ -1130,7 +1131,7 @@ export class CompactionEngine {
             });
             if (claimResults.length > 0) {
               storeClaimExtractionResults(graphDb, claimResults, {
-                scopeId: 1, // global scope
+                scopeId: DEFAULT_SCOPE_ID, // global scope
                 sourceType: "message",
                 sourceId: String(msg.messageId),
               });
@@ -1151,7 +1152,7 @@ export class CompactionEngine {
             const decisions = extractDecisionsFromText(msg.content, String(msg.messageId));
             for (const d of decisions) {
               upsertDecision(graphDb, {
-                scopeId: 1,
+                scopeId: DEFAULT_SCOPE_ID,
                 topic: d.topic,
                 decisionText: d.decisionText,
                 sourceType: d.sourceType,
@@ -1174,7 +1175,7 @@ export class CompactionEngine {
             const loops = extractLoopsFromText(msg.content, String(msg.messageId));
             for (const l of loops) {
               openLoop(graphDb, {
-                scopeId: 1,
+                scopeId: DEFAULT_SCOPE_ID,
                 loopType: l.loopType,
                 text: l.text,
                 sourceType: l.sourceType,
@@ -1210,7 +1211,7 @@ export class CompactionEngine {
                 const obj = graphDb.prepare("SELECT id FROM memory_objects WHERE kind = 'entity' AND composite_id = 'entity:' || LOWER(?)").get(rel.objectName) as { id: number } | undefined;
                 if (subj && obj) {
                   upsertRelation(graphDb, {
-                    scopeId: 1,
+                    scopeId: DEFAULT_SCOPE_ID,
                     subjectEntityId: subj.id,
                     predicate: rel.predicate,
                     objectEntityId: obj.id,

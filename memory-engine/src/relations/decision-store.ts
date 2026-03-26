@@ -11,6 +11,7 @@ import type { GraphDb, UpsertDecisionInput, UpsertDecisionResult } from "./types
 import { logEvidence } from "./evidence-log.js";
 import { upsertMemoryObject, supersedeMemoryObject } from "../ontology/mo-store.js";
 import type { MemoryObject, MemoryStatus } from "../ontology/types.js";
+import { safeParseStructured } from "../ontology/json-utils.js";
 
 // ---------------------------------------------------------------------------
 // Upsert (auto-supersede existing active decision on same topic)
@@ -112,7 +113,7 @@ export interface DecisionRow {
 export function moRowToDecisionRow(row: Record<string, unknown>): DecisionRow {
   let structured: Record<string, unknown> = {};
   if (row.structured_json != null && typeof row.structured_json === "string") {
-    try { structured = JSON.parse(row.structured_json); } catch { /* empty */ }
+    structured = safeParseStructured(row.structured_json);
   }
   return {
     id: Number(row.id),

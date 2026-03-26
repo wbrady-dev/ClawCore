@@ -13,6 +13,7 @@ import type { MemoryObject } from "../ontology/types.js";
 import { logEvidence } from "./evidence-log.js";
 import { upsertMemoryObject } from "../ontology/mo-store.js";
 import { buildCanonicalKey, normalizePredicate } from "../ontology/canonical.js";
+import { safeParseStructured } from "../ontology/json-utils.js";
 
 export interface UpsertRelationInput {
   scopeId: number;
@@ -66,15 +67,8 @@ function resolveEntity(db: GraphDb, entityId: number): { name: string; composite
   return { name: String(entityId), compositeId: `entity:missing:${entityId}` };
 }
 
-/** Parse structured_json safely. */
-function safeParseStructured(val: unknown): Record<string, unknown> {
-  if (!val || typeof val !== "string") return {};
-  try { return JSON.parse(val) as Record<string, unknown>; }
-  catch { return {}; }
-}
-
 /** Convert a memory_objects row (kind='relation') to RelationRow with names. */
-function moRowToRelationRow(row: Record<string, unknown>): RelationRow & { subject_name: string; object_name: string } {
+export function moRowToRelationRow(row: Record<string, unknown>): RelationRow & { subject_name: string; object_name: string } {
   const s = safeParseStructured(row.structured_json);
   return {
     id: Number(row.id),

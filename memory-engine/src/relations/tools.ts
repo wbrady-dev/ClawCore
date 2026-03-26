@@ -25,6 +25,27 @@ import { getRelationGraph } from "./relation-store.js";
 import { synthesizeScope } from "./synthesis.js";
 import type { LcmContextEngine } from "../engine.js";
 import type { LcmConfig } from "../db/config.js";
+import { getLcmDbFeatures } from "../db/features.js";
+import { sanitizeFts5Query } from "../store/fts5-sanitize.js";
+import type { DatabaseSync } from "node:sqlite";
+
+/**
+ * Build an FTS5 MATCH clause for memory_objects content search.
+ * Returns null if FTS5 is unavailable or the query can't be sanitized.
+ * Caller should fall back to LIKE when this returns null.
+ */
+function buildFtsClause(db: GraphDb, searchTerms: string[]): { clause: string; args: unknown[] } | null {
+  try {
+    const features = getLcmDbFeatures(db as unknown as DatabaseSync);
+    if (!features.fts5Available) return null;
+    const ftsQuery = sanitizeFts5Query(searchTerms.join(" "));
+    if (!ftsQuery) return null;
+    return {
+      clause: "id IN (SELECT rowid FROM memory_objects_fts WHERE memory_objects_fts MATCH ?)",
+      args: [ftsQuery],
+    };
+  } catch { return null; }
+}
 
 
 // ============================================================================
@@ -622,17 +643,22 @@ export function createCcMemoryTool(input: {
         // ── 1. Search claims (structured facts) ──
         const claimTerms = queryLower.split(/\s+/).filter((t) => t.length > 2);
         if (claimTerms.length > 0) {
-          const likeConditions = claimTerms.map(() => "(content LIKE ? ESCAPE '\\' OR structured_json LIKE ? ESCAPE '\\')").join(" OR ");
-          const likeArgs = claimTerms.flatMap((t) => [`%${escapeLike(t)}%`, `%${escapeLike(t)}%`]);
+          const fts = buildFtsClause(db, claimTerms);
+          const searchClause = fts
+            ? fts.clause
+            : claimTerms.map(() => "(content LIKE ? ESCAPE '\\' OR structured_json LIKE ? ESCAPE '\\')").join(" OR ");
+          const searchArgs = fts
+            ? fts.args
+            : claimTerms.flatMap((t) => [`%${escapeLike(t)}%`, `%${escapeLike(t)}%`]);
 
           const claims = db.prepare(`
             SELECT json_extract(structured_json, '$.subject') as subject,
                    json_extract(structured_json, '$.predicate') as predicate,
                    json_extract(structured_json, '$.objectText') as object_text,
                    confidence
-            FROM memory_objects WHERE kind = 'claim' AND status = 'active' AND (${likeConditions})
+            FROM memory_objects WHERE kind = 'claim' AND status = 'active' AND (${searchClause})
             ORDER BY confidence DESC LIMIT 5
-          `).all(...likeArgs) as Array<{
+          `).all(...searchArgs) as Array<{
             subject: string; predicate: string; object_text: string | null; confidence: number;
           }>;
 
@@ -656,14 +682,19 @@ export function createCcMemoryTool(input: {
 
         // ── 2. Search decisions ──
         if (claimTerms.length > 0) {
-          const decConditions = claimTerms.map(() => "(content LIKE ? ESCAPE '\\' OR structured_json LIKE ? ESCAPE '\\')").join(" OR ");
-          const decArgs = claimTerms.flatMap((t) => [`%${escapeLike(t)}%`, `%${escapeLike(t)}%`]);
+          const fts2 = buildFtsClause(db, claimTerms);
+          const decClause = fts2
+            ? fts2.clause
+            : claimTerms.map(() => "(content LIKE ? ESCAPE '\\' OR structured_json LIKE ? ESCAPE '\\')").join(" OR ");
+          const decArgs = fts2
+            ? fts2.args
+            : claimTerms.flatMap((t) => [`%${escapeLike(t)}%`, `%${escapeLike(t)}%`]);
 
           const decisions = db.prepare(`
             SELECT json_extract(structured_json, '$.topic') as topic,
                    COALESCE(json_extract(structured_json, '$.decisionText'), content) as decision_text,
                    created_at as decided_at
-            FROM memory_objects WHERE kind = 'decision' AND status = 'active' AND (${decConditions})
+            FROM memory_objects WHERE kind = 'decision' AND status = 'active' AND (${decClause})
             ORDER BY created_at DESC LIMIT 3
           `).all(...decArgs) as Array<{
             topic: string; decision_text: string; decided_at: string;
@@ -689,15 +720,20 @@ export function createCcMemoryTool(input: {
 
         // ── 3. Search entities ──
         if (claimTerms.length > 0) {
-          const entConditions = claimTerms.map(() => "(content LIKE ? ESCAPE '\\' OR structured_json LIKE ? ESCAPE '\\')").join(" OR ");
-          const entArgs = claimTerms.flatMap((t) => [`%${escapeLike(t)}%`, `%${escapeLike(t)}%`]);
+          const fts3 = buildFtsClause(db, claimTerms);
+          const entClause = fts3
+            ? fts3.clause
+            : claimTerms.map(() => "(content LIKE ? ESCAPE '\\' OR structured_json LIKE ? ESCAPE '\\')").join(" OR ");
+          const entArgs = fts3
+            ? fts3.args
+            : claimTerms.flatMap((t) => [`%${escapeLike(t)}%`, `%${escapeLike(t)}%`]);
 
           const entities = db.prepare(`
             SELECT id, canonical_key,
                    COALESCE(json_extract(structured_json, '$.displayName'), json_extract(structured_json, '$.name'), canonical_key) as name,
                    json_extract(structured_json, '$.type') as entity_type
             FROM memory_objects WHERE kind = 'entity' AND status = 'active'
-              AND (${entConditions})
+              AND (${entClause})
             ORDER BY confidence DESC LIMIT 5
           `).all(...entArgs) as Array<{
             id: number; canonical_key: string; name: string; entity_type: string | null;
@@ -754,8 +790,13 @@ export function createCcMemoryTool(input: {
           } catch { /* relation graph lookup non-fatal */ }
 
           // Also keep claim-based relational predicates as a supplementary source
-          const relConditions = claimTerms.map(() => "(content LIKE ? ESCAPE '\\' OR structured_json LIKE ? ESCAPE '\\')").join(" OR ");
-          const relArgs = claimTerms.flatMap((t) => [`%${escapeLike(t)}%`, `%${escapeLike(t)}%`]);
+          const fts4 = buildFtsClause(db, claimTerms);
+          const relClause = fts4
+            ? fts4.clause
+            : claimTerms.map(() => "(content LIKE ? ESCAPE '\\' OR structured_json LIKE ? ESCAPE '\\')").join(" OR ");
+          const relArgs = fts4
+            ? fts4.args
+            : claimTerms.flatMap((t) => [`%${escapeLike(t)}%`, `%${escapeLike(t)}%`]);
 
           const claimRels = db.prepare(`
             SELECT json_extract(structured_json, '$.subject') as subject,
@@ -763,7 +804,7 @@ export function createCcMemoryTool(input: {
                    json_extract(structured_json, '$.objectText') as object_text
             FROM memory_objects WHERE kind = 'claim' AND status = 'active'
               AND json_extract(structured_json, '$.predicate') NOT IN ('is', 'states')
-              AND (${relConditions})
+              AND (${relClause})
             ORDER BY confidence DESC LIMIT 5
           `).all(...relArgs) as Array<{
             subject: string; predicate: string; object_text: string | null;

@@ -20,6 +20,7 @@ import {
   computeRelevance,
   TASK_MODE_WEIGHTS,
   INFLUENCE_SCORES,
+  DEFAULT_SCOPE_ID,
 } from "./types.js";
 import { rowToMemoryObject } from "./mo-store.js";
 
@@ -92,7 +93,7 @@ export function readMemoryObjects(
 ): MemoryObject[] {
   const {
     kinds,
-    scopeId = 1,
+    scopeId = DEFAULT_SCOPE_ID,
     statuses = ["active"],
     limit = 50,
     taskMode = "default",
@@ -184,7 +185,7 @@ export function readMemoryObjectById(
  */
 export function countMemoryObjects(
   db: GraphDb,
-  scopeId: number = 1,
+  scopeId: number = DEFAULT_SCOPE_ID,
 ): Record<string, { total: number; active: number; stale: number; superseded: number; conflicts: number }> {
   const result: Record<string, { total: number; active: number; stale: number; superseded: number; conflicts: number }> = {};
 

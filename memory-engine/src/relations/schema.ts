@@ -10,6 +10,7 @@
 import { chmodSync } from "fs";
 import type { GraphDb } from "./types.js";
 import { normalizePredicate } from "../ontology/canonical.js";
+import { safeParseStructured, safeParseMetadata } from "../ontology/json-utils.js";
 
 // ---------------------------------------------------------------------------
 // Migration v1 DDL
@@ -607,6 +608,15 @@ CREATE INDEX IF NOT EXISTS idx_prov_pred_obj ON provenance_links(predicate, obje
 CREATE INDEX IF NOT EXISTS idx_mo_rel_subject ON memory_objects(json_extract(structured_json, '$.subjectCompositeId')) WHERE kind = 'relation';
 CREATE INDEX IF NOT EXISTS idx_mo_rel_object ON memory_objects(json_extract(structured_json, '$.objectCompositeId')) WHERE kind = 'relation';
 
+-- Expression indexes for 50k+ scale (migration v26)
+CREATE INDEX IF NOT EXISTS idx_mo_loop_priority ON memory_objects(json_extract(structured_json, '$.priority')) WHERE kind = 'loop';
+CREATE INDEX IF NOT EXISTS idx_mo_loop_status ON memory_objects(json_extract(structured_json, '$.loopStatus')) WHERE kind = 'loop';
+CREATE INDEX IF NOT EXISTS idx_mo_tool_name ON memory_objects(json_extract(structured_json, '$.toolName')) WHERE kind IN ('attempt', 'procedure');
+CREATE INDEX IF NOT EXISTS idx_mo_is_negative ON memory_objects(json_extract(structured_json, '$.isNegative')) WHERE kind = 'procedure';
+CREATE INDEX IF NOT EXISTS idx_mo_cap_type ON memory_objects(json_extract(structured_json, '$.capabilityType')) WHERE kind = 'capability';
+CREATE INDEX IF NOT EXISTS idx_mo_inv_severity ON memory_objects(json_extract(structured_json, '$.severity')) WHERE kind = 'invariant';
+CREATE INDEX IF NOT EXISTS idx_mo_rel_predicate ON memory_objects(json_extract(structured_json, '$.predicate')) WHERE kind = 'relation';
+
 -- Leases
 CREATE TABLE IF NOT EXISTS work_leases (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -680,7 +690,7 @@ export function runGraphMigrations(db: GraphDb, dbPath?: string): void {
   if (anyApplied.cnt === 0) {
     db.exec(FRESH_INSTALL_SQL);
     // Mark all migration versions as applied so the legacy chain never runs
-    for (let v = 1; v <= 24; v++) {
+    for (let v = 1; v <= 26; v++) {
       markMigrationApplied(db, v);
     }
     // File permissions
@@ -1617,7 +1627,7 @@ export function runGraphMigrations(db: GraphDb, dbPath?: string): void {
               if (subjRow) {
                 subjCompositeId = String(subjRow.composite_id);
                 try {
-                  const s = subjRow.structured_json ? JSON.parse(String(subjRow.structured_json)) : {};
+                  const s = safeParseStructured(subjRow.structured_json);
                   subjName = String(s.displayName ?? s.name ?? subjRow.content ?? subjId);
                 } catch { subjName = String(subjRow.content ?? subjId); }
               }
@@ -1628,7 +1638,7 @@ export function runGraphMigrations(db: GraphDb, dbPath?: string): void {
               if (objRow) {
                 objCompositeId = String(objRow.composite_id);
                 try {
-                  const s = objRow.structured_json ? JSON.parse(String(objRow.structured_json)) : {};
+                  const s = safeParseStructured(objRow.structured_json);
                   objName = String(s.displayName ?? s.name ?? objRow.content ?? objId);
                 } catch { objName = String(objRow.content ?? objId); }
               }
@@ -1651,7 +1661,7 @@ export function runGraphMigrations(db: GraphDb, dbPath?: string): void {
             });
 
             let meta: Record<string, unknown> = {};
-            try { if (row.metadata) meta = JSON.parse(String(row.metadata)); } catch { /* empty */ }
+            meta = safeParseMetadata(row.metadata);
             const sourceId = String(meta.source_id ?? "migration-v25");
 
             insert.run(
@@ -1677,6 +1687,38 @@ export function runGraphMigrations(db: GraphDb, dbPath?: string): void {
     } catch (migErr) {
       // Migration failed — do NOT mark as applied so it retries on next startup
       console.warn("[schema] migration v25 failed:", migErr instanceof Error ? migErr.message : String(migErr));
+    }
+  }
+
+  // ── Migration v26: FTS5 virtual table + expression indexes ──
+  if (!isMigrationApplied(db, 26)) {
+    try {
+      // Expression indexes (always safe — no FTS5 dependency)
+      try {
+        db.exec(`CREATE INDEX IF NOT EXISTS idx_mo_loop_priority ON memory_objects(json_extract(structured_json, '$.priority')) WHERE kind = 'loop'`);
+        db.exec(`CREATE INDEX IF NOT EXISTS idx_mo_loop_status ON memory_objects(json_extract(structured_json, '$.loopStatus')) WHERE kind = 'loop'`);
+        db.exec(`CREATE INDEX IF NOT EXISTS idx_mo_tool_name ON memory_objects(json_extract(structured_json, '$.toolName')) WHERE kind IN ('attempt', 'procedure')`);
+        db.exec(`CREATE INDEX IF NOT EXISTS idx_mo_is_negative ON memory_objects(json_extract(structured_json, '$.isNegative')) WHERE kind = 'procedure'`);
+        db.exec(`CREATE INDEX IF NOT EXISTS idx_mo_cap_type ON memory_objects(json_extract(structured_json, '$.capabilityType')) WHERE kind = 'capability'`);
+        db.exec(`CREATE INDEX IF NOT EXISTS idx_mo_inv_severity ON memory_objects(json_extract(structured_json, '$.severity')) WHERE kind = 'invariant'`);
+        db.exec(`CREATE INDEX IF NOT EXISTS idx_mo_rel_predicate ON memory_objects(json_extract(structured_json, '$.predicate')) WHERE kind = 'relation'`);
+      } catch { /* expression indexes may not be supported on older SQLite */ }
+
+      // FTS5 virtual table (conditional — skip silently if FTS5 unavailable)
+      try {
+        db.exec(`CREATE VIRTUAL TABLE IF NOT EXISTS memory_objects_fts USING fts5(content, content='memory_objects', content_rowid='id')`);
+        db.exec(`CREATE TRIGGER IF NOT EXISTS mo_fts_ai AFTER INSERT ON memory_objects BEGIN INSERT INTO memory_objects_fts(rowid, content) VALUES (new.id, new.content); END`);
+        db.exec(`CREATE TRIGGER IF NOT EXISTS mo_fts_ad AFTER DELETE ON memory_objects BEGIN INSERT INTO memory_objects_fts(memory_objects_fts, rowid, content) VALUES('delete', old.id, old.content); END`);
+        db.exec(`CREATE TRIGGER IF NOT EXISTS mo_fts_au AFTER UPDATE OF content ON memory_objects BEGIN INSERT INTO memory_objects_fts(memory_objects_fts, rowid, content) VALUES('delete', old.id, old.content); INSERT INTO memory_objects_fts(rowid, content) VALUES (new.id, new.content); END`);
+        // Backfill existing rows
+        db.exec(`INSERT INTO memory_objects_fts(rowid, content) SELECT id, content FROM memory_objects`);
+      } catch {
+        // FTS5 not available in this runtime — skip silently
+      }
+
+      markMigrationApplied(db, 26);
+    } catch (migErr) {
+      console.warn("[schema] migration v26 failed:", migErr instanceof Error ? migErr.message : String(migErr));
     }
   }
 

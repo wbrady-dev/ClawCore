@@ -11,6 +11,7 @@ import type { GraphDb, UpsertInvariantInput } from "./types.js";
 import { logEvidence } from "./evidence-log.js";
 import { upsertMemoryObject } from "../ontology/mo-store.js";
 import type { MemoryObject, MemoryStatus } from "../ontology/types.js";
+import { safeParseStructured } from "../ontology/json-utils.js";
 
 export function upsertInvariant(
   db: GraphDb,
@@ -82,7 +83,7 @@ export interface InvariantRow {
 export function moRowToInvariantRow(row: Record<string, unknown>): InvariantRow {
   let structured: Record<string, unknown> = {};
   if (row.structured_json != null && typeof row.structured_json === "string") {
-    try { structured = JSON.parse(row.structured_json); } catch { /* empty */ }
+    structured = safeParseStructured(row.structured_json);
   }
   return {
     id: Number(row.id),

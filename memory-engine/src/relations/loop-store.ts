@@ -11,6 +11,7 @@ import type { GraphDb, OpenLoopInput, UpdateLoopInput } from "./types.js";
 import { logEvidence } from "./evidence-log.js";
 import { upsertMemoryObject, updateMemoryObjectStatus } from "../ontology/mo-store.js";
 import type { MemoryObject } from "../ontology/types.js";
+import { safeParseStructured } from "../ontology/json-utils.js";
 
 // ---------------------------------------------------------------------------
 // Open
@@ -94,7 +95,7 @@ export function updateLoop(db: GraphDb, input: UpdateLoopInput): void {
 
   let structured: Record<string, unknown> = {};
   if (loop.structured_json) {
-    try { structured = JSON.parse(loop.structured_json); } catch { /* empty */ }
+    structured = safeParseStructured(loop.structured_json);
   }
 
   // Apply updates to structured data
@@ -149,7 +150,7 @@ export interface LoopRow {
 export function moRowToLoopRow(row: Record<string, unknown>): LoopRow {
   let structured: Record<string, unknown> = {};
   if (row.structured_json != null && typeof row.structured_json === "string") {
-    try { structured = JSON.parse(row.structured_json); } catch { /* empty */ }
+    structured = safeParseStructured(row.structured_json);
   }
 
   // Use loop-specific status from structured_json if available; otherwise map from memory_objects status

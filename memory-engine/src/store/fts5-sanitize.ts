@@ -50,4 +50,24 @@ export function sanitizeFts5QueryOr(raw: string): string | null {
 }
 
 /** The number of tokens above which strict AND is likely too restrictive. */
-export const FTS_RELAXATION_THRESHOLD = 4;
+export const FTS_RELAXATION_THRESHOLD = 2;
+
+/**
+ * FTS5 prefix query — appends * to the last token for prefix matching.
+ * Used for single-token queries where strict match may miss partial words.
+ * Only applies prefix to tokens >= 3 characters to avoid overly broad results.
+ */
+export function sanitizeFts5QueryPrefix(raw: string): string | null {
+  const tokens = raw
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((t) => t.replace(/"/g, ""))
+    .filter((t) => t.length > 0);
+  if (tokens.length === 0) return null;
+  const last = tokens[tokens.length - 1];
+  // Short tokens: fall back to exact match (prefix too broad for 1-2 char tokens)
+  if (last.length < 3) return sanitizeFts5Query(raw);
+  const parts = tokens.slice(0, -1).map((t) => `"${t}"`);
+  parts.push(`"${last}"*`);
+  return parts.join(" ");
+}

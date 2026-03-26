@@ -23,7 +23,6 @@ export type LcmConfig = {
   summaryModel: string;
   /** Provider override for conversation summarization. */
   summaryProvider: string;
-  autocompactDisabled: boolean;
   /** IANA timezone for timestamps in summaries (from TZ env or system default) */
   timezone: string;
   /** When true, retroactively delete HEARTBEAT_OK turn cycles from LCM storage. */
@@ -280,10 +279,6 @@ export function resolveLcmConfig(
       e("SUMMARY_MODEL")?.trim() ?? toStr(pc.summaryModel) ?? "",
     summaryProvider:
       e("SUMMARY_PROVIDER")?.trim() ?? toStr(pc.summaryProvider) ?? "",
-    autocompactDisabled:
-      e("AUTOCOMPACT_DISABLED") !== undefined
-        ? e("AUTOCOMPACT_DISABLED") === "true"
-        : toBool(pc.autocompactDisabled) ?? false,
     timezone: env.TZ ?? toStr(pc.timezone) ?? Intl.DateTimeFormat().resolvedOptions().timeZone,
     pruneHeartbeatOk:
       e("PRUNE_HEARTBEAT_OK") !== undefined

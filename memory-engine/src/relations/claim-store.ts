@@ -18,6 +18,7 @@ import { logEvidence } from "./evidence-log.js";
 import { buildCanonicalKey as ontologyCanonicalKey, normalize } from "../ontology/canonical.js";
 import { upsertMemoryObject, supersedeMemoryObject } from "../ontology/mo-store.js";
 import type { MemoryObject } from "../ontology/types.js";
+import { safeParseStructured, safeParseMetadata } from "../ontology/json-utils.js";
 
 // ---------------------------------------------------------------------------
 // Canonical key — delegates to the RSMA ontology canonical.ts for ONE key system
@@ -206,7 +207,7 @@ export interface ClaimRow {
 export function moRowToClaimRow(row: Record<string, unknown>): ClaimRow {
   let structured: Record<string, unknown> = {};
   if (row.structured_json != null && typeof row.structured_json === "string") {
-    try { structured = JSON.parse(row.structured_json); } catch { /* empty */ }
+    structured = safeParseStructured(row.structured_json);
   }
   return {
     id: Number(row.id),
@@ -300,7 +301,7 @@ export function getClaimsWithEvidence(
 
       evidence = evRows.map((r) => {
         let meta: Record<string, unknown> = {};
-        try { if (r.metadata) meta = JSON.parse(String(r.metadata)); } catch { /* malformed JSON */ }
+        meta = safeParseMetadata(r.metadata);
         const objParts = String(r.object_id).split(":");
         return {
           id: Number(r.id),

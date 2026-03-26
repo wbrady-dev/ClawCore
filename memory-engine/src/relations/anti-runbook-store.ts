@@ -12,11 +12,7 @@ import type { GraphDb, UpsertAntiRunbookInput } from "./types.js";
 import { logEvidence } from "./evidence-log.js";
 import { upsertMemoryObject } from "../ontology/mo-store.js";
 import type { MemoryObject } from "../ontology/types.js";
-
-/** Escape LIKE meta-characters (%, _, \) so the value is treated literally. */
-function escapeLikeValue(s: string): string {
-  return s.replace(/\\/g, "\\\\").replace(/%/g, "\\%").replace(/_/g, "\\_");
-}
+import { safeParseStructured, safeParseMetadata, escapeLikeValue } from "../ontology/json-utils.js";
 
 export function upsertAntiRunbook(
   db: GraphDb,
@@ -31,11 +27,9 @@ export function upsertAntiRunbook(
     "SELECT structured_json, confidence FROM memory_objects WHERE composite_id = ?",
   ).get(compositeId) as { structured_json: string | null; confidence: number } | undefined;
   if (existingRow) {
-    try {
-      const parsed = existingRow.structured_json ? JSON.parse(existingRow.structured_json) : {};
-      existingFailureCount = Number(parsed.failureCount ?? 0);
-      existingConfidence = existingRow.confidence;
-    } catch { /* empty */ }
+    const parsed = safeParseStructured(existingRow.structured_json);
+    existingFailureCount = Number(parsed.failureCount ?? 0);
+    existingConfidence = existingRow.confidence;
   }
 
   const newFailureCount = (input.failureCount ?? 1);
@@ -105,10 +99,10 @@ export interface AntiRunbookRow {
   updated_at: string;
 }
 
-function moRowToAntiRunbookRow(row: Record<string, unknown>): AntiRunbookRow {
+export function moRowToAntiRunbookRow(row: Record<string, unknown>): AntiRunbookRow {
   let structured: Record<string, unknown> = {};
   if (row.structured_json != null && typeof row.structured_json === "string") {
-    try { structured = JSON.parse(row.structured_json); } catch { /* empty */ }
+    structured = safeParseStructured(row.structured_json);
   }
   return {
     id: Number(row.id),
@@ -227,7 +221,7 @@ export function getAntiRunbookEvidence(
 
     return rows.map((r) => {
       let meta: Record<string, unknown> = {};
-      try { if (r.metadata) meta = JSON.parse(String(r.metadata)); } catch { /* malformed */ }
+      meta = safeParseMetadata(r.metadata);
       const rawAttemptId = meta.attempt_id;
       return {
         id: Number(r.id),

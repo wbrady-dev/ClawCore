@@ -12,11 +12,7 @@ import type { GraphDb, UpsertRunbookInput } from "./types.js";
 import { logEvidence } from "./evidence-log.js";
 import { upsertMemoryObject } from "../ontology/mo-store.js";
 import type { MemoryObject } from "../ontology/types.js";
-
-/** Escape LIKE meta-characters (%, _, \) so the value is treated literally. */
-function escapeLikeValue(s: string): string {
-  return s.replace(/\\/g, "\\\\").replace(/%/g, "\\%").replace(/_/g, "\\_");
-}
+import { safeParseStructured, safeParseMetadata, escapeLikeValue } from "../ontology/json-utils.js";
 
 export function upsertRunbook(
   db: GraphDb,
@@ -107,10 +103,10 @@ export interface RunbookRow {
   updated_at: string;
 }
 
-function moRowToRunbookRow(row: Record<string, unknown>): RunbookRow {
+export function moRowToRunbookRow(row: Record<string, unknown>): RunbookRow {
   let structured: Record<string, unknown> = {};
   if (row.structured_json != null && typeof row.structured_json === "string") {
-    try { structured = JSON.parse(row.structured_json); } catch { /* empty */ }
+    structured = safeParseStructured(row.structured_json);
   }
   return {
     id: Number(row.id),
@@ -244,7 +240,7 @@ export function getRunbookWithEvidence(db: GraphDb, runbookId: number): RunbookW
 
     evidence = rows.map((r) => {
       let meta: Record<string, unknown> = {};
-      try { if (r.metadata) meta = JSON.parse(String(r.metadata)); } catch { /* malformed */ }
+      meta = safeParseMetadata(r.metadata);
       const rawAttemptId = meta.attempt_id ?? (String(r.object_id).startsWith("attempt:") ? Number(String(r.object_id).split(":")[1]) : null);
       const attemptId = typeof rawAttemptId === "number" && Number.isFinite(rawAttemptId) ? rawAttemptId : null;
       return {
@@ -286,7 +282,7 @@ export function inferRunbookFromAttempts(
   const patterns = successes
     .map((s) => {
       try {
-        const parsed = s.structured_json ? JSON.parse(s.structured_json) : {};
+        const parsed = safeParseStructured(s.structured_json);
         return String(parsed.inputSummary ?? "");
       } catch { return ""; }
     })

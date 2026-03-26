@@ -26,6 +26,9 @@ export type MemoryKind =
   | "conflict"    // first-class contradiction between two+ claims/decisions
   | "capability"; // tracked tools, systems, and services
 
+/** Default scope ID for single-scope deployments. */
+export const DEFAULT_SCOPE_ID = 1;
+
 /** How the knowledge entered the system. */
 export type SourceKind =
   | "document"

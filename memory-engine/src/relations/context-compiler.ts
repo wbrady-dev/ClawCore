@@ -10,14 +10,15 @@
 
 import type { GraphDb } from "./types.js";
 import { effectiveConfidence } from "./confidence.js";
-import { getActiveClaims, type ClaimRow } from "./claim-store.js";
-import { getActiveDecisions, type DecisionRow } from "./decision-store.js";
-import { getOpenLoops, type LoopRow } from "./loop-store.js";
+import { moRowToClaimRow, type ClaimRow } from "./claim-store.js";
+import { moRowToDecisionRow, type DecisionRow } from "./decision-store.js";
+import { moRowToLoopRow, type LoopRow } from "./loop-store.js";
 import { getRecentDeltas, type DeltaRow } from "./delta-store.js";
-import { getActiveInvariants, type InvariantRow } from "./invariant-store.js";
-import { getAntiRunbooks, type AntiRunbookRow } from "./anti-runbook-store.js";
-import { getRunbooks } from "./runbook-store.js";
-import { getRelationGraph } from "./relation-store.js";
+import { moRowToInvariantRow, type InvariantRow } from "./invariant-store.js";
+import { moRowToAntiRunbookRow, type AntiRunbookRow } from "./anti-runbook-store.js";
+import { moRowToRunbookRow } from "./runbook-store.js";
+import { moRowToRelationRow } from "./relation-store.js";
+import { safeParseStructured } from "../ontology/json-utils.js";
 import { applyDecay, type DecayConfig } from "./decay.js";
 import { runArchive } from "./archive.js";
 import { resolve } from "path";
@@ -331,47 +332,71 @@ export function compileContextCapsules(
   }
   maybeAutoArchive(db, config.autoArchiveIntervalMs, config.autoArchiveEventThreshold);
 
-  // Gather candidates from all evidence types
+  // Gather candidates from all evidence types.
+  // Unified query: fetch all active memory_objects for the scope in one SQL call,
+  // then split by kind in TypeScript. Reduces 7 DB round-trips to 1.
+  // Deltas stay separate — they live in the legacy state_deltas table.
   const candidates: CapsuleCandidate[] = [];
 
   try {
-    const claims = getActiveClaims(db, scopeId, undefined, config.maxClaims ?? 10);
-    candidates.push(...claimCapsules(claims));
-  } catch { /* non-fatal */ }
+    const allRows = db.prepare(`
+      SELECT * FROM memory_objects
+      WHERE scope_id = ? AND branch_id = 0 AND status = 'active'
+        AND kind IN ('claim', 'decision', 'loop', 'invariant', 'procedure', 'relation')
+      ORDER BY kind, confidence DESC, last_observed_at DESC
+    `).all(scopeId) as Array<Record<string, unknown>>;
 
-  try {
-    const decisions = getActiveDecisions(db, scopeId, undefined, config.maxDecisions ?? 5);
-    candidates.push(...decisionCapsules(decisions));
-  } catch { /* non-fatal */ }
+    // Per-kind limits
+    const maxClaims = config.maxClaims ?? 10;
+    const maxDecisions = config.maxDecisions ?? 5;
+    const maxLoops = config.maxLoops ?? 5;
+    const maxInvariants = config.maxInvariants ?? 5;
+    const maxRunbooks = 5;
+    const maxAntiRunbooks = 5;
+    const maxRelations = 10;
 
-  try {
-    const loops = getOpenLoops(db, scopeId, undefined, config.maxLoops ?? 5);
-    candidates.push(...loopCapsules(loops));
-  } catch { /* non-fatal */ }
+    // Counters
+    let claimCount = 0, decisionCount = 0, loopCount = 0;
+    let invariantCount = 0, runbookCount = 0, antiRunbookCount = 0, relationCount = 0;
 
+    for (const row of allRows) {
+      const kind = String(row.kind);
+      switch (kind) {
+        case "claim":
+          if (claimCount++ < maxClaims) candidates.push(...claimCapsules([moRowToClaimRow(row)]));
+          break;
+        case "decision":
+          if (decisionCount++ < maxDecisions) candidates.push(...decisionCapsules([moRowToDecisionRow(row)]));
+          break;
+        case "loop":
+          if (loopCount++ < maxLoops) candidates.push(...loopCapsules([moRowToLoopRow(row)]));
+          break;
+        case "invariant":
+          if (invariantCount++ < maxInvariants) candidates.push(...invariantCapsules([moRowToInvariantRow(row)]));
+          break;
+        case "procedure": {
+          const s = safeParseStructured(row.structured_json);
+          if (s.isNegative === true || s.isNegative === "true") {
+            if (antiRunbookCount++ < maxAntiRunbooks) candidates.push(...antiRunbookCapsules([moRowToAntiRunbookRow(row)]));
+          } else {
+            if (runbookCount++ < maxRunbooks) candidates.push(...runbookCapsules([moRowToRunbookRow(row)]));
+          }
+          break;
+        }
+        case "relation":
+          if (relationCount++ < maxRelations) {
+            const rel = moRowToRelationRow(row);
+            candidates.push(...relationCapsules([rel]));
+          }
+          break;
+      }
+    }
+  } catch { /* non-fatal: unified query failure should not break compilation */ }
+
+  // Deltas: separate query — state_deltas table, not memory_objects
   try {
     const deltas = getRecentDeltas(db, scopeId, { limit: config.maxDeltas ?? 5 });
     candidates.push(...deltaCapsules(deltas));
-  } catch { /* non-fatal */ }
-
-  try {
-    const invariants = getActiveInvariants(db, scopeId, config.maxInvariants ?? 5);
-    candidates.push(...invariantCapsules(invariants));
-  } catch { /* non-fatal */ }
-
-  try {
-    const antiRbs = getAntiRunbooks(db, scopeId, { limit: 5 });
-    candidates.push(...antiRunbookCapsules(antiRbs));
-  } catch { /* non-fatal */ }
-
-  try {
-    const rbs = getRunbooks(db, scopeId, { limit: 5 });
-    candidates.push(...runbookCapsules(rbs));
-  } catch { /* non-fatal */ }
-
-  try {
-    const rels = getRelationGraph(db, scopeId, { limit: 10 });
-    candidates.push(...relationCapsules(rels));
   } catch { /* non-fatal */ }
 
   if (candidates.length === 0) return null;

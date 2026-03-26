@@ -20,6 +20,7 @@ import {
   resolveNextExpansionDepth,
   stampDelegatedExpansionContext,
 } from "./lcm-expansion-recursion-guard.js";
+import { escapeLikeValue } from "../ontology/json-utils.js";
 
 const DELEGATED_WAIT_TIMEOUT_MS = 120_000;
 const GATEWAY_TIMEOUT_MS = 10_000;
@@ -250,11 +251,6 @@ function resolveSourceConversationId(params: {
   throw new Error(
     "Unable to resolve a single conversation scope. Provide conversationId or set a narrower summary scope.",
   );
-}
-
-/** Escape LIKE meta-characters (%, _, \) so the value is treated literally. */
-function escapeLikeValue(s: string): string {
-  return s.replace(/\\/g, "\\\\").replace(/%/g, "\\%").replace(/_/g, "\\_");
 }
 
 // Common stopwords to drop from evidence search queries

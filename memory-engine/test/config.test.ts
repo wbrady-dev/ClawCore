@@ -12,7 +12,6 @@ describe("resolveLcmConfig", () => {
     expect(config.leafMinFanout).toBe(8);
     expect(config.condensedMinFanout).toBe(4);
     expect(config.condensedMinFanoutHard).toBe(2);
-    expect(config.autocompactDisabled).toBe(false);
     expect(config.pruneHeartbeatOk).toBe(false);
   });
 
@@ -23,7 +22,6 @@ describe("resolveLcmConfig", () => {
       incrementalMaxDepth: -1,
       leafMinFanout: 4,
       condensedMinFanout: 2,
-      autocompactDisabled: true,
       pruneHeartbeatOk: true,
       enabled: false,
     });
@@ -33,7 +31,6 @@ describe("resolveLcmConfig", () => {
     expect(config.incrementalMaxDepth).toBe(-1);
     expect(config.leafMinFanout).toBe(4);
     expect(config.condensedMinFanout).toBe(2);
-    expect(config.autocompactDisabled).toBe(true);
     expect(config.pruneHeartbeatOk).toBe(true);
   });
 
@@ -43,21 +40,18 @@ describe("resolveLcmConfig", () => {
       LCM_FRESH_TAIL_COUNT: "64",
       LCM_INCREMENTAL_MAX_DEPTH: "3",
       LCM_ENABLED: "false",
-      LCM_AUTOCOMPACT_DISABLED: "true",
     } as NodeJS.ProcessEnv;
     const pluginConfig = {
       contextThreshold: 0.5,
       freshTailCount: 16,
       incrementalMaxDepth: -1,
       enabled: true,
-      autocompactDisabled: false,
     };
     const config = resolveLcmConfig(env, pluginConfig);
     expect(config.enabled).toBe(false); // env wins
     expect(config.contextThreshold).toBe(0.9); // env wins
     expect(config.freshTailCount).toBe(64); // env wins
     expect(config.incrementalMaxDepth).toBe(3); // env wins
-    expect(config.autocompactDisabled).toBe(true); // env wins
   });
 
   it("plugin config fills gaps when env vars are absent", () => {

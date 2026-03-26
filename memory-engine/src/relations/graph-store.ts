@@ -23,6 +23,7 @@ import { extractFast } from "./entity-extract.js";
 import { invalidateAwarenessCache } from "./awareness.js";
 import { upsertMemoryObject, deleteMemoryObjectsBySource } from "../ontology/mo-store.js";
 import type { MemoryObject } from "../ontology/types.js";
+import { DEFAULT_SCOPE_ID } from "../ontology/types.js";
 
 // ---------------------------------------------------------------------------
 // Entity upsert
@@ -118,7 +119,7 @@ export function insertMention(db: GraphDb, input: InsertMentionInput): boolean {
     `${input.sourceType}:${input.sourceId}`,
     1.0,
     input.sourceDetail ?? null,
-    input.scopeId ?? 1,
+    input.scopeId ?? DEFAULT_SCOPE_ID,
     JSON.stringify({
       context_terms: contextTermsJson,
       actor: input.actor ?? "system",
@@ -172,7 +173,7 @@ export function deleteGraphDataForSource(
 
     // Log the cleanup
     logEvidence(db, {
-      scopeId: 1,
+      scopeId: DEFAULT_SCOPE_ID,
       objectType: "source",
       objectId: 0,
       eventType: "delete",
