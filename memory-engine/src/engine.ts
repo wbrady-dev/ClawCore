@@ -1283,8 +1283,34 @@ export class LcmContextEngine implements ContextEngine {
       }
     }
 
+    // Background decay timer — keeps applyDecay out of the assemble() hot path.
+    // Runs every 5 minutes in the background instead of lazily during compileContextCapsules.
+    if (this.graphDb && this.config.relationsEnabled && !this._decayTimer) {
+      const _decayDb = this.graphDb;
+      const _scopeId = this.config.relationsScopeId ?? 1;
+      this._decayTimer = setInterval(() => {
+        (async () => {
+          try {
+            const { applyDecay: runDecay } = await import("./relations/decay.js");
+            runDecay(_decayDb, _scopeId);
+          } catch {}
+        })();
+      }, 5 * 60 * 1000);
+      if (this._decayTimer.unref) this._decayTimer.unref(); // don't keep process alive
+    }
+
+    // Pre-warm awareness entity cache so the first assemble() doesn't pay 200ms rebuild cost
+    if (this.graphDb && this.config.relationsEnabled) {
+      try {
+        const { buildAwarenessNote } = await import("./relations/awareness.js");
+        buildAwarenessNote(this.graphDb, "", { enabled: true, maxNotes: 0 });
+      } catch {}
+    }
+
     return result;
   }
+
+  private _decayTimer?: ReturnType<typeof setInterval>;
 
   private async ingestSingle(params: {
     sessionId: string;
@@ -1379,50 +1405,58 @@ export class LcmContextEngine implements ContextEngine {
       }
     }
 
-    // NER enhancement — runs regardless of RSMA (supplements LLM extraction with
-    // spaCy NER for structured entity types like PERSON, ORG, GPE, DATE).
+    // NER enhancement — fire-and-forget (does NOT block the response).
+    // NER results enrich future turns, not the current one. No reason to await.
+    // Supplements LLM extraction with spaCy NER for structured entity types.
     // Circuit breaker: skip if server was recently unreachable.
     if (this.graphDb && this.config.relationsEnabled && stored.content.length > 5) {
       if (_nerCircuitOpen && Date.now() - _nerLastFailure < (this.config.nerCircuitResetMs ?? 30_000)) {
-        console.debug("[cc-mem] NER circuit open, skipping request");
+        // Circuit open — skip silently (no log spam, debug only)
       } else {
-        try {
-          const nerUrl = `${process.env.THREADCLAW_MODEL_SERVER_URL ?? process.env.MODEL_SERVER_URL ?? "http://127.0.0.1:8012"}/ner`;
-          const nerResp = await fetch(nerUrl, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ texts: [stored.content] }),
-            signal: AbortSignal.timeout(5000),
-          });
-          if (nerResp.ok) {
-            _nerCircuitOpen = false;
-            const nerData = await nerResp.json() as { results: Array<{ entities: Array<{ text: string; label: string }> }> };
-            const nerEntities = nerData.results?.[0]?.entities ?? [];
-            if (nerEntities.length > 0) {
-              const { storeExtractionResult: storeNer } = await import("./relations/graph-store.js");
-              const nerResults = nerEntities.map((e: { text: string; label: string }) => ({
-                name: e.text,
-                confidence: 0.8,
-                strategy: `ner:${e.label}` as import("./relations/types.js").ExtractionStrategy,
-                entityType: e.label.toLowerCase(),
-              }));
-              try {
-                storeNer(this.graphDb!, nerResults, {
-                  sourceType: "message",
-                  sourceId: String(msgRecord.messageId),
-                  actor: eeActor,
-                  runId,
-                });
-              } catch (storeErr) {
-                console.debug("[cc-mem] NER entity storage failed (NER itself succeeded):", storeErr instanceof Error ? storeErr.message : String(storeErr));
+        const _nerGraphDb = this.graphDb!;
+        const _nerContent = stored.content;
+        const _nerMsgId = String(msgRecord.messageId);
+        const _nerActor = eeActor;
+        const _nerRunId = runId;
+        (async () => {
+          try {
+            const nerUrl = `${process.env.THREADCLAW_MODEL_SERVER_URL ?? process.env.MODEL_SERVER_URL ?? "http://127.0.0.1:8012"}/ner`;
+            const nerResp = await fetch(nerUrl, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ texts: [_nerContent] }),
+              signal: AbortSignal.timeout(2000),
+            });
+            if (nerResp.ok) {
+              _nerCircuitOpen = false;
+              const nerData = await nerResp.json() as { results: Array<{ entities: Array<{ text: string; label: string }> }> };
+              const nerEntities = nerData.results?.[0]?.entities ?? [];
+              if (nerEntities.length > 0) {
+                const { storeExtractionResult: storeNer } = await import("./relations/graph-store.js");
+                const nerResults = nerEntities.map((e: { text: string; label: string }) => ({
+                  name: e.text,
+                  confidence: 0.8,
+                  strategy: `ner:${e.label}` as import("./relations/types.js").ExtractionStrategy,
+                  entityType: e.label.toLowerCase(),
+                }));
+                try {
+                  storeNer(_nerGraphDb, nerResults, {
+                    sourceType: "message",
+                    sourceId: _nerMsgId,
+                    actor: _nerActor,
+                    runId: _nerRunId,
+                  });
+                } catch (storeErr) {
+                  console.debug("[cc-mem] NER entity storage failed:", storeErr instanceof Error ? storeErr.message : String(storeErr));
+                }
               }
             }
+          } catch (err) {
+            _nerCircuitOpen = true;
+            _nerLastFailure = Date.now();
+            console.debug("[cc-mem] NER request failed (circuit opened):", err instanceof Error ? err.message : String(err));
           }
-        } catch (err) {
-          _nerCircuitOpen = true;
-          _nerLastFailure = Date.now();
-          console.debug("[cc-mem] NER request failed (circuit opened):", err instanceof Error ? err.message : String(err));
-        }
+        })().catch(() => {}); // fire-and-forget — never blocks the response
       }
     }
 

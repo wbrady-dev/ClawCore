@@ -366,9 +366,11 @@ export function compileContextCapsules(
   const budget = typeof config.tier === "number" ? config.tier : (BUDGET_TIERS[config.tier] ?? BUDGET_TIERS.standard);
   const scopeId = config.scopeId;
 
-  // Apply lazy decay + auto-archive before gathering candidates (at most once per 5 minutes)
-  if (Date.now() - _lastDecayRun > 300_000) {
-    applyDecay(db, scopeId, config.decayDays, config.runbookStaleDays, config.decay);
+  // Decay + auto-archive are now handled by a background timer (startDecayTimer)
+  // to keep the assemble() hot path fast. Lazy fallback here only if timer hasn't
+  // run yet (e.g., compileContextCapsules called outside the engine lifecycle).
+  if (Date.now() - _lastDecayRun > 600_000) { // 10 min fallback (timer runs every 5 min)
+    try { applyDecay(db, scopeId, config.decayDays, config.runbookStaleDays, config.decay); } catch {}
     _lastDecayRun = Date.now();
   }
   maybeAutoArchive(db, config.autoArchiveIntervalMs, config.autoArchiveEventThreshold);
