@@ -1352,12 +1352,14 @@ export class LcmContextEngine implements ContextEngine {
     // Derive actor from message role: user messages → 'user', tool results → 'assistant', else 'system'
     const eeActor: string = stored.role === "user" ? "user" : stored.role === "tool" ? "assistant" : "system";
 
-    // Entity pre-seeding: regex + NER run ONLY when RSMA/LLM won't handle it.
-    // When RSMA runs, the semantic extractor handles entity extraction via LLM.
-    // Regex is the fallback for when no extraction model is configured.
+    // Entity pre-seeding: regex runs ONLY when RSMA won't handle it at all.
+    // When rsmaWillRun=true, the RSMA IIFE handles entities (LLM or regex fallback
+    // via understandMessage). Regex pre-seeding here is ONLY for non-user messages
+    // or when relations are disabled — cases where RSMA doesn't fire.
     const rsmaHasModel = !!(this.config.relationsDeepExtractionEnabled && this.config.relationsDeepExtractionModel);
-    if (this.graphDb && this.config.relationsEnabled && stored.content.length > 5 && !rsmaHasModel) {
-      // Regex entity extraction — fallback only (no LLM model configured)
+    const rsmaWillRun = !!(this.graphDb && this.config.relationsEnabled && stored.role === "user" && stored.content.length > 5);
+    if (this.graphDb && this.config.relationsEnabled && stored.content.length > 5 && !rsmaWillRun) {
+      // Regex entity extraction — only for non-user messages (RSMA doesn't cover these)
       try {
         const { extractFast } = await import("./relations/entity-extract.js");
         const { storeExtractionResult } = await import("./relations/graph-store.js");
@@ -1548,7 +1550,7 @@ export class LcmContextEngine implements ContextEngine {
     // When RSMA runs (graphDb + relationsEnabled + user + len>5), the LLM
     // pipeline handles everything. Legacy regex extraction is gated to NOT
     // run when RSMA will run (avoids double-writes with confidence drift).
-    const rsmaWillRun = !!(this.graphDb && this.config.relationsEnabled && stored.role === "user" && stored.content.length > 5);
+    // rsmaWillRun is declared above (line ~1360) and reused here.
 
     const claimExtractionEnabled = this.config.relationsClaimExtractionEnabled || this.config.relationsUserClaimExtractionEnabled;
     // Legacy regex extraction — ONLY when RSMA won't run (no graphDb, relations disabled, or non-user)
