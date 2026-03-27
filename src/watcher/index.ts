@@ -1,5 +1,5 @@
 import { watch } from "chokidar";
-import { resolve, extname } from "path";
+import { resolve, extname, basename } from "path";
 import { config } from "../config.js";
 import { ingestFile } from "../ingest/pipeline.js";
 import { getDb, getCollectionByName } from "../storage/index.js";
@@ -143,14 +143,13 @@ export class ThreadClawWatcher {
     if (this.processing.has(normalizedPath)) return;
 
     // awaitWriteFinish already debounces — enqueue directly
-    // NOTE: When queue is full, files are silently dropped. Consider implementing
-    // backpressure signaling to the watcher (pause/resume) for heavy workloads.
+    // Check for duplicate queue entries before checking capacity (prevents
+    // dropping a file as "queue full" when it's actually already queued)
+    if (this.ingestQueue.some((q) => resolve(q.filePath) === normalizedPath)) return;
     if (this.ingestQueue.length >= MAX_QUEUE_SIZE) {
       logger.warn(`Watcher queue full (${MAX_QUEUE_SIZE}), dropping: ${normalizedPath.split(/[\\/]/).pop()}`);
       return;
     }
-    // Check processing set to prevent duplicate queue entries
-    if (this.ingestQueue.some((q) => resolve(q.filePath) === normalizedPath)) return;
     this.ingestQueue.push({ filePath: normalizedPath, wc });
     this.drainQueue();
   }
@@ -225,7 +224,7 @@ export class ThreadClawWatcher {
   }
 
   private async ingestSafe(filePath: string, wc: WatchConfig): Promise<void> {
-    const name = filePath.replace(/\\/g, "/").split("/").pop() ?? filePath;
+    const name = basename(filePath);
 
     try {
       log(`Ingesting: ${name}`);
