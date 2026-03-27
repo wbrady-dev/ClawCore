@@ -92,10 +92,10 @@ export abstract class PollingAdapterBase implements SourceAdapter {
    * Default uses source_path LIKE %stagingDir/id%.
    */
   protected getRemovalDbQuery(id: string, name: string): { sql: string; params: string[] } {
-    const stagingPrefix = this.stagingDir.replace(/\\/g, "/");
+    // Use native path separators to match how resolve() stores source_path in DB
     return {
       sql: "SELECT id FROM documents WHERE source_path LIKE ?",
-      params: [`%${stagingPrefix}/${id}%`],
+      params: [`%${this.stagingDir}%${id}%`],
     };
   }
 

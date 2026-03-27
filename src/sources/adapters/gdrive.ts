@@ -183,10 +183,10 @@ export class GDriveAdapter extends PollingAdapterBase {
   }
 
   protected getRemovalDbQuery(id: string, name: string): { sql: string; params: string[] } {
-    const stagingPrefix = STAGING_DIR.replace(/\\/g, "/");
+    // Use native path separators to match how resolve() stores source_path in DB
     return {
       sql: "SELECT id FROM documents WHERE source_path LIKE ? OR source_path LIKE ?",
-      params: [`%${id}%`, `%${stagingPrefix}/${name}%`],
+      params: [`%${id}%`, `%${STAGING_DIR}%${name}%`],
     };
   }
 }
