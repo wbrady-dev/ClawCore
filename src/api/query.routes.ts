@@ -1,5 +1,6 @@
 import type { FastifyInstance, FastifyReply } from "fastify";
 import { query } from "../query/pipeline.js";
+import { config } from "../config.js";
 import { logger } from "../utils/logger.js";
 import { isLocalRequest } from "./guards.js";
 

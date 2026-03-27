@@ -16,8 +16,8 @@
  * CANONICAL SOURCE: memory-engine/src/relations/graph-store.ts (storage)
  * and memory-engine/src/relations/entity-extract.ts (extraction).
  *
- * extractFast() and loadTerms() are imported directly from memory-engine
- * (single source of truth — no duplication).
+ * extractFast() and loadTerms() are loaded via dynamic import() from
+ * memory-engine at runtime (single source of truth — no duplication).
  */
 
 import type Database from "better-sqlite3";
@@ -27,12 +27,41 @@ import { join } from "node:path";
 import { logger } from "../utils/logger.js";
 
 // ---------------------------------------------------------------------------
-// Canonical imports from memory-engine (single source of truth)
+// Entity extraction types and loaders.
+// CANONICAL SOURCE: memory-engine/src/relations/entity-extract.ts (extractFast)
+// CANONICAL SOURCE: memory-engine/src/relations/terms.ts (loadTerms)
+// These are loaded via dynamic import() at runtime to avoid cross-rootDir
+// static import issues (src/ and memory-engine/src/ are separate TS projects).
 // ---------------------------------------------------------------------------
 
-import { extractFast } from "../../memory-engine/src/relations/entity-extract.js";
-import { loadTerms } from "../../memory-engine/src/relations/terms.js";
-import type { ExtractionResult } from "../../memory-engine/src/relations/types.js";
+/** Matches memory-engine/src/relations/types.ts ExtractionResult */
+interface ExtractionResult {
+  name: string;
+  confidence: number;
+  strategy: string;
+  entityType?: string | null;
+  snippet?: string;
+  contextTerms?: string[];
+}
+
+let _extractFast: ((text: string, terms?: string[]) => ExtractionResult[]) | null = null;
+let _loadTerms: ((path?: string) => string[]) | null = null;
+
+async function getExtractFast(): Promise<(text: string, terms?: string[]) => ExtractionResult[]> {
+  if (!_extractFast) {
+    const mod = await import("../../memory-engine/src/relations/entity-extract.js");
+    _extractFast = mod.extractFast;
+  }
+  return _extractFast;
+}
+
+async function getLoadTerms(): Promise<(path?: string) => string[]> {
+  if (!_loadTerms) {
+    const mod = await import("../../memory-engine/src/relations/terms.js");
+    _loadTerms = mod.loadTerms;
+  }
+  return _loadTerms;
+}
 
 // ---------------------------------------------------------------------------
 // Graph store operations (using better-sqlite3 API, targeting memory_objects + provenance_links)
@@ -256,7 +285,9 @@ export async function extractEntitiesFromDocument(
 ): Promise<void> {
   try {
     // Schema is managed by memory-engine's runGraphMigrations
-    const terms = loadTerms();
+    const loadTermsFn = await getLoadTerms();
+    const extractFastFn = await getExtractFast();
+    const terms = loadTermsFn();
 
     // Try NER extraction (non-blocking, returns null on failure)
     let nerResults: Array<{ text: string; label: string }[]> | null = null;
@@ -273,7 +304,7 @@ export async function extractEntitiesFromDocument(
       // Extract and store from new chunks
       for (let i = 0; i < chunks.length; i++) {
         // Regex entities
-        const regexEntities = extractFast(chunks[i].text, terms);
+        const regexEntities = extractFastFn(chunks[i].text, terms);
 
         // Build merged entity map (deduplicate by name, highest confidence wins)
         const merged = new Map<string, ExtractionResult>();
