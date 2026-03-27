@@ -50,12 +50,21 @@ Examples:
             .all(coll.id) as { id: string }[];
 
           let chunksDeleted = 0;
+          let deletedCount = 0;
+          let errors = 0;
           for (const doc of docs) {
-            chunksDeleted += await deleteDocument(db, doc.id);
+            try {
+              chunksDeleted += await deleteDocument(db, doc.id);
+              deletedCount++;
+            } catch (err) {
+              errors++;
+              console.error(`  Failed to delete ${doc.id}: ${err instanceof Error ? err.message : String(err)}`);
+            }
           }
 
           console.log(
-            `Deleted ${docs.length} documents (${chunksDeleted} chunks) from "${coll.name}"`,
+            `Deleted ${deletedCount} documents (${chunksDeleted} chunks) from "${coll.name}"` +
+            (errors > 0 ? ` (${errors} failed)` : ""),
           );
           return;
         }

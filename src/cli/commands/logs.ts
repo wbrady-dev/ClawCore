@@ -76,15 +76,19 @@ export const logsCommand = new Command("logs")
         // miss events. The 500ms interval keeps CPU usage minimal while providing
         // near-real-time log tailing.
         watchFile(logPath, { interval: 500 }, () => {
-          const allLines = readServiceLogTail(name, 10000);
-          const prev = trackers.get(name) ?? [];
-          // Detect log truncation/rotation: if new content is shorter, treat it as fresh
-          const newLines = allLines.length < prev.length
-            ? allLines
-            : allLines.slice(prev.length);
-          trackers.set(name, allLines);
-          for (const line of newLines) {
-            console.log(`  ${prefix} ${colorLine(line)}`);
+          try {
+            const allLines = readServiceLogTail(name, 10000);
+            const prev = trackers.get(name) ?? [];
+            // Detect log truncation/rotation: if new content is shorter, treat it as fresh
+            const newLines = allLines.length < prev.length
+              ? allLines
+              : allLines.slice(prev.length);
+            trackers.set(name, allLines);
+            for (const line of newLines) {
+              console.log(`  ${prefix} ${colorLine(line)}`);
+            }
+          } catch {
+            // Log file may have been deleted/rotated — ignore until next poll
           }
         });
       }

@@ -51,7 +51,7 @@ export const serveCommand = new Command("serve")
         if (process.platform === "win32") {
           const out = execFileSync("netstat", ["-ano"], { stdio: "pipe" }).toString();
           // Use word-boundary regex to avoid false positives (e.g. port 80 matching 8012)
-          const portRegex = new RegExp(`:${port}\\s`);
+          const portRegex = new RegExp(`:${port}\\s+`);
           for (const line of out.split("\n")) {
             if (portRegex.test(line) && line.includes("LISTENING")) {
               const pid = line.trim().split(/\s+/).pop();
