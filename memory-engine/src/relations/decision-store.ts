@@ -23,7 +23,7 @@ export function upsertDecision(db: GraphDb, input: UpsertDecisionInput): UpsertD
   const canonicalKey = `decision::${topic}`;
 
   const now = new Date().toISOString();
-  const compositeId = `decision:${input.scopeId}:${branchId}:${Date.now()}:${Math.random().toString(36).slice(2, 8)}:${canonicalKey}`;
+  const compositeId = `decision:${input.scopeId}:${canonicalKey}`;
 
   const mo: MemoryObject = {
     id: compositeId,
@@ -63,7 +63,9 @@ export function upsertDecision(db: GraphDb, input: UpsertDecisionInput): UpsertD
     branchId: branchId || undefined,
     objectType: "decision",
     objectId: result.moId,
-    eventType: "create",
+    eventType: result.isNew ? "create" : "update",
+    actor: input.actor ?? "system",
+    runId: input.runId,
     payload: { topic },
   });
 
@@ -174,4 +176,32 @@ export function getDecisionHistory(
       AND (canonical_key LIKE ? OR content LIKE ? OR structured_json LIKE ?)
     ORDER BY created_at DESC, id DESC LIMIT ?
   `).all(scopeId, `decision::%${normalizedTopic}%`, topicPattern, topicPattern, limit) as Record<string, unknown>[]).map(moRowToDecisionRow);
+}
+
+// ---------------------------------------------------------------------------
+// Revoke a decision
+// ---------------------------------------------------------------------------
+
+/**
+ * Revoke a decision: sets status='retracted', logs evidence with event_type='revoke'.
+ */
+export function revokeDecision(db: GraphDb, decisionId: number, reason: string): void {
+  const row = db.prepare(
+    "SELECT scope_id, branch_id, status FROM memory_objects WHERE id = ?",
+  ).get(decisionId) as { scope_id: number; branch_id: number | null; status: string } | undefined;
+
+  if (!row) return;
+
+  db.prepare(
+    `UPDATE memory_objects SET status = 'retracted', updated_at = strftime('%Y-%m-%dT%H:%M:%f','now') WHERE id = ?`,
+  ).run(decisionId);
+
+  logEvidence(db, {
+    scopeId: row.scope_id,
+    branchId: row.branch_id ?? undefined,
+    objectType: "decision",
+    objectId: decisionId,
+    eventType: "revoke",
+    payload: { reason, previousStatus: row.status },
+  });
 }

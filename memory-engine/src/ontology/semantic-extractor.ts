@@ -77,6 +77,8 @@ export interface SemanticExtractorConfig {
   timeoutMs?: number;
   /** Known entity/subject names from the DB — LLM normalizes against these. */
   knownSubjects?: string[];
+  /** Known topic labels per subject from the DB — LLM reuses these for dedup. */
+  knownTopicsBySubject?: Map<string, string[]>;
 }
 
 // ── System Prompt ───────────────────────────────────────────────────────────
@@ -313,6 +315,21 @@ export async function semanticExtract(
       systemPrompt += `\n\nKNOWN ENTITIES already in memory: ${subjectList}\nWhen the user refers to one of these entities (even with a different name, abbreviation, or variation), you MUST use the EXACT subject name from this list. For example, if "orion" is in the list and the user says "Project Orion", use subject: "orion". This ensures deduplication works correctly.`;
     }
 
+    // Inject known topics per subject so LLM reuses existing topic labels
+    if (config.knownTopicsBySubject && config.knownTopicsBySubject.size > 0) {
+      const topicLines: string[] = [];
+      for (const [subject, topics] of config.knownTopicsBySubject) {
+        if (topics.length > 0) {
+          const sanitized = subject.replace(/[\n\r"\\]/g, " ").trim();
+          const topicList = topics.slice(0, 20).map(t => t.replace(/[\n\r"\\]/g, " ").trim()).join(", ");
+          topicLines.push(`- "${sanitized}": ${topicList}`);
+        }
+      }
+      if (topicLines.length > 0) {
+        systemPrompt += `\n\nKNOWN TOPICS per subject already in memory:\n${topicLines.slice(0, 30).join("\n")}\nWhen discussing the same aspect of these subjects, REUSE the existing topic label exactly. This ensures new facts supersede old ones correctly.`;
+      }
+    }
+
     // For assistant messages, add a stricter instruction to only extract verified facts
     if (role === "assistant") {
       systemPrompt += `\n\nIMPORTANT: This text is from an AI assistant, NOT a user. Apply strict filtering:
@@ -437,6 +454,118 @@ function now(): string {
   return new Date().toISOString();
 }
 
+/**
+ * Resolve a natural-language temporal hint to an approximate ISO date string.
+ * Returns null if the hint can't be parsed. Approximate is fine — better than null.
+ */
+function resolveTemporalHint(hint: string): string | null {
+  const h = hint.toLowerCase().trim();
+  const today = new Date();
+  const dayOfWeek = today.getDay(); // 0=Sun, 1=Mon, ..., 6=Sat
+
+  // "tomorrow"
+  if (/\btomorrow\b/.test(h)) {
+    const d = new Date(today);
+    d.setDate(d.getDate() + 1);
+    return d.toISOString().split("T")[0];
+  }
+
+  // "today"
+  if (/\btoday\b/.test(h)) {
+    return today.toISOString().split("T")[0];
+  }
+
+  // "in N days/hours/weeks"
+  const inNMatch = h.match(/\bin\s+(\d+)\s+(day|hour|week|month)s?\b/);
+  if (inNMatch) {
+    const n = parseInt(inNMatch[1], 10);
+    const unit = inNMatch[2];
+    const d = new Date(today);
+    if (unit === "day") d.setDate(d.getDate() + n);
+    else if (unit === "hour") d.setHours(d.getHours() + n);
+    else if (unit === "week") d.setDate(d.getDate() + n * 7);
+    else if (unit === "month") d.setMonth(d.getMonth() + n);
+    return d.toISOString().split("T")[0];
+  }
+
+  // "next week"
+  if (/\bnext\s+week\b/.test(h)) {
+    const d = new Date(today);
+    d.setDate(d.getDate() + (7 - dayOfWeek + 1)); // next Monday
+    return d.toISOString().split("T")[0];
+  }
+
+  // "next month"
+  if (/\bnext\s+month\b/.test(h)) {
+    const d = new Date(today);
+    d.setMonth(d.getMonth() + 1, 1);
+    return d.toISOString().split("T")[0];
+  }
+
+  // "by/before/on/this <day-of-week>" or "next <day-of-week>"
+  const dayNames: Record<string, number> = {
+    sunday: 0, monday: 1, tuesday: 2, wednesday: 3,
+    thursday: 4, friday: 5, saturday: 6,
+    sun: 0, mon: 1, tue: 2, wed: 3, thu: 4, fri: 5, sat: 6,
+  };
+  const dayMatch = h.match(/\b(?:by|before|on|this|next)?\s*(sunday|monday|tuesday|wednesday|thursday|friday|saturday|sun|mon|tue|wed|thu|fri|sat)\b/);
+  if (dayMatch) {
+    const targetDay = dayNames[dayMatch[1]];
+    if (targetDay !== undefined) {
+      let daysAhead = targetDay - dayOfWeek;
+      if (daysAhead <= 0) daysAhead += 7; // Always resolve to the upcoming occurrence
+      if (/\bnext\b/.test(h) && daysAhead <= 7) daysAhead += 7; // "next Friday" = the one after this week
+      const d = new Date(today);
+      d.setDate(d.getDate() + daysAhead);
+      return d.toISOString().split("T")[0];
+    }
+  }
+
+  // "end of week"
+  if (/\bend\s+of\s+(?:the\s+)?week\b/.test(h)) {
+    const d = new Date(today);
+    d.setDate(d.getDate() + (5 - dayOfWeek + (dayOfWeek > 5 ? 7 : 0))); // Friday
+    return d.toISOString().split("T")[0];
+  }
+
+  // "end of month"
+  if (/\bend\s+of\s+(?:the\s+)?month\b/.test(h)) {
+    const d = new Date(today.getFullYear(), today.getMonth() + 1, 0);
+    return d.toISOString().split("T")[0];
+  }
+
+  return null;
+}
+
+/**
+ * Infer loop priority from content, event type, and temporal presence.
+ * Blockers/dependencies: 8, Deadlined: 6, Tasks/todos: 4, Questions: 3, Follow-ups: 2
+ */
+function inferLoopPriority(content: string, eventType: string, temporal?: string): number {
+  const lower = content.toLowerCase();
+
+  // Blockers / dependencies
+  if (/\bblocker\b|\bblocking\b|\bdepends?\s+on\b|\bdependenc/i.test(lower)) return 8;
+
+  // Urgent
+  if (/\burgent\b|\basap\b|\bcritical\b|\bimmediately\b/i.test(lower)) return 7;
+
+  // Deadlined tasks (has temporal hint like "by Friday")
+  if (temporal) return 6;
+
+  // Regular tasks/todos
+  if (eventType === "task") return 4;
+
+  // Questions
+  if (lower.includes("?") || /\bquestion\b/.test(lower)) return 3;
+
+  // Follow-ups / reminders
+  if (eventType === "reminder") return 2;
+
+  // Default for any loop
+  return 4;
+}
+
 function eventTypeToMemoryKind(type: string): MemoryKind {
   switch (type) {
     case "decision": return "decision";
@@ -485,8 +614,8 @@ export function isJunkClaim(event: { subject?: string; predicate?: string; value
   const pathPattern = /^[a-z]:\\|^\/[a-z]|\\users\\|\\home\//i;
   if (pathPattern.test(val) || pathPattern.test(subj)) return true;
 
-  // Skip URLs as values
-  if (val.startsWith("http://") || val.startsWith("https://") || val.startsWith("ftp://")) return true;
+  // Skip URLs as subjects — but allow URLs as values (e.g., "docs site" → "https://docs.example.com")
+  if (subj.startsWith("http://") || subj.startsWith("https://") || subj.startsWith("ftp://")) return true;
 
   // Skip relative paths
   if (val.startsWith("./") || val.startsWith("../") || val.match(/^src\/|^dist\/|^node_modules\//)) return true;
@@ -497,9 +626,13 @@ export function isJunkClaim(event: { subject?: string; predicate?: string; value
   // Skip "X sent: message" type claims
   if (pred === "sent" || pred === "sender" || pred === "sent_by") return true;
 
-  // Skip claims with generic predicates that produce low-value knowledge
-  const genericPredicates = new Set(["states"]);
-  if (genericPredicates.has(pred)) return true;
+  // Skip "states" predicate only when subject is also generic/meta — valid user notes
+  // like "constraint states: never do X" should be kept
+  const META_SUBJECTS_JUNK = new Set([
+    "message", "user message", "assistant", "bot", "system", "image",
+    "attachment", "file", "document", "user_note", "general",
+  ]);
+  if (pred === "states" && META_SUBJECTS_JUNK.has(subj)) return true;
 
   return false;
 }
@@ -573,6 +706,8 @@ function convertToWriterResult(
         loopType: event.type === "reminder" ? "follow_up" : "task",
         text: event.content,
       };
+      // Infer priority from content and event type
+      (loop as Record<string, unknown>).priority = inferLoopPriority(event.content, event.type, event.temporal);
       structured = loop;
     } else {
       const claim: StructuredClaim & { topic?: string } = {
@@ -585,9 +720,15 @@ function convertToWriterResult(
       structured = claim;
     }
 
-    // Preserve temporal text as a hint in structured data (not as a date field)
+    // Preserve temporal text as a hint in structured data and resolve to dueAt for loops
     if (event.temporal) {
       (structured as Record<string, unknown>).temporal_hint = event.temporal;
+      if (kind === "loop") {
+        const resolvedDate = resolveTemporalHint(event.temporal);
+        if (resolvedDate) {
+          (structured as Record<string, unknown>).dueAt = resolvedDate;
+        }
+      }
     }
 
     // Build content string using the correctly-typed local variable

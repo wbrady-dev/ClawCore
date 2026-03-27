@@ -398,6 +398,8 @@ def rerank():
                 future = pool.submit(_do_rerank, pairs, bs)
                 raw_scores = future.result(timeout=RERANK_TIMEOUT_SECONDS)
             scores = np.atleast_1d(raw_scores).tolist()
+            # Sanitize NaN/Infinity from numerical instability — invalid JSON and breaks downstream filters
+            scores = [0.0 if (math.isnan(s) or math.isinf(s)) else float(s) for s in scores]
             break
         except FuturesTimeout:
             _gpu_degraded = True

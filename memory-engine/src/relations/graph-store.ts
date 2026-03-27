@@ -41,20 +41,9 @@ export interface UpsertEntityResult {
 export function upsertEntity(db: GraphDb, input: UpsertEntityInput): UpsertEntityResult {
   const name = input.name.toLowerCase().trim();
   const displayName = input.displayName ?? input.name.trim();
+  const entityType = (input.entityType ?? "unknown").toLowerCase().trim();
 
-  const compositeId = `entity:${name}`;
-
-  // Check existing to increment mentionCount
-  let mentionCount = 1;
-  const existingRow = db.prepare(
-    "SELECT structured_json FROM memory_objects WHERE composite_id = ?",
-  ).get(compositeId) as { structured_json: string | null } | undefined;
-  if (existingRow?.structured_json) {
-    try {
-      const parsed = JSON.parse(existingRow.structured_json);
-      mentionCount = (Number(parsed.mentionCount) || 0) + 1;
-    } catch { /* empty */ }
-  }
+  const compositeId = `entity:${entityType}:${name}`;
 
   const mo: MemoryObject = {
     id: compositeId,
@@ -64,9 +53,9 @@ export function upsertEntity(db: GraphDb, input: UpsertEntityInput): UpsertEntit
       name,
       displayName,
       entityType: input.entityType ?? null,
-      mentionCount,
+      mentionCount: 1, // initial value for new entities; updated atomically below for existing
     },
-    canonical_key: `entity::${name}`,
+    canonical_key: `entity::${entityType}::${name}`,
     provenance: {
       source_kind: "extraction",
       source_id: compositeId,
@@ -85,6 +74,27 @@ export function upsertEntity(db: GraphDb, input: UpsertEntityInput): UpsertEntit
   };
 
   const result = upsertMemoryObject(db, mo);
+
+  logEvidence(db, {
+    scopeId: 1,
+    objectType: "entity",
+    objectId: result.moId,
+    eventType: result.isNew ? "create" : "update",
+    actor: input.actor ?? "system",
+    runId: input.runId,
+    payload: { name, entityType, displayName },
+  });
+
+  // Atomic mentionCount increment — avoids read-increment-write race under concurrent access
+  if (!result.isNew) {
+    db.prepare(
+      `UPDATE memory_objects SET structured_json = json_set(
+        structured_json,
+        '$.mentionCount',
+        COALESCE(json_extract(structured_json, '$.mentionCount'), 0) + 1
+      ) WHERE id = ?`,
+    ).run(result.moId);
+  }
 
   invalidateAwarenessCache();
   return { entityId: result.moId, isNew: result.isNew };
@@ -165,8 +175,28 @@ export function deleteGraphDataForSource(
       mentionsDeleted = Number(deleteResult.changes);
     } catch { /* non-fatal */ }
 
+    // Count entities before deletion for accurate reporting
+    let entitiesAffected = 0;
+    try {
+      const countRow = db.prepare(
+        "SELECT COUNT(*) as cnt FROM memory_objects WHERE source_kind = ? AND source_id = ?",
+      ).get(sourceType, sourceId) as { cnt: number } | undefined;
+      entitiesAffected = countRow?.cnt ?? 0;
+    } catch { /* non-fatal */ }
+
     // Delete memory_objects from this source
     deleteMemoryObjectsBySource(db, sourceType, sourceId);
+
+    // Clean up orphaned provenance_links where subject or object no longer exists
+    let orphansRemoved = 0;
+    try {
+      const orphanResult = db.prepare(`
+        DELETE FROM provenance_links
+        WHERE subject_id NOT IN (SELECT composite_id FROM memory_objects)
+          AND object_id NOT IN (SELECT composite_id FROM memory_objects)
+      `).run();
+      orphansRemoved = Number(orphanResult.changes);
+    } catch { /* non-fatal */ }
 
     // Invalidate awareness cache after graph mutations
     invalidateAwarenessCache();
@@ -177,13 +207,13 @@ export function deleteGraphDataForSource(
       objectType: "source",
       objectId: 0,
       eventType: "delete",
-      payload: { sourceType, sourceId, mentionsDeleted },
+      payload: { sourceType, sourceId, mentionsDeleted, entitiesAffected, orphansRemoved },
     });
 
     return {
-      entitiesAffected: 0,
+      entitiesAffected,
       mentionsDeleted,
-      orphansRemoved: 0,
+      orphansRemoved,
     };
   };
 
@@ -220,6 +250,8 @@ export function storeExtractionResult(
       name: result.name,
       displayName: result.name,
       entityType: result.entityType,
+      actor: input.actor,
+      runId: input.runId,
     });
 
     const inserted = insertMention(db, {

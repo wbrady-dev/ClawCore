@@ -41,7 +41,7 @@ export type { SourceInfo };
 
 export interface QueryResult {
   context: string;
-  /** Context with matched query terms highlighted in markdown bold (brief mode only) */
+  /** Context with matched query terms highlighted in markdown bold */
   highlighted?: string;
   sources: SourceInfo[];
   queryInfo: {
@@ -79,7 +79,7 @@ const getVectorDistanceThreshold = () => config.embedding.similarityThreshold;
  * 4. Similarity threshold gate (drop weak results)
  * 5. Smart reranking (skip when top result dominates)
  * 6. Single-source dedup (in brief mode)
- * 7. Output mode: brief (200 tokens) / titles (30 tokens) / full (original)
+ * 7. Output mode: brief (~250 tokens) / titles (~50 tokens) / full (original)
  */
 /** Max query length to prevent abuse / excessive embedding cost */
 const MAX_QUERY_LENGTH = config.query.maxLength;
@@ -121,7 +121,7 @@ export async function query(
   const titlesOnly = options.titlesOnly ?? false;
 
   // === Cache Check ===
-  const ck = cacheKey(queryText, collectionName, { topK, brief, titlesOnly, useReranker, useBm25, doExpand, tokenBudget });
+  const ck = cacheKey(queryText, collectionName, { topK, brief, titlesOnly, useReranker, useBm25, doExpand, tokenBudget, includeParent });
   const cached = getCached<QueryResult>(ck);
   if (cached) {
     recordQuery({
@@ -220,8 +220,9 @@ export async function query(
   const allVectorResults = [];
   const allBm25Results = [];
 
-  // Entity-boosted BM25: for short queries (1-2 words), expand with
+  // Entity-boosted retrieval: for short queries (1-2 words), expand with
   // co-occurring terms from the entity graph (precision guard).
+  // Boost is applied to both BM25 and vector search for consistent results.
   let entityBoostedQuery = queryText;
   if (config.relations.enabled) {
     const wordCount = queryText.trim().split(/\s+/).length;
@@ -229,10 +230,37 @@ export async function query(
       try {
         const graphDb = getGraphDb(config.relations.graphDbPath);
         const lowerQuery = queryText.toLowerCase().trim();
-        const entityCompositeId = `entity:${lowerQuery}`;
-        const entity = graphDb.prepare(
+
+        // Try exact composite_id match first, then fuzzy name match (Issue 3 + 5)
+        // Entity composite_ids use format "entity:{type}:{name}", so exact `entity:{query}` won't match.
+        // Provenance_links.subject_id stores the composite_id from memory_objects.
+        let entity = graphDb.prepare(
           "SELECT id, composite_id FROM memory_objects WHERE kind = 'entity' AND composite_id = ? AND json_extract(structured_json, '$.mentionCount') >= 2",
-        ).get(entityCompositeId) as { id: number; composite_id: string } | undefined;
+        ).get(`entity:${lowerQuery}`) as { id: number; composite_id: string } | undefined;
+
+        if (!entity) {
+          // Fuzzy: match by entity name in structured_json
+          entity = graphDb.prepare(
+            `SELECT id, composite_id FROM memory_objects
+             WHERE kind = 'entity' AND status = 'active'
+               AND json_extract(structured_json, '$.name') = ?
+               AND COALESCE(json_extract(structured_json, '$.mentionCount'), 1) >= 2
+             LIMIT 1`,
+          ).get(lowerQuery) as { id: number; composite_id: string } | undefined;
+        }
+
+        if (!entity) {
+          // Fuzzy LIKE: partial name match (e.g., "orion" matches "project orion")
+          entity = graphDb.prepare(
+            `SELECT id, composite_id FROM memory_objects
+             WHERE kind = 'entity' AND status = 'active'
+               AND content LIKE '%' || ? || '%'
+               AND COALESCE(json_extract(structured_json, '$.mentionCount'), 1) >= 2
+             ORDER BY COALESCE(json_extract(structured_json, '$.mentionCount'), 1) DESC
+             LIMIT 1`,
+          ).get(lowerQuery) as { id: number; composite_id: string } | undefined;
+        }
+
         if (entity) {
           const mentions = graphDb.prepare(
             "SELECT json_extract(metadata, '$.context_terms') as context_terms FROM provenance_links WHERE subject_id = ? AND predicate = 'mentioned_in' AND json_extract(metadata, '$.context_terms') IS NOT NULL AND json_extract(metadata, '$.context_terms') != 'null' LIMIT 5",
@@ -247,8 +275,15 @@ export async function query(
             } catch { /* skip bad JSON */ }
           }
           if (coTerms.size > 0) {
-            entityBoostedQuery = `${queryText} ${[...coTerms].slice(0, 3).join(" ")}`;
+            const boostTerms = [...coTerms].slice(0, 3);
+            entityBoostedQuery = `${queryText} ${boostTerms.join(" ")}`;
             strategy += "+entity_boost";
+
+            // Issue 4: Also embed entity boost terms for vector search
+            try {
+              const boostEmbedding = await embedQuery(entityBoostedQuery);
+              allQueryEmbeddings.push(boostEmbedding);
+            } catch { /* non-fatal: vector boost failure should not break pipeline */ }
           }
         }
       } catch (err) {
@@ -289,16 +324,26 @@ export async function query(
   }
   const dedupedVectorResults = Array.from(bestByChunk.values());
 
+  // === Deduplicate BM25 results by chunkId (keep best rank) ===
+  const bestBm25ByChunk = new Map<string, (typeof allBm25Results)[number]>();
+  for (const r of allBm25Results) {
+    const prev = bestBm25ByChunk.get(r.chunkId);
+    if (!prev || r.rank < prev.rank) {
+      bestBm25ByChunk.set(r.chunkId, r);
+    }
+  }
+  const dedupedBm25Results = Array.from(bestBm25ByChunk.values());
+
   // === Similarity Threshold Gate ===
   // Filter out results with poor vector distance (likely irrelevant)
   const goodVectorResults = dedupedVectorResults.filter((r) => r.distance < getVectorDistanceThreshold());
 
   // === Hybrid Merge ===
   let candidateChunkIds: string[];
-  if (allBm25Results.length > 0) {
+  if (dedupedBm25Results.length > 0) {
     const hybrid = reciprocalRankFusion(
       goodVectorResults,
-      allBm25Results,
+      dedupedBm25Results,
     );
     candidateChunkIds = hybrid.slice(0, retrieveCount).map((r) => r.chunkId);
     strategy += "+hybrid";
@@ -336,7 +381,8 @@ export async function query(
   }
 
   // === Titles-Only Mode ===
-  if (titlesOnly) {
+  // Only enter titles mode if brief is NOT set (brief takes precedence, matching CLI behavior)
+  if (titlesOnly && !brief) {
     const titles = packTitles(chunkData);
     const result: QueryResult = {
       context: titles.text,
@@ -370,7 +416,8 @@ export async function query(
   // Use post-gate (goodVectorResults) for skip decision — pre-gate results include irrelevant matches
   const shouldSkipRerank = useReranker && config.reranker.smartSkip && chunkData.length >= 2 && shouldSkipReranking(goodVectorResults);
 
-  if (useReranker && chunkData.length > 0 && !shouldSkipRerank && !noGoodVectors) {
+  // Skip reranking when there's only 1 result — nothing to rerank against, saves latency
+  if (useReranker && chunkData.length > 1 && !shouldSkipRerank && !noGoodVectors) {
     const rerankCandidateCount = Math.min(chunkData.length, config.reranker.topK);
     emitPipelineEvent("query.rerank", { query: queryText, candidates: rerankCandidateCount });
     const rerankTexts = chunkData.slice(0, rerankCandidateCount).map((c) =>
@@ -383,7 +430,7 @@ export async function query(
     rankedChunks = rerankResults
       // Skip threshold filtering when using fallback scores (all scores are 1.0)
       // Filter out NaN scores from malformed reranker responses
-      .filter((r) => r.index >= 0 && r.index < chunkData.length && !isNaN(r.score) && (isFallback || r.score >= scoreThreshold))
+      .filter((r) => r.index >= 0 && r.index < chunkData.length && Number.isFinite(r.score) && (isFallback || r.score >= scoreThreshold))
       .map((r) => ({
         chunkId: chunkData[r.index].id,
         text: chunkData[r.index].text,
@@ -394,7 +441,7 @@ export async function query(
       }));
     strategy += isFallback ? "+rerank-fallback" : "+rerank";
     // Track rerank tokens (query + all candidate texts)
-    const rerankTokens = estimateTokens(queryText) + chunkData.reduce((s, c) => s + estimateTokens(c.text), 0);
+    const rerankTokens = estimateTokens(queryText) + chunkData.slice(0, rerankCandidateCount).reduce((s, c) => s + estimateTokens(c.text), 0);
     trackTokens("rerank", rerankTokens);
   } else {
     fallbackScores = true;
@@ -431,14 +478,17 @@ export async function query(
   let sources: SourceInfo[];
 
   if (brief) {
-    // Brief: extract relevant sentences, ~200 tokens
+    // Brief: extract relevant sentences, ~250 tokens (up to 500 if user sets explicit budget)
     const briefInput: BriefInput[] = topChunks.map((c) => ({
       text: c.text,
       sourcePath: c.sourcePath,
       collectionName: c.collectionName,
       score: c.score,
     }));
-    const briefBudget = Math.min(tokenBudget, 250);
+    // If the user explicitly set a token budget, allow up to 500; otherwise cap at 250
+    const briefBudget = options.tokenBudget != null
+      ? Math.min(tokenBudget, 500)
+      : Math.min(tokenBudget, 250);
     const briefResult = extractBrief(queryText, briefInput, briefBudget);
     context = briefResult.text;
     highlighted = briefResult.highlighted;
@@ -468,8 +518,9 @@ export async function query(
     strategy += "+brief";
   } else {
     // Full: rich citations with source attribution
-    const packed = packContext(topChunks, tokenBudget);
+    const packed = packContext(topChunks, tokenBudget, queryText);
     context = packed.context;
+    highlighted = packed.highlighted;
     tokensUsed = packed.tokensUsed;
     chunksReturned = packed.chunksUsed;
     // Preserve per-source collection from packer (don't overwrite with the query-level collectionName)

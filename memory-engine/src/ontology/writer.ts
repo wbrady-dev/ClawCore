@@ -32,7 +32,43 @@ import type {
 } from "./types.js";
 import { SOURCE_TRUST, PROVISIONAL_CONFIDENCE_FACTOR } from "./types.js";
 import { buildCanonicalKey } from "./canonical.js";
+import { normalizePredicate } from "./canonical.js";
 import { detectSignals, type SignalDetectionResult } from "./correction.js";
+
+// ── Predicate-to-Topic Mapping ──────────────────────────────────────────────
+// Maps normalized predicates from regex extraction to semantic topic labels,
+// making regex canonical keys compatible with LLM-extracted ones.
+// Without this, regex produces "claim::staging::uses" while LLM produces
+// "claim::staging::database" — duplicates instead of supersession.
+
+const PREDICATE_TO_TOPIC: Record<string, string> = {
+  uses: "technology",
+  runs_on: "technology",
+  powered_by: "technology",
+  built_with: "technology",
+  reports_to: "manager",
+  manages: "manager",
+  works_under: "manager",
+  status: "status",
+  health: "status",
+  located_at: "location",
+  based_in: "location",
+  lives_in: "location",
+  region: "location",
+  owns: "ownership",
+  works_at: "employer",
+  married_to: "spouse",
+  name: "name",
+  works_with: "collaborator",
+  port: "port",
+  version: "version",
+};
+
+/** Derive a topic from a predicate for regex-extracted claims. */
+function deriveTopicFromPredicate(predicate: string): string | undefined {
+  const normalized = normalizePredicate(predicate);
+  return PREDICATE_TO_TOPIC[normalized];
+}
 
 // ── Writer Output ───────────────────────────────────────────────────────────
 
@@ -151,12 +187,15 @@ export async function understandMessage(
       const { extractClaimsFromUserExplicit } = await import("../relations/claim-extract.js");
       const claims = extractClaimsFromUserExplicit(text, sourceId);
       for (const c of claims) {
-        const obj = makeObject("claim", `${c.claim.subject} ${c.claim.predicate}: ${c.claim.objectText}`, {
-          structured: {
+        const topic = deriveTopicFromPredicate(c.claim.predicate);
+        const structured: Record<string, unknown> = {
             subject: c.claim.subject,
             predicate: c.claim.predicate,
             objectText: c.claim.objectText,
-          },
+        };
+        if (topic) structured.topic = topic;
+        const obj = makeObject("claim", `${c.claim.subject} ${c.claim.predicate}: ${c.claim.objectText}`, {
+          structured,
           sourceKind,
           sourceId,
           extractionMethod: "regex",
@@ -180,6 +219,7 @@ export async function understandMessage(
           structured: {
             loopType: l.loopType,
             text: l.text,
+            priority: l.priority,
           },
           sourceKind,
           sourceId,
@@ -267,13 +307,16 @@ export async function understandToolResult(
     const { extractClaimsFromToolResult } = await import("../relations/claim-extract.js");
     const claims = extractClaimsFromToolResult(toolName, resultJson, sourceId);
     for (const c of claims) {
-      const obj = makeObject("claim", `${c.claim.subject} ${c.claim.predicate}: ${c.claim.objectText}`, {
-        structured: {
+      const toolTopic = deriveTopicFromPredicate(c.claim.predicate);
+      const toolStructured: Record<string, unknown> = {
           subject: c.claim.subject,
           predicate: c.claim.predicate,
           objectText: c.claim.objectText,
           valueType: c.claim.valueType,
-        },
+      };
+      if (toolTopic) toolStructured.topic = toolTopic;
+      const obj = makeObject("claim", `${c.claim.subject} ${c.claim.predicate}: ${c.claim.objectText}`, {
+        structured: toolStructured,
         sourceKind: "tool_result",
         sourceId,
         extractionMethod: "tool_json",

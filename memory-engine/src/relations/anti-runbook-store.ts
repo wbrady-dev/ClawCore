@@ -237,3 +237,70 @@ export function getAntiRunbookEvidence(
 
   return [];
 }
+
+/**
+ * Infer an anti-runbook from consecutive failed attempts for a tool.
+ * If minFailures consecutive failures exist (most recent N attempts are all failures),
+ * creates/updates an anti-runbook with the failure pattern.
+ */
+export function inferAntiRunbookFromAttempts(
+  db: GraphDb,
+  scopeId: number,
+  toolName: string,
+  opts?: { minFailures?: number },
+): { antiRunbookId: number; inferred: boolean } | null {
+  const minFailures = opts?.minFailures ?? 3;
+
+  // Query the N most recent attempts (any status) to check for consecutive failures
+  const recentAttempts = db.prepare(`
+    SELECT id, composite_id, structured_json FROM memory_objects
+    WHERE scope_id = ? AND kind = 'attempt' AND status = 'active'
+      AND structured_json LIKE ? ESCAPE '\\'
+    ORDER BY created_at DESC LIMIT ?
+  `).all(scopeId, `%"toolName":"${escapeLikeValue(toolName)}"%`, minFailures) as Array<{
+    id: number;
+    composite_id: string;
+    structured_json: string | null;
+  }>;
+
+  if (recentAttempts.length < minFailures) return null;
+
+  // All N most recent must be failures (consecutive check)
+  const allFailures = recentAttempts.every((a) => {
+    const parsed = safeParseStructured(a.structured_json);
+    return parsed.status === "failure";
+  });
+  if (!allFailures) return null;
+
+  // Build failure pattern from error texts
+  const errorTexts = recentAttempts
+    .map((a) => {
+      const parsed = safeParseStructured(a.structured_json);
+      return String(parsed.errorText ?? parsed.outputSummary ?? "");
+    })
+    .filter((t) => t.length > 0);
+  const failurePattern = errorTexts.length > 0 ? errorTexts[0] : `${toolName} repeated failure`;
+  const antiRunbookKey = `auto:${toolName}:${failurePattern.slice(0, 50).toLowerCase().replace(/\s+/g, "-")}`;
+
+  const { antiRunbookId, isNew } = upsertAntiRunbook(db, {
+    scopeId,
+    antiRunbookKey,
+    toolName,
+    failurePattern,
+    description: `Auto-inferred from ${recentAttempts.length} consecutive failures`,
+    failureCount: recentAttempts.length,
+    confidence: 0.6,
+  });
+
+  // Link attempts as evidence
+  for (const a of recentAttempts) {
+    addAntiRunbookEvidence(db, antiRunbookId, {
+      attemptId: a.id,
+      sourceType: "attempt",
+      sourceId: a.composite_id ?? String(a.id),
+      evidenceRole: "failure",
+    });
+  }
+
+  return { antiRunbookId, inferred: isNew };
+}

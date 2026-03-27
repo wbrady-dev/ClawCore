@@ -10,6 +10,7 @@ import { registerDocumentRoutes } from "./document.routes.js";
 import { registerResetRoutes } from "./reset.routes.js";
 import { registerGraphRoutes } from "./graph.routes.js";
 import { registerEventStreamRoute } from "./event-stream.routes.js";
+import { registerGraphObjectRoutes } from "./graph-objects.routes.js";
 
 // All routes are registered at the root prefix (no /api/v1 prefix).
 // If versioning is needed in the future, add a Fastify prefix option here.
@@ -25,5 +26,6 @@ export async function registerRoutes(server: FastifyInstance, onShutdown?: () =>
   registerDocumentRoutes(server);
   registerResetRoutes(server);
   registerGraphRoutes(server);
+  registerGraphObjectRoutes(server);
   registerEventStreamRoute(server);
 }

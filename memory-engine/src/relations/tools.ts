@@ -13,7 +13,7 @@ import { jsonResult } from "../tools/common.js";
 import { escapeLike } from "../store/full-text-fallback.js";
 import { getClaimsWithEvidence } from "./claim-store.js";
 import { getActiveDecisions, getDecisionHistory } from "./decision-store.js";
-import { getOpenLoops } from "./loop-store.js";
+import { getOpenLoops, closeLoop, updateLoop } from "./loop-store.js";
 import { getAttemptHistory, getToolSuccessRate } from "./attempt-store.js";
 import { getAntiRunbooks } from "./anti-runbook-store.js";
 import { applyDecay } from "./decay.js";
@@ -23,6 +23,8 @@ import { getAwarenessStats } from "./eval.js";
 import { compileContextCapsules } from "./context-compiler.js";
 import { getRelationGraph } from "./relation-store.js";
 import { synthesizeScope } from "./synthesis.js";
+import { safeParseStructured } from "../ontology/json-utils.js";
+import { updateMemoryObjectStatus } from "../ontology/mo-store.js";
 import type { LcmContextEngine } from "../engine.js";
 import type { LcmConfig } from "../db/config.js";
 import { getLcmDbFeatures } from "../db/features.js";
@@ -228,6 +230,67 @@ export function createCcLoopsTool(input: { deps: LcmDependencies; graphDb: Graph
 }
 
 // ---------------------------------------------------------------------------
+// cc_manage_loop — close, update, or change loop status/priority
+// ---------------------------------------------------------------------------
+
+const CcManageLoopSchema = Type.Object({
+  action: Type.String({ description: "Action: close, update" }),
+  loop_id: Type.Number({ description: "Loop ID (numeric) to close or update" }),
+  priority: Type.Optional(Type.Number({ description: "New priority (0-10)" })),
+  owner: Type.Optional(Type.String({ description: "New owner" })),
+  waiting_on: Type.Optional(Type.String({ description: "What/who this loop is waiting on" })),
+  status: Type.Optional(Type.String({ description: "Loop status: open, blocked, closed, stale" })),
+});
+
+export function createCcManageLoopTool(input: { deps: LcmDependencies; graphDb: GraphDb }): AnyAgentTool {
+  return {
+    name: "cc_manage_loop",
+    label: "ThreadClaw Manage Loop",
+    description:
+      "Close or update an open loop. Use action='close' to mark a loop done, " +
+      "or action='update' to change priority, owner, waiting_on, or status.",
+    parameters: CcManageLoopSchema,
+    async execute(_toolCallId, params) {
+      const p = params as Record<string, unknown>;
+      const action = typeof p.action === "string" ? p.action.trim() : "";
+      const loopId = typeof p.loop_id === "number" ? Math.trunc(p.loop_id) : 0;
+
+      if (!loopId) return jsonResult({ error: "loop_id is required" });
+
+      try {
+        if (action === "close") {
+          closeLoop(input.graphDb, loopId);
+          return {
+            content: [{ type: "text", text: `Loop #${loopId} closed.` }],
+            details: { loopId, action: "close" },
+          };
+        }
+
+        if (action === "update") {
+          const updates: Record<string, unknown> = {};
+          if (typeof p.priority === "number") updates.priority = Math.min(10, Math.max(0, Math.trunc(p.priority)));
+          if (typeof p.waiting_on === "string") updates.waitingOn = p.waiting_on.trim();
+          if (typeof p.status === "string") updates.status = p.status.trim();
+          if (typeof p.owner === "string") updates.owner = p.owner.trim();
+
+          updateLoop(input.graphDb, { loopId, ...updates } as any);
+
+          const changed = Object.keys(updates);
+          return {
+            content: [{ type: "text", text: `Loop #${loopId} updated: ${changed.join(", ")}.` }],
+            details: { loopId, action: "update", changed },
+          };
+        }
+
+        return jsonResult({ error: `Unknown action "${action}". Use "close" or "update".` });
+      } catch (err) {
+        return jsonResult({ error: err instanceof Error ? err.message : String(err) });
+      }
+    },
+  };
+}
+
+// ---------------------------------------------------------------------------
 // cc_attempts — tool outcome history
 // ---------------------------------------------------------------------------
 
@@ -277,7 +340,7 @@ export function createCcAttemptsTool(input: { deps: LcmDependencies; graphDb: Gr
 
 const CcBranchSchema = Type.Object({
   scope_id: Type.Optional(Type.Number({ description: "Scope ID (default: 1)" })),
-  action: Type.Optional(Type.String({ description: "Action: list (default), create, discard, promote" })),
+  action: Type.Optional(Type.String({ description: "Action: list (default), create, discard, promote, view" })),
   branch_type: Type.Optional(Type.String({ description: "Branch type (for create)" })),
   branch_key: Type.Optional(Type.String({ description: "Branch key (for create)" })),
   branch_id: Type.Optional(Type.Number({ description: "Branch ID (for discard/promote)" })),
@@ -330,6 +393,31 @@ export function createCcBranchTool(input: { deps: LcmDependencies; graphDb: Grap
           }
           promoteBranch(input.graphDb, branchId);
           return { content: [{ type: "text", text: `Branch #${branchId} promoted. ${check.reason}` }], details: { canPromote: true, branchId } };
+        }
+
+        if (action === "view") {
+          const branchId = typeof p.branch_id === "number" ? Math.trunc(p.branch_id) : 0;
+          if (!branchId) return jsonResult({ error: "branch_id required for view" });
+          const rows = input.graphDb.prepare(
+            "SELECT id, composite_id, kind, content, confidence FROM memory_objects WHERE branch_id = ? AND status = 'active' ORDER BY kind, updated_at DESC",
+          ).all(branchId) as Array<{ id: number; composite_id: string; kind: string; content: string; confidence: number }>;
+          if (rows.length === 0) {
+            return { content: [{ type: "text", text: `Branch #${branchId} has no active objects.` }], details: { branchId, count: 0 } };
+          }
+          // Group by kind
+          const grouped: Record<string, typeof rows> = {};
+          for (const r of rows) {
+            (grouped[r.kind] ??= []).push(r);
+          }
+          const lines: string[] = [`Branch #${branchId}: ${rows.length} active object(s)\n`];
+          for (const [kind, items] of Object.entries(grouped)) {
+            lines.push(`── ${kind} (${items.length}) ──`);
+            for (const item of items.slice(0, 20)) {
+              lines.push(`  [${item.composite_id}] conf=${item.confidence.toFixed(2)}: ${item.content.substring(0, 100)}`);
+            }
+            lines.push("");
+          }
+          return { content: [{ type: "text", text: lines.join("\n") }], details: { branchId, count: rows.length, kinds: Object.keys(grouped) } };
         }
 
         // Default: list
@@ -597,6 +685,7 @@ export function createCcDiagnosticsTool(input: {
 const CcMemorySchema = Type.Object({
   query: Type.String({ description: "What to find or recall — a question, topic, name, or keyword" }),
   scope: Type.Optional(Type.String({ description: "Optional: 'all' to search across all conversations (default: current)" })),
+  scope_id: Type.Optional(Type.Number({ description: "Scope ID (default: 1 = global)" })),
 });
 
 /**
@@ -629,6 +718,7 @@ export function createCcMemoryTool(input: {
       const p = params as Record<string, unknown>;
       const query = typeof p.query === "string" ? p.query.trim() : "";
       const searchAll = p.scope === "all";
+      const scopeId = typeof p.scope_id === "number" ? Math.trunc(p.scope_id) : 1;
 
       if (!query) return jsonResult({ error: "query is required" });
 
@@ -761,7 +851,7 @@ export function createCcMemoryTool(input: {
         // ── 3b. Search entity-to-entity relations (provenance_links) ──
         {
           try {
-            const allRels = getRelationGraph(db, 1, { limit: 30 });
+            const allRels = getRelationGraph(db, scopeId, { limit: 30 });
 
             if (allRels.length > 0) {
               // Score relations: those matching query terms sort first, rest follow
@@ -954,6 +1044,144 @@ export function createCcMemoryTool(input: {
 }
 
 // ═══════════════════════════════════════════════════════════════════
+// cc_state — aggregated state view for a subject
+// ═══════════════════════════════════════════════════════════════════
+
+const CcStateSchema = Type.Object({
+  subject: Type.String({ description: "Subject or keyword to look up (entity name, topic, etc.)" }),
+  scope_id: Type.Optional(Type.Number({ description: "Scope ID (default: 1 = global)" })),
+});
+
+export function createCcStateTool(input: {
+  deps: LcmDependencies;
+  graphDb: GraphDb;
+}): AnyAgentTool {
+  return {
+    name: "cc_state",
+    label: "ThreadClaw State",
+    description:
+      "Get the complete current state for a subject — aggregates all claims, decisions, " +
+      "relations, invariants, loops, and conflicts into one view. Use this when you need " +
+      "a full picture of everything ThreadClaw knows about a topic or entity.",
+    parameters: CcStateSchema,
+    async execute(_toolCallId, params) {
+      const p = params as Record<string, unknown>;
+      const subject = typeof p.subject === "string" ? p.subject.trim() : "";
+      const scopeId = typeof p.scope_id === "number" ? Math.trunc(p.scope_id) : 1;
+
+      if (!subject) return jsonResult({ error: "subject is required" });
+
+      try {
+        const db = input.graphDb;
+        const searchTerms = subject.toLowerCase().split(/\s+/).filter((t) => t.length > 1);
+
+        // Build search clause — FTS5 or LIKE fallback
+        const fts = buildFtsClause(db, searchTerms);
+        const searchClause = fts
+          ? fts.clause
+          : searchTerms.map(() => "(content LIKE ? ESCAPE '\\' OR structured_json LIKE ? ESCAPE '\\')").join(" OR ");
+        const searchArgs = fts
+          ? fts.args
+          : searchTerms.flatMap((t) => [`%${escapeLike(t)}%`, `%${escapeLike(t)}%`]);
+
+        // Query all active memory objects matching subject across all kinds
+        const rows = db.prepare(`
+          SELECT id, kind, content, confidence, status, created_at, structured_json
+          FROM memory_objects
+          WHERE scope_id = ? AND branch_id = 0 AND status = 'active'
+            AND (${searchClause})
+          ORDER BY kind, confidence DESC
+          LIMIT 100
+        `).all(scopeId, ...searchArgs) as Array<{
+          id: number; kind: string; content: string; confidence: number;
+          status: string; created_at: string; structured_json: string | null;
+        }>;
+
+        if (rows.length === 0) {
+          return { content: [{ type: "text", text: `No state found for "${subject}".` }], details: { count: 0 } };
+        }
+
+        // Group by kind
+        const groups: Record<string, typeof rows> = {};
+        for (const r of rows) {
+          (groups[r.kind] ??= []).push(r);
+        }
+
+        const sections: string[] = [`State for "${subject}" (${rows.length} objects):\n`];
+
+        // Render each kind
+        const kindOrder = ["claim", "decision", "invariant", "conflict", "loop", "relation", "procedure", "entity"];
+        for (const kind of kindOrder) {
+          const items = groups[kind];
+          if (!items || items.length === 0) continue;
+
+          sections.push(`── ${kind.toUpperCase()}S (${items.length}) ──`);
+          for (const item of items.slice(0, 15)) {
+            const s = safeParseStructured(item.structured_json);
+
+            switch (kind) {
+              case "claim":
+                sections.push(`  [claim] ${s.subject ?? "?"} ${s.predicate ?? "?"}: ${s.objectText ?? item.content} (conf=${item.confidence.toFixed(2)})`);
+                break;
+              case "decision":
+                sections.push(`  [decision] ${s.topic ?? "?"}: ${s.decisionText ?? item.content}`);
+                break;
+              case "invariant":
+                sections.push(`  [invariant:${s.severity ?? "?"}] ${s.description ?? item.content}`);
+                break;
+              case "conflict": {
+                const sideA = s.objectIdA ?? "?";
+                const sideB = s.objectIdB ?? "?";
+                sections.push(`  [conflict] ${sideA} vs ${sideB} (${item.status}): ${item.content}`);
+                break;
+              }
+              case "loop":
+                sections.push(`  [loop:${s.loopType ?? "?"}] ${s.text ?? item.content} (priority=${s.priority ?? 0})`);
+                break;
+              case "relation":
+                sections.push(`  [relation] ${s.subject_name ?? s.subjectName ?? "?"} ${s.predicate ?? "?"} ${s.object_name ?? s.objectName ?? "?"}`);
+                break;
+              case "procedure": {
+                const isNeg = s.isNegative === true || s.isNegative === "true";
+                const label = isNeg ? "anti-runbook" : "runbook";
+                sections.push(`  [${label}] ${s.toolName ?? "?"}: ${s.failurePattern ?? s.pattern ?? item.content}`);
+                break;
+              }
+              case "entity":
+                sections.push(`  [entity] ${s.displayName ?? s.name ?? item.content} (${s.type ?? "unknown"})`);
+                break;
+              default:
+                sections.push(`  [${kind}] ${item.content}`);
+            }
+          }
+          if (items.length > 15) {
+            sections.push(`  ... and ${items.length - 15} more`);
+          }
+          sections.push("");
+        }
+
+        // Any remaining kinds not in kindOrder
+        for (const [kind, items] of Object.entries(groups)) {
+          if (kindOrder.includes(kind)) continue;
+          sections.push(`── ${kind.toUpperCase()}S (${items.length}) ──`);
+          for (const item of items.slice(0, 10)) {
+            sections.push(`  [${kind}] ${item.content}`);
+          }
+          sections.push("");
+        }
+
+        return {
+          content: [{ type: "text", text: sections.join("\n") }],
+          details: { count: rows.length, kinds: Object.fromEntries(Object.entries(groups).map(([k, v]) => [k, v.length])) },
+        };
+      } catch (err) {
+        return jsonResult({ error: err instanceof Error ? err.message : String(err) });
+      }
+    },
+  };
+}
+
+// ═══════════════════════════════════════════════════════════════════
 // cc_synthesize — on-demand retrospective scope synthesis
 // ═══════════════════════════════════════════════════════════════════
 
@@ -996,6 +1224,150 @@ export function createCcSynthesizeTool(input: {
         return {
           content: [{ type: "text", text: result }],
           details: { scopeId, synthesized: true },
+        };
+      } catch (err) {
+        return jsonResult({ error: err instanceof Error ? err.message : String(err) });
+      }
+    },
+  };
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// cc_conflicts — view and resolve TruthEngine conflicts
+// ═══════════════════════════════════════════════════════════════════
+
+const CcConflictsSchema = Type.Object({
+  action: Type.Optional(
+    Type.Union([Type.Literal("list"), Type.Literal("resolve")], {
+      description: "Action: 'list' (default) or 'resolve'",
+    }),
+  ),
+  scope_id: Type.Optional(
+    Type.Number({ description: "Scope ID (default: 1 = global)" }),
+  ),
+  conflict_id: Type.Optional(
+    Type.String({ description: "Composite ID of the conflict to resolve (required for resolve)" }),
+  ),
+  winner_id: Type.Optional(
+    Type.String({ description: "Composite ID of the winning side (required for resolve)" }),
+  ),
+  limit: Type.Optional(
+    Type.Number({ description: "Max conflicts to return (default: 20)", minimum: 1, maximum: 100 }),
+  ),
+});
+
+export function createCcConflictsTool(input: {
+  deps: LcmDependencies;
+  graphDb: GraphDb;
+}): AnyAgentTool {
+  return {
+    name: "cc_conflicts",
+    label: "ThreadClaw Conflicts",
+    description:
+      "List active TruthEngine conflicts or resolve them. Conflicts are created when " +
+      "two memory objects with the same canonical key have contradictory values. " +
+      "Use action='resolve' with conflict_id and winner_id to pick a winner.",
+    parameters: CcConflictsSchema,
+    async execute(_toolCallId, params) {
+      const p = params as Record<string, unknown>;
+      const action = typeof p.action === "string" ? p.action : "list";
+      const scopeId = typeof p.scope_id === "number" ? Math.trunc(p.scope_id) : 1;
+      const limit = typeof p.limit === "number" ? Math.min(100, Math.max(1, Math.trunc(p.limit))) : 20;
+
+      try {
+        if (action === "resolve") {
+          const conflictId = typeof p.conflict_id === "string" ? p.conflict_id.trim() : "";
+          const winnerId = typeof p.winner_id === "string" ? p.winner_id.trim() : "";
+          if (!conflictId || !winnerId) {
+            return jsonResult({ error: "resolve requires both conflict_id and winner_id" });
+          }
+
+          // Load the conflict to find both sides
+          const conflictRow = input.graphDb.prepare(
+            "SELECT composite_id, structured_json FROM memory_objects WHERE composite_id = ? AND kind = 'conflict'",
+          ).get(conflictId) as { composite_id: string; structured_json: string | null } | undefined;
+
+          if (!conflictRow) {
+            return jsonResult({ error: `Conflict not found: ${conflictId}` });
+          }
+
+          let structured: Record<string, unknown> = {};
+          if (conflictRow.structured_json) {
+            try { structured = JSON.parse(conflictRow.structured_json); } catch { /* ignore */ }
+          }
+
+          const objectIdA = String(structured.objectIdA ?? "");
+          const objectIdB = String(structured.objectIdB ?? "");
+          const loserId = winnerId === objectIdA ? objectIdB : objectIdA;
+
+          if (winnerId !== objectIdA && winnerId !== objectIdB) {
+            return jsonResult({ error: `winner_id must be one of: ${objectIdA}, ${objectIdB}` });
+          }
+
+          // Mark conflict as resolved
+          updateMemoryObjectStatus(input.graphDb, conflictId, "retracted");
+          // Mark loser as superseded
+          updateMemoryObjectStatus(input.graphDb, loserId, "superseded");
+
+          return {
+            content: [{ type: "text", text: `Conflict resolved. Winner: ${winnerId}, loser ${loserId} marked superseded.` }],
+            details: { conflictId, winnerId, loserId, resolved: true },
+          };
+        }
+
+        // Default: list active conflicts
+        const rows = input.graphDb.prepare(`
+          SELECT composite_id, content, structured_json, confidence, status, created_at
+          FROM memory_objects
+          WHERE kind = 'conflict'
+            AND status IN ('active', 'needs_confirmation')
+            AND scope_id = ?
+          ORDER BY created_at DESC
+          LIMIT ?
+        `).all(scopeId, limit) as Array<Record<string, unknown>>;
+
+        if (rows.length === 0) {
+          return { content: [{ type: "text", text: "No active conflicts." }], details: { count: 0 } };
+        }
+
+        const lines: string[] = [`${rows.length} active conflict(s):\n`];
+        for (const row of rows) {
+          const id = String(row.composite_id ?? "");
+          const content = String(row.content ?? "");
+          const status = String(row.status ?? "active");
+          const created = String(row.created_at ?? "");
+
+          let structured: Record<string, unknown> = {};
+          if (typeof row.structured_json === "string") {
+            try { structured = JSON.parse(row.structured_json); } catch { /* ignore */ }
+          }
+
+          const idA = String(structured.objectIdA ?? "?");
+          const idB = String(structured.objectIdB ?? "?");
+          const conf = Number(row.confidence ?? 0);
+
+          lines.push(`[${status}] ${content}`);
+          lines.push(`  id: ${id}`);
+          lines.push(`  sides: A=${idA}  B=${idB}`);
+          lines.push(`  confidence: ${conf.toFixed(2)}  created: ${created}`);
+
+          // Fetch confidence for each side
+          for (const sideId of [idA, idB]) {
+            if (sideId === "?") continue;
+            const sideRow = input.graphDb.prepare(
+              "SELECT content, confidence, status FROM memory_objects WHERE composite_id = ? LIMIT 1",
+            ).get(sideId) as { content: string; confidence: number; status: string } | undefined;
+            if (sideRow) {
+              const snippet = String(sideRow.content ?? "").substring(0, 80);
+              lines.push(`    ${sideId}: conf=${Number(sideRow.confidence).toFixed(2)} status=${sideRow.status} "${snippet}"`);
+            }
+          }
+          lines.push("");
+        }
+
+        return {
+          content: [{ type: "text", text: lines.join("\n") }],
+          details: { count: rows.length },
         };
       } catch (err) {
         return jsonResult({ error: err instanceof Error ? err.message : String(err) });

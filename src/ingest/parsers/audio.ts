@@ -9,14 +9,15 @@
  * Transcription is CPU/GPU intensive and can take 30-120s per file.
  */
 
-// TODO: execFileSync blocks the event loop. Consider using execFile (async) with
-// util.promisify for better server responsiveness during transcription.
 import { basename, join } from "path";
-import { execFileSync } from "child_process";
+import { execFile } from "child_process";
+import { promisify } from "util";
 import { existsSync, readFileSync, rmSync, mkdtempSync } from "fs";
 import { tmpdir } from "os";
 import type { ParsedDocument, DocMetadata } from "./index.js";
 import { getSystemPythonCmd } from "../../tui/platform.js";
+
+const execFileAsync = promisify(execFile);
 
 const WHISPER_MODELS = new Set([
   "tiny", "base", "small", "medium", "large", "large-v2", "large-v3", "turbo",
@@ -28,15 +29,15 @@ const WHISPER_MODELS = new Set([
 let _whisperAvailable: boolean | null = null;
 let _whisperMethod: "cli" | "python-m" | null = null;
 
-function isWhisperAvailable(): boolean {
+async function isWhisperAvailable(): Promise<boolean> {
   if (_whisperAvailable !== null) return _whisperAvailable;
   try {
-    execFileSync("whisper", ["--help"], { stdio: "pipe", timeout: 10000 });
+    await execFileAsync("whisper", ["--help"], { timeout: 10000 });
     _whisperAvailable = true;
     _whisperMethod = "cli";
   } catch {
     try {
-      execFileSync(getSystemPythonCmd(), ["-m", "whisper", "--help"], { stdio: "pipe", timeout: 10000 });
+      await execFileAsync(getSystemPythonCmd(), ["-m", "whisper", "--help"], { timeout: 10000 });
       _whisperAvailable = true;
       _whisperMethod = "python-m";
     } catch {
@@ -69,7 +70,7 @@ export async function parseAudio(filePath: string): Promise<ParsedDocument> {
     };
   }
 
-  if (!isWhisperAvailable()) {
+  if (!(await isWhisperAvailable())) {
     return {
       text: `[Audio: ${basename(filePath)} — Whisper not installed. Run: pip install openai-whisper]`,
       structure: [],
@@ -94,15 +95,14 @@ export async function parseAudio(filePath: string): Promise<ParsedDocument> {
       "--fp16", "False",
     ];
     const execOpts = {
-      stdio: "pipe" as const,
       timeout: 300000, // 5 min max for large files
       maxBuffer: 50 * 1024 * 1024,
     };
 
     if (_whisperMethod === "python-m") {
-      execFileSync(getSystemPythonCmd(), ["-m", "whisper", ...args], execOpts);
+      await execFileAsync(getSystemPythonCmd(), ["-m", "whisper", ...args], execOpts);
     } else {
-      execFileSync("whisper", args, execOpts);
+      await execFileAsync("whisper", args, execOpts);
     }
 
     // Whisper outputs to <basename>.txt in the output dir

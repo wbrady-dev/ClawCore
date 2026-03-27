@@ -13,6 +13,8 @@ import { parseEpub } from "./epub.js";
 import { parseAudio } from "./audio.js";
 import { ParseError } from "../../utils/errors.js";
 import { extname } from "path";
+import { readFileSync, openSync, readSync, closeSync } from "fs";
+import { logger } from "../../utils/logger.js";
 
 export interface StructureHint {
   type: "heading" | "code_block" | "table" | "page_break" | "section";
@@ -137,12 +139,66 @@ function getDoclingWrapper(ext: string): Parser {
   return _doclingWrapper;
 }
 
+/**
+ * Read the first N bytes of a file for magic-byte validation.
+ * Returns empty buffer on any error (file missing, permission denied, etc.).
+ */
+function readMagicBytes(filePath: string, count: number): Buffer {
+  try {
+    const fd = openSync(filePath, "r");
+    try {
+      const buf = Buffer.alloc(count);
+      readSync(fd, buf, 0, count, 0);
+      return buf;
+    } finally {
+      closeSync(fd);
+    }
+  } catch {
+    return Buffer.alloc(0);
+  }
+}
+
+/** Extensions that require magic-byte validation */
+const MAGIC_BYTE_CHECKS: Record<string, { bytes: Buffer; label: string }> = {
+  ".pdf": { bytes: Buffer.from("%PDF-", "ascii"), label: "PDF" },
+  ".docx": { bytes: Buffer.from([0x50, 0x4B, 0x03, 0x04]), label: "ZIP (DOCX)" },
+  ".pptx": { bytes: Buffer.from([0x50, 0x4B, 0x03, 0x04]), label: "ZIP (PPTX)" },
+  ".epub": { bytes: Buffer.from([0x50, 0x4B, 0x03, 0x04]), label: "ZIP (EPUB)" },
+  ".xlsx": { bytes: Buffer.from([0x50, 0x4B, 0x03, 0x04]), label: "ZIP (XLSX)" },
+};
+
+/**
+ * Validate file magic bytes match the expected format for the extension.
+ * Returns true if valid or if no check is defined for this extension.
+ */
+function validateMagicBytes(filePath: string, ext: string): boolean {
+  const check = MAGIC_BYTE_CHECKS[ext];
+  if (!check) return true; // No check defined — allow
+
+  const header = readMagicBytes(filePath, check.bytes.length);
+  if (header.length === 0) return true; // Can't read — let parser handle the error
+
+  if (!header.subarray(0, check.bytes.length).equals(check.bytes)) {
+    logger.warn(
+      { filePath, expectedFormat: check.label },
+      `Magic bytes mismatch: extension is ${ext} but file header doesn't match ${check.label} format — skipping`,
+    );
+    return false;
+  }
+  return true;
+}
+
 export function getParser(filePath: string): Parser {
   const ext = extname(filePath).toLowerCase();
 
   // Check if it's a code file via LANG_MAP (avoids maintaining duplicate lists)
   if (isCodeFile(ext) && !PARSER_MAP[ext]) {
     PARSER_MAP[ext] = parseCode;
+  }
+
+  // Magic-byte validation for binary formats — prevent misrouted renamed files
+  if (!validateMagicBytes(filePath, ext)) {
+    throw new ParseError(`Magic bytes don't match extension ${ext}`, filePath);
   }
 
   // For complex document formats, try Docling first (layout-aware, multi-language)

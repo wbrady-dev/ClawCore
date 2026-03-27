@@ -26,7 +26,7 @@ Examples:
           collection: opts.collection,
           topK,
           useReranker: false,
-          useBm25: false,
+          useBm25: true,
           expand: false,
         });
 

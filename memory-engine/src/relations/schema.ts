@@ -583,6 +583,7 @@ CREATE INDEX IF NOT EXISTS idx_mo_canonical ON memory_objects(canonical_key, sco
 CREATE INDEX IF NOT EXISTS idx_mo_scope_branch ON memory_objects(scope_id, branch_id, kind);
 CREATE INDEX IF NOT EXISTS idx_mo_source ON memory_objects(source_kind, source_id);
 CREATE INDEX IF NOT EXISTS idx_mo_updated ON memory_objects(updated_at DESC);
+CREATE INDEX IF NOT EXISTS idx_mo_kind_updated ON memory_objects(kind, status, scope_id, updated_at DESC);
 
 CREATE TABLE IF NOT EXISTS provenance_links (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -690,7 +691,7 @@ export function runGraphMigrations(db: GraphDb, dbPath?: string): void {
   if (anyApplied.cnt === 0) {
     db.exec(FRESH_INSTALL_SQL);
     // Mark all migration versions as applied so the legacy chain never runs
-    for (let v = 1; v <= 26; v++) {
+    for (let v = 1; v <= 27; v++) {
       markMigrationApplied(db, v);
     }
     // File permissions
@@ -970,7 +971,7 @@ export function runGraphMigrations(db: GraphDb, dbPath?: string): void {
       SELECT
         'entity:' || id,
         'entity',
-        'entity::' || LOWER(TRIM(name)),
+        'entity::' || LOWER(TRIM(COALESCE(entity_type, 'unknown'))) || '::' || LOWER(TRIM(name)),
         COALESCE(display_name, name),
         json_object(
           'name', name,
@@ -1719,6 +1720,16 @@ export function runGraphMigrations(db: GraphDb, dbPath?: string): void {
       markMigrationApplied(db, 26);
     } catch (migErr) {
       console.warn("[schema] migration v26 failed:", migErr instanceof Error ? migErr.message : String(migErr));
+    }
+  }
+
+  // ── Migration v27: composite index for reader query pattern ──
+  if (!isMigrationApplied(db, 27)) {
+    try {
+      db.exec(`CREATE INDEX IF NOT EXISTS idx_mo_kind_updated ON memory_objects(kind, status, scope_id, updated_at DESC)`);
+      markMigrationApplied(db, 27);
+    } catch (migErr) {
+      console.warn("[schema] migration v27 failed:", migErr instanceof Error ? migErr.message : String(migErr));
     }
   }
 

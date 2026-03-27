@@ -50,6 +50,10 @@ export function getLcmConnection(dbPath: string, busyTimeoutMs = 5000): Database
   db.exec("PRAGMA foreign_keys = ON");
   // Retry on SQLITE_BUSY (configurable via THREADCLAW_MEMORY_BUSY_TIMEOUT_MS)
   db.exec(`PRAGMA busy_timeout = ${Math.floor(busyTimeoutMs)}`);
+  // Performance pragmas (match RAG DB settings)
+  db.exec("PRAGMA synchronous = NORMAL");
+  db.exec("PRAGMA cache_size = -8000"); // 8 MB
+  db.exec("PRAGMA temp_store = MEMORY");
 
   _connections.set(dbPath, { db, refs: 1 });
   return db;

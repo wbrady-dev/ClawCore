@@ -170,7 +170,7 @@ export function decayLoops(db: GraphDb, scopeId: number): number {
     WHERE scope_id = ?
       AND kind = 'loop'
       AND status = 'active'
-      AND created_at < datetime('now', '-' || ? || ' hours')
+      AND COALESCE(updated_at, created_at) < datetime('now', '-' || ? || ' hours')
   `).run(scopeId, maxAgeHours);
 
   if (Number(staled.changes) > 0) {
@@ -214,6 +214,63 @@ export function decayRelations(db: GraphDb, scopeId: number, staleDays = 180): n
 }
 
 /**
+ * Deduplicate active memory objects with the same canonical_key.
+ *
+ * Race conditions can create multiple active objects with the same key.
+ * Keeps the highest-confidence one active and supersedes the rest.
+ */
+export function deduplicateActiveObjects(db: GraphDb, scopeId: number): number {
+  // Find canonical_keys with multiple active entries
+  const dupes = db.prepare(`
+    SELECT canonical_key, COUNT(*) as cnt
+    FROM memory_objects
+    WHERE scope_id = ? AND status = 'active' AND canonical_key IS NOT NULL
+    GROUP BY canonical_key
+    HAVING cnt > 1
+  `).all(scopeId) as Array<{ canonical_key: string; cnt: number }>;
+
+  if (dupes.length === 0) return 0;
+
+  let totalSuperseded = 0;
+
+  for (const { canonical_key } of dupes) {
+    // Get all active objects for this key, ordered by confidence DESC then id DESC (newest wins ties)
+    const rows = db.prepare(`
+      SELECT id FROM memory_objects
+      WHERE scope_id = ? AND canonical_key = ? AND status = 'active'
+      ORDER BY confidence DESC, id DESC
+    `).all(scopeId, canonical_key) as Array<{ id: number }>;
+
+    if (rows.length <= 1) continue;
+
+    // Keep the first (highest confidence), supersede the rest
+    const keepId = rows[0].id;
+    const supersedIds = rows.slice(1).map((r) => r.id);
+
+    for (const id of supersedIds) {
+      db.prepare(`
+        UPDATE memory_objects
+        SET status = 'superseded', superseded_by = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%f', 'now')
+        WHERE id = ? AND status = 'active'
+      `).run(keepId, id);
+      totalSuperseded++;
+    }
+  }
+
+  if (totalSuperseded > 0) {
+    logEvidence(db, {
+      scopeId,
+      objectType: "memory_object",
+      objectId: 0,
+      eventType: "dedup",
+      payload: { duplicateKeysFound: dupes.length, objectsSuperseded: totalSuperseded },
+    });
+  }
+
+  return totalSuperseded;
+}
+
+/**
  * Apply all decay rules for a scope. Call lazily before queries.
  */
 export function applyDecay(
@@ -228,6 +285,7 @@ export function applyDecay(
     decayRunbooks(db, scopeId, staleDays);
     decayLoops(db, scopeId);
     decayRelations(db, scopeId, staleDays);
+    deduplicateActiveObjects(db, scopeId);
   } catch {
     // Non-fatal: decay failure should not block queries
   }

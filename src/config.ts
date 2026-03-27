@@ -42,8 +42,9 @@ function clamp(min: number, max: number, value: number): number {
 
 const hotConfig = {
   // Reranker tuning
-  // 0.0 effectively disables score-based filtering (all results pass). Set > 0 to filter.
-  rerankScoreThreshold: clamp(0, 1, envFloat("RERANK_SCORE_THRESHOLD", 0.0)),
+  // Raw-logit cross-encoders (e.g. bge-reranker-large) commonly produce negative scores
+  // for relevant documents, so the floor must be well below zero to avoid false filtering.
+  rerankScoreThreshold: clamp(-100, 100, envFloat("RERANK_SCORE_THRESHOLD", -10.0)),
   rerankDisabled: envBool("RERANK_DISABLED", false),
   rerankTopK: clamp(1, 200, envInt("RERANK_TOP_K", 20)),
   rerankSmartSkip: envBool("RERANK_SMART_SKIP", true),
@@ -90,7 +91,7 @@ function reloadHotConfig(): void {
       return Number.isFinite(n) ? n : fallback;
     };
 
-    hotConfig.rerankScoreThreshold = clamp(0, 1, getFloat("RERANK_SCORE_THRESHOLD", 0.0));
+    hotConfig.rerankScoreThreshold = clamp(-100, 100, getFloat("RERANK_SCORE_THRESHOLD", -10.0));
     hotConfig.rerankDisabled = getBool("RERANK_DISABLED", false);
     hotConfig.rerankTopK = clamp(1, 200, getInt("RERANK_TOP_K", 20));
     hotConfig.rerankSmartSkip = getBool("RERANK_SMART_SKIP", true);

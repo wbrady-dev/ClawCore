@@ -56,8 +56,8 @@ export function registerQueryRoutes(server: FastifyInstance) {
       titles_only?: boolean;
     };
 
-    if (!queryText || typeof queryText !== "string" || queryText.length > 2000) {
-      return reply.code(400).send({ error: "Invalid query (max 2000 characters)" });
+    if (!queryText || typeof queryText !== "string" || queryText.length > config.query.maxLength) {
+      return reply.code(400).send({ error: `Invalid query (max ${config.query.maxLength} characters)` });
     }
 
     // Byte-length check to prevent oversized multi-byte payloads
@@ -71,6 +71,9 @@ export function registerQueryRoutes(server: FastifyInstance) {
     }
 
     try {
+      // Default to brief mode when neither brief nor titles_only is specified (matches MCP default)
+      const effectiveBrief = brief ?? (titles_only ? false : true);
+
       const result = await query(queryText, {
         collection,
         topK: clampTopK(top_k),
@@ -78,7 +81,7 @@ export function registerQueryRoutes(server: FastifyInstance) {
         useReranker: use_reranker,
         useBm25: use_bm25,
         expand,
-        brief,
+        brief: effectiveBrief,
         titlesOnly: titles_only,
       });
       return reply.send(result);
@@ -99,8 +102,8 @@ export function registerQueryRoutes(server: FastifyInstance) {
       top_k?: number;
     };
 
-    if (!queryText || typeof queryText !== "string" || queryText.length > 2000) {
-      return reply.code(400).send({ error: "Invalid query (max 2000 characters)" });
+    if (!queryText || typeof queryText !== "string" || queryText.length > config.query.maxLength) {
+      return reply.code(400).send({ error: `Invalid query (max ${config.query.maxLength} characters)` });
     }
 
     // Byte-length check

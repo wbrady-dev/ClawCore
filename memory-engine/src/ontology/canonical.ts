@@ -49,6 +49,33 @@ export function normalizePredicate(predicate: string): string {
   return PREDICATE_ALIASES[lower] ?? lower;
 }
 
+/**
+ * Normalize topic labels so abbreviations and synonyms merge into the same
+ * canonical key. "db" → "database", "tech" → "technology", etc.
+ */
+const TOPIC_ALIASES: Record<string, string> = {
+  db: "database", db_technology: "database", rdbms: "database", datastore: "database",
+  tech: "technology", stack: "technology",
+  mgr: "manager", supervisor: "manager", boss: "manager",
+  config: "configuration", cfg: "configuration", settings: "configuration",
+  env: "environment", environ: "environment",
+  repo: "repository", repos: "repository",
+  dir: "directory", folder: "directory", path: "directory",
+  auth: "authentication", authn: "authentication",
+  authz: "authorization",
+  infra: "infrastructure",
+  loc: "location", region: "location", area: "location",
+  lang: "language", programming_language: "language",
+  os: "operating_system", platform: "operating_system",
+  ver: "version", vers: "version",
+  dept: "department", team: "department",
+};
+
+export function normalizeTopic(topic: string): string {
+  const lower = topic.toLowerCase().trim().replace(/\s+/g, "_");
+  return TOPIC_ALIASES[lower] ?? lower;
+}
+
 // ── Per-Kind Key Strategies ─────────────────────────────────────────────────
 
 interface StructuredDecision {
@@ -89,7 +116,7 @@ export function buildCanonicalKey(
       // that groups related claims regardless of predicate wording.
       const s = structured as StructuredClaim | undefined;
       const subject = normalize(s?.subject);
-      const topic = normalize(s?.topic);
+      const topic = s?.topic ? normalizeTopic(s.topic) : "";
       const predicate = s?.predicate ? normalizePredicate(s.predicate) : "";
       const aspect = topic || predicate;
       if (!subject || !aspect) return undefined;
@@ -105,10 +132,12 @@ export function buildCanonicalKey(
     }
 
     case "entity": {
-      // entity::name (lowercased, trimmed)
+      // entity::type::name (type-qualified to prevent cross-type collisions)
       const name = normalize(content);
       if (!name) return undefined;
-      return `entity::${name}`;
+      const s = structured as { entityType?: string | null } | undefined;
+      const entityType = s?.entityType ? s.entityType.toLowerCase().trim() : "unknown";
+      return `entity::${entityType}::${name}`;
     }
 
     case "relation": {

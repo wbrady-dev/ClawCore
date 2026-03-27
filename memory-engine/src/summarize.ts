@@ -635,7 +635,7 @@ function buildDeterministicFallbackSummary(text: string, targetTokens: number): 
     return trimmed;
   }
 
-  return `${trimmed.slice(0, maxChars)}\n[LCM fallback summary; truncated for context management]`;
+  return `[LCM fallback summary; truncated for context management]\n${trimmed.slice(-maxChars)}`;
 }
 
 /**

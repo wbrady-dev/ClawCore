@@ -164,6 +164,9 @@ export function extractFast(
 ): ExtractionResult[] {
   if (!text || text.length === 0) return [];
 
+  // Strip code blocks before entity extraction — code identifiers are not entities
+  text = text.replace(/```[\s\S]*?```/g, '').replace(/`[^`]+`/g, '');
+
   const allResults: ExtractionResult[] = [
     ...extractCapitalized(text),
     ...extractTermsList(text, termsListEntries ?? []),

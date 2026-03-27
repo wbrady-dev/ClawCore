@@ -2,7 +2,7 @@ import type Database from "better-sqlite3";
 import { logger } from "../utils/logger.js";
 import { config } from "../config.js";
 
-const SCHEMA_VERSION = 6;
+const SCHEMA_VERSION = 7;
 
 function getMigrationStatements(): Record<number, string[]> {
   // NOTE: Embedding dimension is baked at migration time. If the dimension changes
@@ -124,6 +124,16 @@ function getMigrationStatements(): Record<number, string[]> {
       `CREATE INDEX IF NOT EXISTS idx_chunk_doc_pos ON chunks(document_id, position)`,
       `CREATE INDEX IF NOT EXISTS idx_doc_collection_time ON documents(collection_id, created_at)`,
       `CREATE INDEX IF NOT EXISTS idx_metadata_kv_doc ON metadata_index(key, value, document_id)`,
+    ],
+
+    7: [
+      // Issue 2: Store text content hash for binary format skip decisions
+      `ALTER TABLE documents ADD COLUMN text_content_hash TEXT`,
+
+      // Issue 3: Replace non-unique index with UNIQUE constraint to prevent
+      // race-condition duplicate documents at same (source_path, collection_id)
+      `DROP INDEX IF EXISTS idx_doc_source`,
+      `CREATE UNIQUE INDEX IF NOT EXISTS idx_doc_source_unique ON documents(source_path, collection_id)`,
     ],
   };
 }

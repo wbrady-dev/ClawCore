@@ -67,12 +67,12 @@ export function getStateAtTime(
     LIMIT 50
   `).all(scopeId, timestamp, timestamp) as Record<string, unknown>[]).map(moRowToLoopRow);
 
-  // Invariants active at timestamp: exclude retracted regardless of updated_at
+  // Invariants active at timestamp: include retracted if updated_at > T (same pattern as superseded)
   const invariants = (db.prepare(`
     SELECT * FROM memory_objects
     WHERE scope_id = ? AND kind = 'invariant' AND created_at <= ?
       AND (status = 'active'
-           OR (status = 'superseded' AND updated_at > ?))
+           OR (status IN ('superseded', 'retracted') AND updated_at > ?))
     ORDER BY CASE json_extract(structured_json, '$.severity')
       WHEN 'critical' THEN 0 WHEN 'error' THEN 1 WHEN 'warning' THEN 2 WHEN 'info' THEN 3 ELSE 4
     END ASC

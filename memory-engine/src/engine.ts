@@ -58,6 +58,10 @@ let _rsmaSuccessCount = 0;
 let _rsmaFailCount = 0;
 const _RSMA_LOG_INTERVAL = 100;
 
+// ── Extraction backpressure ─────────────────────────────────────────────────
+let _activeExtractions = 0;
+const MAX_CONCURRENT_EXTRACTIONS = 3;
+
 // ── NER Circuit Breaker ─────────────────────────────────────────────────────
 let _nerCircuitOpen = false;
 let _nerLastFailure = 0;
@@ -1341,6 +1345,13 @@ export class LcmContextEngine implements ContextEngine {
     // Append to context items so assembler can see it
     await this.summaryStore.appendContextMessage(conversationId, msgRecord.messageId);
 
+    // Generate a run_id for this message processing cycle so all EEL events
+    // from the same ingest can be correlated.
+    const runId = `msg-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+
+    // Derive actor from message role: user messages → 'user', tool results → 'assistant', else 'system'
+    const eeActor: string = stored.role === "user" ? "user" : stored.role === "tool" ? "assistant" : "system";
+
     // Real-time entity extraction — must run BEFORE relation extraction
     // so entity IDs exist in the DB when relations are looked up
     if (this.graphDb && this.config.relationsEnabled && stored.content.length > 5) {
@@ -1354,7 +1365,8 @@ export class LcmContextEngine implements ContextEngine {
           storeExtractionResult(this.graphDb, entities, {
             sourceType: "message",
             sourceId: String(msgRecord.messageId),
-            actor: "system",
+            actor: eeActor,
+            runId,
           });
         }
       } catch (err) {
@@ -1389,7 +1401,8 @@ export class LcmContextEngine implements ContextEngine {
               storeNer(this.graphDb!, nerResults, {
                 sourceType: "message",
                 sourceId: String(msgRecord.messageId),
-                actor: "system",
+                actor: eeActor,
+                runId,
               });
             }
           }
@@ -1415,10 +1428,12 @@ export class LcmContextEngine implements ContextEngine {
         const { withWriteTransaction } = await import("./relations/evidence-log.js");
         const graphDb = this.graphDb;
         const content = stored.content ?? "";
-        const contentLower = content.toLowerCase();
-        const isError = contentLower.includes("error")
-          || contentLower.includes("failed")
-          || contentLower.includes("exception");
+        // Word-boundary-aware error detection: match patterns that indicate
+        // actual errors while excluding false positives like "0 errors found".
+        const falsePositivePattern = /\b(no\s+error|0\s+error|without\s+error|error[\s-]*free|fixed\s+error|resolved\s+error|errors?\s*:\s*0|0\s+errors?\b)/i;
+        const contentWithoutFalsePositives = content.replace(falsePositivePattern, "");
+        const errorPattern = /\b(error\s*:|Error:|ERROR:|failed\s+to\b|failure:|FATAL\b|crash(ed|ing)?\b|exception\s+(thrown|occurred|at)\b|traceback\s*\(|panic:|unhandled\s+exception)/i;
+        const isError = errorPattern.test(contentWithoutFalsePositives);
         const status: "success" | "failure" = isError ? "failure" : "success";
 
         // Redact sensitive data from error text before storing
@@ -1430,12 +1445,21 @@ export class LcmContextEngine implements ContextEngine {
           }
         }
 
+        // Extract inputSummary from the tool call's input/arguments if available
+        let inputSummary: string | undefined;
+        const rawInput = toolMsg.input ?? toolMsg.arguments ?? toolMsg.params;
+        if (rawInput != null) {
+          const inputStr = typeof rawInput === "string" ? rawInput : JSON.stringify(rawInput);
+          inputSummary = inputStr.substring(0, 200);
+        }
+
         withWriteTransaction(graphDb, () => {
           recordAttempt(graphDb, {
             scopeId: DEFAULT_SCOPE_ID,
             toolName: toolName.substring(0, 100),
             status,
             errorText,
+            inputSummary,
             outputSummary: isError ? undefined : content.substring(0, 200),
           });
         });
@@ -1445,6 +1469,14 @@ export class LcmContextEngine implements ContextEngine {
           try {
             const { inferRunbookFromAttempts } = await import("./relations/runbook-store.js");
             inferRunbookFromAttempts(graphDb, 1, toolName.substring(0, 100));
+          } catch { /* non-fatal */ }
+        }
+
+        // Auto-infer anti-runbooks from repeated failures
+        if (status === "failure") {
+          try {
+            const { inferAntiRunbookFromAttempts } = await import("./relations/anti-runbook-store.js");
+            inferAntiRunbookFromAttempts(graphDb, DEFAULT_SCOPE_ID, toolName.substring(0, 100));
           } catch { /* non-fatal */ }
         }
       } catch (err) {
@@ -1535,6 +1567,8 @@ export class LcmContextEngine implements ContextEngine {
               scopeId: DEFAULT_SCOPE_ID,
               sourceType: "message",
               sourceId: String(msgRecord.messageId),
+              actor: eeActor,
+              runId,
             });
           }
 
@@ -1548,6 +1582,8 @@ export class LcmContextEngine implements ContextEngine {
                 decisionText: d.decisionText,
                 sourceType: d.sourceType,
                 sourceId: d.sourceId,
+                actor: eeActor,
+                runId,
               });
             }
 
@@ -1557,6 +1593,7 @@ export class LcmContextEngine implements ContextEngine {
                 scopeId: DEFAULT_SCOPE_ID,
                 loopType: l.loopType,
                 text: l.text,
+                priority: l.priority,
                 sourceType: l.sourceType,
                 sourceId: l.sourceId,
               });
@@ -1606,14 +1643,21 @@ export class LcmContextEngine implements ContextEngine {
     // fire-and-forget async IIFE. Reconciliation runs before store writes
     // so supersession actions apply to the latest objects.
     if (rsmaWillRun) {
+      if (_activeExtractions >= MAX_CONCURRENT_EXTRACTIONS) {
+        console.warn(`[rsma] backpressure: ${_activeExtractions} extractions in flight, skipping extraction for message ${msgRecord.messageId}`);
+      } else {
       const _graphDb = this.graphDb!;
       const _content = stored.content;
       const _messageId = String(msgRecord.messageId);
+      const _role = (stored.role === "assistant" ? "assistant" : "user") as "user" | "assistant";
       const _config = this.config;
       const _deps = this.deps;
+      const _runId = runId;
+      const _eeActor = eeActor;
+      _activeExtractions++;
       (async () => { try {
         const graphDb = _graphDb;
-        const role = "user" as const;
+        const role = _role;
         const extractionMode = _config.relationsExtractionMode ?? "smart";
         const useLlm = extractionMode !== "fast" && _config.relationsDeepExtractionEnabled;
 
@@ -1665,12 +1709,39 @@ export class LcmContextEngine implements ContextEngine {
               knownSubjects = rows.map((r) => r.subj).filter((s) => s && s.length >= 2);
             } catch { /* non-fatal — extraction still works without entity context */ }
 
+            // Query known topics per subject so LLM reuses existing topic labels.
+            const knownTopicsBySubject = new Map<string, string[]>();
+            try {
+              if (knownSubjects.length > 0) {
+                const topicRows = graphDb.prepare(
+                  `SELECT JSON_EXTRACT(structured_json, '$.subject') as subj,
+                          JSON_EXTRACT(structured_json, '$.topic') as topic
+                   FROM memory_objects
+                   WHERE kind = 'claim' AND status = 'active' AND scope_id = ?
+                     AND JSON_EXTRACT(structured_json, '$.topic') IS NOT NULL
+                     AND JSON_EXTRACT(structured_json, '$.subject') IS NOT NULL
+                   ORDER BY updated_at DESC
+                   LIMIT 200`,
+                ).all(_config.relationsScopeId ?? 1) as Array<{ subj: string; topic: string }>;
+                for (const row of topicRows) {
+                  if (!row.subj || !row.topic) continue;
+                  const existing = knownTopicsBySubject.get(row.subj);
+                  if (existing) {
+                    if (!existing.includes(row.topic)) existing.push(row.topic);
+                  } else {
+                    knownTopicsBySubject.set(row.subj, [row.topic]);
+                  }
+                }
+              }
+            } catch { /* non-fatal */ }
+
             writerResult = await semanticExtract(_content, _messageId, role, {
               complete: completeFn,
               model: extractionModel,
               provider: extractionProvider,
               maxInputChars: 4000,
               knownSubjects,
+              knownTopicsBySubject,
             });
           } catch (llmErr) {
             // LLM unavailable — fall back to regex
@@ -1687,21 +1758,42 @@ export class LcmContextEngine implements ContextEngine {
           const { reconcile } = await import("./ontology/truth.js");
           const { projectProvenance, recordSupersession, recordConflict, recordEvidence } = await import("./ontology/projector.js");
           const { upsertMemoryObject } = await import("./ontology/mo-store.js");
-          const { withWriteTransaction } = await import("./relations/evidence-log.js");
+          const { withWriteTransaction, logEvidence } = await import("./relations/evidence-log.js");
+          const { supersedeClaim } = await import("./relations/claim-store.js");
+          const { recordStateDelta } = await import("./relations/delta-store.js");
 
           const reconciled = reconcile(graphDb, writerResult.objects, {
             isCorrection: writerResult.signals.isCorrection,
             correctionSignal: writerResult.signals.correctionSignal ?? undefined,
           });
 
+          withWriteTransaction(graphDb, () => {
           for (const action of reconciled.actions) {
             if (action.type === "insert") {
-              upsertMemoryObject(graphDb, action.object);
+              const insertResult = upsertMemoryObject(graphDb, action.object);
               projectProvenance(graphDb, action.object);
+              logEvidence(graphDb, {
+                scopeId: action.object.scope_id,
+                objectType: action.object.kind,
+                objectId: insertResult.moId,
+                eventType: "create",
+                actor: _eeActor,
+                runId: _runId,
+                payload: { source: "rsma_reconciliation", canonicalKey: action.object.canonical_key },
+              });
             } else if (action.type === "supersede") {
-              upsertMemoryObject(graphDb, action.newObject);
+              const supersedeResult = upsertMemoryObject(graphDb, action.newObject, { isSupersession: true });
               projectProvenance(graphDb, action.newObject);
               recordSupersession(graphDb, action.newObject.id, action.oldObjectId, action.reason);
+              logEvidence(graphDb, {
+                scopeId: action.newObject.scope_id,
+                objectType: action.newObject.kind,
+                objectId: supersedeResult.moId,
+                eventType: "supersede",
+                actor: _eeActor,
+                runId: _runId,
+                payload: { source: "rsma_reconciliation", oldObjectId: action.oldObjectId, reason: action.reason },
+              });
               // BUG 3 FIX: Actually supersede the old record in the physical table.
               // Without this, old claims stay status='active' forever.
               try {
@@ -1709,6 +1801,18 @@ export class LcmContextEngine implements ContextEngine {
                 if (action.oldObjectId.startsWith("relation:")) {
                   graphDb.prepare(
                     "UPDATE memory_objects SET status = 'superseded', updated_at = strftime('%Y-%m-%dT%H:%M:%f', 'now') WHERE composite_id = ? AND kind = 'relation'",
+                  ).run(action.oldObjectId);
+                }
+                // Handle entity supersession (composite_id format: entity:{type}:{name} or legacy entity:{name})
+                if (action.oldObjectId.startsWith("entity:")) {
+                  graphDb.prepare(
+                    "UPDATE memory_objects SET status = 'superseded', updated_at = strftime('%Y-%m-%dT%H:%M:%f', 'now') WHERE composite_id = ? AND kind = 'entity'",
+                  ).run(action.oldObjectId);
+                }
+                // Handle capability supersession (composite_id format: capability:{scopeId}:{type}:{key})
+                if (action.oldObjectId.startsWith("capability:")) {
+                  graphDb.prepare(
+                    "UPDATE memory_objects SET status = 'superseded', updated_at = strftime('%Y-%m-%dT%H:%M:%f', 'now') WHERE composite_id = ? AND kind = 'capability'",
                   ).run(action.oldObjectId);
                 }
                 const oldKindMatch = action.oldObjectId.match(/^(claim|decision|loop|invariant):(\d+)$/);  // relation handled above by composite_id
@@ -1721,7 +1825,6 @@ export class LcmContextEngine implements ContextEngine {
                     // rather than a numeric DB id, so we pass 0 as superseded_by
                     // when the new id isn't numeric — the provenance_links table
                     // has the full supersession record regardless.
-                    const { supersedeClaim } = await import("./relations/claim-store.js");
                     // The new object's id may be a UUID (e.g. "claim:a1b2c3d4-...")
                     // so regex for trailing digits won't work. Query the actual
                     // integer ID from the claims table using canonical_key instead.
@@ -1758,7 +1861,6 @@ export class LcmContextEngine implements ContextEngine {
               }
               // Record state delta for supersession tracking
               try {
-                const { recordStateDelta } = await import("./relations/delta-store.js");
                 recordStateDelta(graphDb, {
                   scopeId: action.newObject.scope_id ?? DEFAULT_SCOPE_ID,
                   deltaType: "supersession",
@@ -1772,9 +1874,18 @@ export class LcmContextEngine implements ContextEngine {
                 });
               } catch { /* non-fatal */ }
             } else if (action.type === "conflict") {
-              upsertMemoryObject(graphDb, action.conflictObject);
+              const conflictResult = upsertMemoryObject(graphDb, action.conflictObject);
               projectProvenance(graphDb, action.conflictObject);
               recordConflict(graphDb, action.conflictObject.id, action.objectIdA, action.objectIdB, action.reason);
+              logEvidence(graphDb, {
+                scopeId: action.conflictObject.scope_id,
+                objectType: action.conflictObject.kind,
+                objectId: conflictResult.moId,
+                eventType: "create",
+                actor: _eeActor,
+                runId: _runId,
+                payload: { source: "rsma_reconciliation", conflict: true, objectIdA: action.objectIdA, objectIdB: action.objectIdB, reason: action.reason },
+              });
             } else if (action.type === "evidence") {
               // Update existing object's freshness (don't insert duplicate)
               try {
@@ -1784,8 +1895,26 @@ export class LcmContextEngine implements ContextEngine {
               } catch {}
               projectProvenance(graphDb, action.newObject);
               recordEvidence(graphDb, action.newObject.id, action.existingObjectId, action.predicate, 1.0, action.reason);
+              // For evidence actions, look up the existing object's moId for the log
+              try {
+                const existingRow = graphDb.prepare(
+                  "SELECT id FROM memory_objects WHERE composite_id = ? LIMIT 1"
+                ).get(action.existingObjectId) as { id: number } | undefined;
+                if (existingRow) {
+                  logEvidence(graphDb, {
+                    scopeId: action.newObject.scope_id,
+                    objectType: action.newObject.kind,
+                    objectId: existingRow.id,
+                    eventType: "update",
+                    actor: _eeActor,
+                    runId: _runId,
+                    payload: { source: "rsma_reconciliation", predicate: action.predicate, reason: action.reason },
+                  });
+                }
+              } catch { /* non-fatal */ }
             }
           }
+          }); // end withWriteTransaction
 
           // ── Create entity relations from relationship claims ──
           // After all objects are stored, scan for claims with relationship predicates
@@ -1815,8 +1944,8 @@ export class LcmContextEngine implements ContextEngine {
               if (junkPredicates.has(predicate.toLowerCase())) continue;
 
               try {
-                const subjEntity = upsertEntity(graphDb, { name: subject });
-                const objEntity = upsertEntity(graphDb, { name: objectText });
+                const subjEntity = upsertEntity(graphDb, { name: subject, actor: _eeActor, runId: _runId });
+                const objEntity = upsertEntity(graphDb, { name: objectText, actor: _eeActor, runId: _runId });
                 if (subjEntity.entityId && objEntity.entityId) {
                   upsertRelation(graphDb, {
                     scopeId: DEFAULT_SCOPE_ID,
@@ -1857,8 +1986,8 @@ export class LcmContextEngine implements ContextEngine {
 
                 for (const rel of deepRelations) {
                   try {
-                    const subjEntity = upsertEnt(graphDb, { name: rel.subject });
-                    const objEntity = upsertEnt(graphDb, { name: rel.object });
+                    const subjEntity = upsertEnt(graphDb, { name: rel.subject, actor: _eeActor, runId: _runId });
+                    const objEntity = upsertEnt(graphDb, { name: rel.object, actor: _eeActor, runId: _runId });
                     if (subjEntity.entityId && objEntity.entityId) {
                       upsertRel(graphDb, {
                         scopeId: DEFAULT_SCOPE_ID,
@@ -1890,12 +2019,98 @@ export class LcmContextEngine implements ContextEngine {
                 const { storeClaimExtractionResults } = await import("./relations/claim-store.js");
                 const deepClaims = await extractClaimsDeep(_content, _deps, _config);
                 if (deepClaims.length > 0) {
+                  // ── Route through TruthEngine for supersession/conflict/evidence ──
+                  const { reconcile: reconcileDeep } = await import("./ontology/truth.js");
+                  const { projectProvenance: projDeep, recordSupersession: recSuperDeep, recordConflict: recConflictDeep, recordEvidence: recEvidenceDeep } = await import("./ontology/projector.js");
+                  const { upsertMemoryObject: upsertDeep } = await import("./ontology/mo-store.js");
+                  const { buildCanonicalKey: buildCKDeep } = await import("./ontology/canonical.js");
+                  const { SOURCE_TRUST: stDeep } = await import("./ontology/types.js");
+
+                  const now = new Date().toISOString();
+                  const deepMOs = deepClaims.map(dc => {
+                    const structured = {
+                      subject: dc.claim.subject,
+                      predicate: dc.claim.predicate,
+                      objectText: dc.claim.objectText,
+                    };
+                    const content = `${dc.claim.subject} ${dc.claim.predicate}: ${dc.claim.objectText}`;
+                    return {
+                      id: `claim:${randomUUID()}`,
+                      kind: "claim" as const,
+                      content,
+                      structured,
+                      provenance: {
+                        source_kind: "extraction" as const,
+                        source_id: _messageId,
+                        source_detail: "deep_extraction",
+                        actor: _eeActor,
+                        trust: stDeep.extraction ?? 0.5,
+                        extraction_method: "llm" as const,
+                      },
+                      confidence: dc.claim.confidence ?? 0.5,
+                      freshness: 1.0,
+                      provisional: false,
+                      status: "active" as const,
+                      observed_at: now,
+                      scope_id: DEFAULT_SCOPE_ID,
+                      influence_weight: "standard" as const,
+                      created_at: now,
+                      updated_at: now,
+                      canonical_key: buildCKDeep("claim", content, structured),
+                    };
+                  });
+
+                  const reconciledDeep = reconcileDeep(graphDb, deepMOs as any, {
+                    isCorrection: false,
+                  });
+
+                  for (const action of reconciledDeep.actions) {
+                    if (action.type === "insert") {
+                      upsertDeep(graphDb, action.object);
+                      projDeep(graphDb, action.object);
+                    } else if (action.type === "supersede") {
+                      upsertDeep(graphDb, action.newObject);
+                      projDeep(graphDb, action.newObject);
+                      recSuperDeep(graphDb, action.newObject.id, action.oldObjectId, action.reason);
+                      try {
+                        const oldMatch = action.oldObjectId.match(/^claim:(\d+)$/);
+                        if (oldMatch) {
+                          const { supersedeClaim: scDeep } = await import("./relations/claim-store.js");
+                          const newCK = action.newObject.canonical_key;
+                          let newRawId = 0;
+                          if (newCK) {
+                            const row = graphDb.prepare(
+                              "SELECT id FROM memory_objects WHERE kind = 'claim' AND canonical_key = ? AND scope_id = 1 ORDER BY id DESC LIMIT 1",
+                            ).get(newCK) as { id: number } | undefined;
+                            if (row) newRawId = row.id;
+                          }
+                          scDeep(graphDb, parseInt(oldMatch[1], 10), newRawId);
+                        }
+                      } catch { /* non-fatal */ }
+                    } else if (action.type === "conflict") {
+                      upsertDeep(graphDb, action.conflictObject);
+                      projDeep(graphDb, action.conflictObject);
+                      recConflictDeep(graphDb, action.conflictObject.id, action.objectIdA, action.objectIdB, action.reason);
+                    } else if (action.type === "evidence") {
+                      try {
+                        graphDb.prepare(
+                          "UPDATE memory_objects SET last_observed_at = strftime('%Y-%m-%dT%H:%M:%f','now'), updated_at = strftime('%Y-%m-%dT%H:%M:%f','now'), confidence = MIN(1.0, confidence * 0.3 + ? * 0.7) WHERE composite_id = ?"
+                        ).run(action.newObject.confidence ?? 0.5, action.existingObjectId);
+                      } catch {}
+                      projDeep(graphDb, action.newObject);
+                      recEvidenceDeep(graphDb, action.newObject.id, action.existingObjectId, action.predicate, 1.0, action.reason);
+                    }
+                  }
+
+                  // Also store in legacy claims table for backward compat
                   const { withWriteTransaction: wt2 } = await import("./relations/evidence-log.js");
                   wt2(graphDb, () => {
                     storeClaimExtractionResults(graphDb, deepClaims, {
                       scopeId: DEFAULT_SCOPE_ID,
                       sourceType: "deep_extraction",
                       sourceId: _messageId,
+                      actor: _eeActor,
+                      runId: _runId,
                     });
                   });
                 }
@@ -1938,13 +2153,17 @@ export class LcmContextEngine implements ContextEngine {
         if ((_rsmaSuccessCount + _rsmaFailCount) % _RSMA_LOG_INTERVAL === 0) {
           console.info(`[rsma] health: ${_rsmaSuccessCount} successful extractions, ${_rsmaFailCount} failures`);
         }
+      } finally {
+        _activeExtractions--;
       }
       })().catch((err) => {
         // Safety net: catch any unhandled rejection from the fire-and-forget IIFE.
         // Without this, an unhandled promise rejection kills the entire process
         // (no process.on('unhandledRejection') handler exists in OpenClaw plugins).
+        _activeExtractions = Math.max(0, _activeExtractions); // safety: never go negative
         console.warn("[rsma] unhandled extraction error:", err instanceof Error ? err.message : String(err));
       }); // fire-and-forget — don't await
+      } // end backpressure else
     }
 
     return { ingested: true };

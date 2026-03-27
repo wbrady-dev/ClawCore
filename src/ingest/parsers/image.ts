@@ -11,18 +11,19 @@
  */
 
 import { basename } from "path";
-// TODO: execFileSync blocks the event loop. Consider using execFile (async) with
-// util.promisify for better server responsiveness during OCR operations.
-import { execFileSync } from "child_process";
+import { execFile } from "child_process";
+import { promisify } from "util";
 import { config } from "../../config.js";
 import type { ParsedDocument, DocMetadata } from "./index.js";
 
+const execFileAsync = promisify(execFile);
+
 let _tesseractAvailable: boolean | null = null;
 
-function isTesseractAvailable(): boolean {
+async function isTesseractAvailable(): Promise<boolean> {
   if (_tesseractAvailable !== null) return _tesseractAvailable;
   try {
-    execFileSync("tesseract", ["--version"], { stdio: "pipe", timeout: 5000 });
+    await execFileAsync("tesseract", ["--version"], { timeout: 5000 });
     _tesseractAvailable = true;
   } catch {
     _tesseractAvailable = false;
@@ -40,7 +41,7 @@ export async function parseImage(filePath: string): Promise<ParsedDocument> {
   // Removed existsSync check — TOCTOU race. The file could disappear between
   // check and execFileSync anyway, so let Tesseract report the error directly.
 
-  if (!isTesseractAvailable()) {
+  if (!(await isTesseractAvailable())) {
     return {
       text: `[Image: ${basename(filePath)} — OCR unavailable (install Tesseract for text extraction)]`,
       structure: [],
@@ -49,11 +50,12 @@ export async function parseImage(filePath: string): Promise<ParsedDocument> {
   }
 
   try {
-    // Run Tesseract OCR — use execFileSync with args array to prevent shell injection
-    const result = execFileSync(
+    // Run Tesseract OCR — use execFileAsync with args array to prevent shell injection
+    const { stdout } = await execFileAsync(
       "tesseract", [filePath, "stdout", "-l", config.extraction.ocrLanguage, "--psm", "3"],
-      { stdio: ["pipe", "pipe", "pipe"], timeout: config.extraction.ocrTimeoutMs, maxBuffer: 10 * 1024 * 1024 },
-    ).toString().trim();
+      { timeout: config.extraction.ocrTimeoutMs, maxBuffer: 10 * 1024 * 1024 },
+    );
+    const result = stdout.trim();
 
     if (!result || result.length < 3) {
       return {

@@ -169,6 +169,13 @@ export class CompactionEngine {
   private relationsEnabled: boolean;
   private claimExtractionEnabled: boolean;
 
+  /**
+   * Sweep-scoped cache for context token counts.
+   * Key: conversationId, Value: cached token count.
+   * Set to null after any context mutation to invalidate.
+   */
+  private sweepTokenCountCache: Map<number, number> = new Map();
+
   constructor(
     private conversationStore: ConversationStore,
     private summaryStore: SummaryStore,
@@ -265,7 +272,10 @@ export class CompactionEngine {
   }): Promise<CompactionResult> {
     const { conversationId, tokenBudget, summarize, force } = input;
 
-    const tokensBefore = await this.summaryStore.getContextTokenCount(conversationId);
+    // Initialize sweep-scoped token count cache
+    this.sweepTokenCountCache.clear();
+
+    const tokensBefore = await this.getCachedContextTokenCount(conversationId);
     const threshold = Math.floor(this.config.contextThreshold * tokenBudget);
 
     // Fetch context items once for the pre-mutation phase
@@ -275,6 +285,7 @@ export class CompactionEngine {
     const leafTriggerShouldCompact = rawTokensOutsideTail >= leafThreshold;
 
     if (!force && tokensBefore <= threshold && !leafTriggerShouldCompact) {
+      this.sweepTokenCountCache.clear();
       return {
         actionTaken: false,
         tokensBefore,
@@ -285,6 +296,7 @@ export class CompactionEngine {
 
     const leafChunk = await this.selectOldestLeafChunk(conversationId, contextItems);
     if (leafChunk.items.length === 0) {
+      this.sweepTokenCountCache.clear();
       return {
         actionTaken: false,
         tokensBefore,
@@ -303,7 +315,8 @@ export class CompactionEngine {
       summarize,
       previousSummaryContent,
     );
-    const tokensAfterLeaf = await this.summaryStore.getContextTokenCount(conversationId);
+    this.invalidateTokenCountCache(conversationId);
+    const tokensAfterLeaf = await this.getCachedContextTokenCount(conversationId);
 
     await this.persistCompactionEvents({
       conversationId,
@@ -329,14 +342,15 @@ export class CompactionEngine {
           break;
         }
 
-        const passTokensBefore = await this.summaryStore.getContextTokenCount(conversationId);
+        const passTokensBefore = await this.getCachedContextTokenCount(conversationId);
         const condenseResult = await this.condensedPass(
           conversationId,
           chunk.items,
           targetDepth,
           summarize,
         );
-        const passTokensAfter = await this.summaryStore.getContextTokenCount(conversationId);
+        this.invalidateTokenCountCache(conversationId);
+        const passTokensAfter = await this.getCachedContextTokenCount(conversationId);
         await this.persistCompactionEvents({
           conversationId,
           tokensBefore: passTokensBefore,
@@ -356,6 +370,7 @@ export class CompactionEngine {
         }
       }
     }
+    this.sweepTokenCountCache.clear();
 
     return {
       actionTaken: true,
@@ -383,7 +398,10 @@ export class CompactionEngine {
   }): Promise<CompactionResult> {
     const { conversationId, tokenBudget, summarize, force, hardTrigger } = input;
 
-    const tokensBefore = await this.summaryStore.getContextTokenCount(conversationId);
+    // Initialize sweep-scoped token count cache
+    this.sweepTokenCountCache.clear();
+
+    const tokensBefore = await this.getCachedContextTokenCount(conversationId);
     const threshold = Math.floor(this.config.contextThreshold * tokenBudget);
 
     // Fetch context items once for the pre-mutation evaluation phase
@@ -393,6 +411,7 @@ export class CompactionEngine {
     const leafTriggerShouldCompact = rawTokensOutsideTail >= leafThreshold;
 
     if (!force && tokensBefore <= threshold && !leafTriggerShouldCompact) {
+      this.sweepTokenCountCache.clear();
       return {
         actionTaken: false,
         tokensBefore,
@@ -402,6 +421,7 @@ export class CompactionEngine {
     }
 
     if (contextItems.length === 0) {
+      this.sweepTokenCountCache.clear();
       return {
         actionTaken: false,
         tokensBefore,
@@ -428,16 +448,17 @@ export class CompactionEngine {
         break;
       }
 
-      const passTokensBefore = await this.summaryStore.getContextTokenCount(conversationId);
+      const passTokensBefore = await this.getCachedContextTokenCount(conversationId);
       const leafResult = await this.leafPass(
         conversationId,
         leafChunk.items,
         summarize,
         previousSummaryContent,
       );
-      // Context was mutated by leafPass — re-fetch for next iteration
+      // Context was mutated by leafPass — invalidate cache and re-fetch
+      this.invalidateTokenCountCache(conversationId);
       contextItems = await this.summaryStore.getContextItems(conversationId);
-      const passTokensAfter = await this.summaryStore.getContextTokenCount(conversationId);
+      const passTokensAfter = await this.getCachedContextTokenCount(conversationId);
       await this.persistCompactionEvents({
         conversationId,
         tokensBefore: passTokensBefore,
@@ -472,16 +493,17 @@ export class CompactionEngine {
         break;
       }
 
-      const passTokensBefore = await this.summaryStore.getContextTokenCount(conversationId);
+      const passTokensBefore = await this.getCachedContextTokenCount(conversationId);
       const condenseResult = await this.condensedPass(
         conversationId,
         candidate.chunk.items,
         candidate.targetDepth,
         summarize,
       );
-      // Context was mutated by condensedPass — re-fetch for next iteration
+      // Context was mutated by condensedPass — invalidate cache and re-fetch
+      this.invalidateTokenCountCache(conversationId);
       contextItems = await this.summaryStore.getContextItems(conversationId);
-      const passTokensAfter = await this.summaryStore.getContextTokenCount(conversationId);
+      const passTokensAfter = await this.getCachedContextTokenCount(conversationId);
       await this.persistCompactionEvents({
         conversationId,
         tokensBefore: passTokensBefore,
@@ -502,7 +524,9 @@ export class CompactionEngine {
       previousTokens = passTokensAfter;
     }
 
-    const tokensAfter = await this.summaryStore.getContextTokenCount(conversationId);
+    const tokensAfter = await this.getCachedContextTokenCount(conversationId);
+    // Clear sweep cache at end of sweep
+    this.sweepTokenCountCache.clear();
 
     return {
       actionTaken,
@@ -587,6 +611,22 @@ export class CompactionEngine {
 
   // ── Private helpers ──────────────────────────────────────────────────────
 
+  /** Get context token count with sweep-scoped caching. */
+  private async getCachedContextTokenCount(conversationId: number): Promise<number> {
+    const cached = this.sweepTokenCountCache.get(conversationId);
+    if (cached != null) {
+      return cached;
+    }
+    const count = await this.summaryStore.getContextTokenCount(conversationId);
+    this.sweepTokenCountCache.set(conversationId, count);
+    return count;
+  }
+
+  /** Invalidate the sweep-scoped token count cache after a context mutation. */
+  private invalidateTokenCountCache(conversationId: number): void {
+    this.sweepTokenCountCache.delete(conversationId);
+  }
+
   /** Normalize configured leaf chunk size to a safe positive integer. */
   private resolveLeafChunkTokens(): number {
     if (
@@ -649,6 +689,34 @@ export class CompactionEngine {
     return estimateTokens(message.content);
   }
 
+  /**
+   * Batch-fetch token counts for multiple message IDs in a single query.
+   * Returns a Map<messageId, tokenCount>.
+   */
+  private batchGetMessageTokenCounts(messageIds: number[]): Map<number, number> {
+    if (messageIds.length === 0) return new Map();
+    const messages = this.conversationStore.getMessagesByIds(messageIds);
+    const result = new Map<number, number>();
+    for (const msg of messages) {
+      if (
+        typeof msg.tokenCount === "number" &&
+        Number.isFinite(msg.tokenCount) &&
+        msg.tokenCount > 0
+      ) {
+        result.set(msg.messageId, msg.tokenCount);
+      } else {
+        result.set(msg.messageId, estimateTokens(msg.content));
+      }
+    }
+    // IDs not found get 0
+    for (const id of messageIds) {
+      if (!result.has(id)) {
+        result.set(id, 0);
+      }
+    }
+    return result;
+  }
+
   /** Sum raw message tokens outside the protected fresh tail. */
   private async countRawTokensOutsideFreshTail(
     conversationId: number,
@@ -656,18 +724,23 @@ export class CompactionEngine {
   ): Promise<number> {
     const contextItems = cachedContextItems ?? await this.summaryStore.getContextItems(conversationId);
     const freshTailOrdinal = this.resolveFreshTailOrdinal(contextItems);
-    let rawTokens = 0;
 
+    // Collect all message IDs outside tail, then batch-fetch token counts
+    const messageIds: number[] = [];
     for (const item of contextItems) {
       if (item.ordinal >= freshTailOrdinal) {
         break;
       }
-      if (item.itemType !== "message" || item.messageId == null) {
-        continue;
+      if (item.itemType === "message" && item.messageId != null) {
+        messageIds.push(item.messageId);
       }
-      rawTokens += await this.getMessageTokenCount(item.messageId);
     }
 
+    const tokenMap = this.batchGetMessageTokenCounts(messageIds);
+    let rawTokens = 0;
+    for (const id of messageIds) {
+      rawTokens += tokenMap.get(id) ?? 0;
+    }
     return rawTokens;
   }
 
@@ -685,15 +758,21 @@ export class CompactionEngine {
     const freshTailOrdinal = this.resolveFreshTailOrdinal(contextItems);
     const threshold = this.resolveLeafChunkTokens();
 
-    let rawTokensOutsideTail = 0;
+    // Batch-fetch all message token counts outside the fresh tail in one query
+    const allMessageIds: number[] = [];
     for (const item of contextItems) {
       if (item.ordinal >= freshTailOrdinal) {
         break;
       }
-      if (item.itemType !== "message" || item.messageId == null) {
-        continue;
+      if (item.itemType === "message" && item.messageId != null) {
+        allMessageIds.push(item.messageId);
       }
-      rawTokensOutsideTail += await this.getMessageTokenCount(item.messageId);
+    }
+    const tokenMap = this.batchGetMessageTokenCounts(allMessageIds);
+
+    let rawTokensOutsideTail = 0;
+    for (const id of allMessageIds) {
+      rawTokensOutsideTail += tokenMap.get(id) ?? 0;
     }
 
     const chunk: ContextItemRecord[] = [];
@@ -716,7 +795,7 @@ export class CompactionEngine {
       if (item.messageId == null) {
         continue;
       }
-      const messageTokens = await this.getMessageTokenCount(item.messageId);
+      const messageTokens = tokenMap.get(item.messageId) ?? 0;
       if (chunk.length > 0 && chunkTokens + messageTokens > threshold) {
         break;
       }
@@ -918,6 +997,22 @@ export class CompactionEngine {
         : this.resolveFreshTailOrdinal(contextItems);
     const chunkTokenBudget = this.resolveLeafChunkTokens();
 
+    // Batch-fetch all candidate summary records outside the fresh tail
+    const candidateSummaryIds: string[] = [];
+    for (const item of contextItems) {
+      if (item.ordinal >= freshTailOrdinal) {
+        break;
+      }
+      if (item.itemType === "summary" && item.summaryId != null) {
+        candidateSummaryIds.push(item.summaryId);
+      }
+    }
+    const summaryRecords = this.summaryStore.getSummariesByIds(candidateSummaryIds);
+    const summaryMap = new Map<string, SummaryRecord>();
+    for (const s of summaryRecords) {
+      summaryMap.set(s.summaryId, s);
+    }
+
     const chunk: ContextItemRecord[] = [];
     let summaryTokens = 0;
     for (const item of contextItems) {
@@ -931,7 +1026,7 @@ export class CompactionEngine {
         continue;
       }
 
-      const summary = await this.summaryStore.getSummary(item.summaryId);
+      const summary = summaryMap.get(item.summaryId);
       if (!summary) {
         if (chunk.length > 0) {
           break;
@@ -1178,6 +1273,7 @@ export class CompactionEngine {
                 scopeId: DEFAULT_SCOPE_ID,
                 loopType: l.loopType,
                 text: l.text,
+                priority: l.priority,
                 sourceType: l.sourceType,
                 sourceId: l.sourceId,
               });
@@ -1207,8 +1303,8 @@ export class CompactionEngine {
             for (const msg of messageContents) {
               const relations = extractRelationsFast(msg.content, entityNames, String(msg.messageId));
               for (const rel of relations) {
-                const subj = graphDb.prepare("SELECT id FROM memory_objects WHERE kind = 'entity' AND composite_id = 'entity:' || LOWER(?)").get(rel.subjectName) as { id: number } | undefined;
-                const obj = graphDb.prepare("SELECT id FROM memory_objects WHERE kind = 'entity' AND composite_id = 'entity:' || LOWER(?)").get(rel.objectName) as { id: number } | undefined;
+                const subj = graphDb.prepare("SELECT id FROM memory_objects WHERE kind = 'entity' AND json_extract(structured_json, '$.name') = LOWER(TRIM(?)) AND status = 'active' ORDER BY confidence DESC LIMIT 1").get(rel.subjectName) as { id: number } | undefined;
+                const obj = graphDb.prepare("SELECT id FROM memory_objects WHERE kind = 'entity' AND json_extract(structured_json, '$.name') = LOWER(TRIM(?)) AND status = 'active' ORDER BY confidence DESC LIMIT 1").get(rel.objectName) as { id: number } | undefined;
                 if (subj && obj) {
                   upsertRelation(graphDb, {
                     scopeId: DEFAULT_SCOPE_ID,

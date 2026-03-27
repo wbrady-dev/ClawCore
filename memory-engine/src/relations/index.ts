@@ -54,10 +54,10 @@ export {
 
 export {
   createCcClaimsTool, createCcDecisionsTool,
-  createCcLoopsTool, createCcAttemptsTool,
+  createCcLoopsTool, createCcManageLoopTool, createCcAttemptsTool,
   createCcBranchTool, createCcProceduresTool,
   createCcDiagnosticsTool, createCcMemoryTool,
-  createCcSynthesizeTool,
+  createCcStateTool, createCcSynthesizeTool, createCcConflictsTool,
 } from "./tools.js";
 
 export { compileContextCapsules, type ContextCompilerConfig, type CompilerResult } from "./context-compiler.js";
@@ -94,7 +94,7 @@ export { SOURCE_TRUST } from "./types.js";
 export { recordAttempt, getAttemptHistory, getToolSuccessRate } from "./attempt-store.js";
 export { upsertRunbook, demoteRunbook, getRunbooks, getRunbooksForTool } from "./runbook-store.js";
 export { upsertAntiRunbook, getAntiRunbooks, getAntiRunbooksForTool, addAntiRunbookEvidence, getAntiRunbookEvidence } from "./anti-runbook-store.js";
-export { applyDecay, decayAntiRunbooks, decayRunbooks } from "./decay.js";
+export { applyDecay, decayAntiRunbooks, decayRunbooks, deduplicateActiveObjects } from "./decay.js";
 export { runArchive, getArchiveStats, restoreFromArchive } from "./archive.js";
 
 // Horizon 3: Types
@@ -114,6 +114,6 @@ export { getTimeline, formatTimelineEvent } from "./timeline.js";
 export { getStateAtTime, getEvidenceAtTime } from "./snapshot.js";
 
 // Horizon 5: Deep Extraction
-export { upsertRelation, getRelationGraph } from "./relation-store.js";
+export { upsertRelation, getRelationGraph, getRelationsForEntity } from "./relation-store.js";
 export { extractClaimsDeep, extractRelationsDeep } from "./deep-extract.js";
 export { synthesizeScope } from "./synthesis.js";

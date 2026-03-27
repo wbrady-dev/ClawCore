@@ -15,137 +15,24 @@
  *
  * CANONICAL SOURCE: memory-engine/src/relations/graph-store.ts (storage)
  * and memory-engine/src/relations/entity-extract.ts (extraction).
- * When updating schema or extraction logic, update both locations.
  *
- * Parity: entity_type storage, evidence logging, scope_id on mentions,
- * word-boundary terms matching.
+ * extractFast() and loadTerms() are imported directly from memory-engine
+ * (single source of truth — no duplication).
  */
 
 import type Database from "better-sqlite3";
-import { readFileSync } from "fs";
-import { homedir } from "os";
-import { join } from "path";
+import { createRequire } from "node:module";
+import { homedir } from "node:os";
+import { join } from "node:path";
 import { logger } from "../utils/logger.js";
 
 // ---------------------------------------------------------------------------
-// Fast entity extraction (same logic as memory-engine/src/relations/entity-extract.ts)
+// Canonical imports from memory-engine (single source of truth)
 // ---------------------------------------------------------------------------
 
-interface ExtractionResult {
-  name: string;
-  confidence: number;
-  strategy: string;
-  contextTerms?: string[];
-}
-
-const MONTH_NAMES = new Set([
-  "january","february","march","april","may","june",
-  "july","august","september","october","november","december",
-]);
-const COMMON_PHRASES = new Set([
-  "the","this","that","these","those","here","there",
-  "what","which","where","when","while","because","since",
-  "however","therefore","although","please","thank",
-]);
-
-const CAPITALIZED_RE = /\b([A-Z][a-z]+(?:\s+[A-Z][a-z]+)+)\b/g;
-const QUOTED_RE = /[""\u201C]([^""\u201D]{2,50})[""\u201D]/g;
-const VALID_TERM_RE = /^[\p{L}\p{N}\s\-_.'"]+$/u;
-
-/** Cache compiled word-boundary regexes for terms to avoid re-creation per chunk. */
-const termRegexCache = new Map<string, RegExp>();
-
-function extractFast(text: string, terms: string[]): ExtractionResult[] {
-  if (!text) return [];
-  const deduped = new Map<string, ExtractionResult>();
-  const lowerText = text.toLowerCase();
-
-  // Strategy 1: Capitalized multi-word
-  CAPITALIZED_RE.lastIndex = 0;
-  let m: RegExpExecArray | null;
-  while ((m = CAPITALIZED_RE.exec(text)) !== null) {
-    const name = m[1]!;
-    const first = name.toLowerCase().split(/\s+/)[0] ?? "";
-    if (MONTH_NAMES.has(first) || COMMON_PHRASES.has(first) || name.length < 4) continue;
-    const key = name.toLowerCase().trim();
-    if (!deduped.has(key) || 0.6 > (deduped.get(key)?.confidence ?? 0)) {
-      deduped.set(key, { name, confidence: 0.6, strategy: "capitalized" });
-    }
-  }
-
-  // Strategy 2: Terms-list (word-boundary matching, same as memory-engine)
-  const presentTerms: string[] = [];
-  for (const term of terms) {
-    const lt = term.toLowerCase().trim();
-    if (lt.length === 0) continue;
-    // Quick substring pre-check before regex (fast path for non-matches)
-    if (!lowerText.includes(lt)) continue;
-    // Word-boundary check to avoid substring false positives (cached regex)
-    let re = termRegexCache.get(lt);
-    if (!re) {
-      const escaped = lt.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-      re = new RegExp("\\b" + escaped + "\\b", "i");
-      termRegexCache.set(lt, re);
-    }
-    if (re.test(text)) {
-      presentTerms.push(term);
-      const key = lt;
-      if (!deduped.has(key) || 0.9 > (deduped.get(key)?.confidence ?? 0)) {
-        deduped.set(key, { name: term, confidence: 0.9, strategy: "terms_list" });
-      }
-    }
-  }
-
-  // Strategy 3: Quoted
-  QUOTED_RE.lastIndex = 0;
-  while ((m = QUOTED_RE.exec(text)) !== null) {
-    const inner = m[1]!.trim();
-    if (inner.length < 2) continue;
-    if (/^[/\\.]|^https?:|^[{[<]|^[a-z]+[A-Z]|^[a-z]+_[a-z]/.test(inner)) continue;
-    if (/\.(ts|js|py|go|rs|json|yaml|yml|md|txt|html|css|sh)$/i.test(inner)) continue;
-    const key = inner.toLowerCase().trim();
-    if (!deduped.has(key) || 0.5 > (deduped.get(key)?.confidence ?? 0)) {
-      deduped.set(key, { name: inner, confidence: 0.5, strategy: "quoted" });
-    }
-  }
-
-  // Attach context terms
-  if (presentTerms.length > 0) {
-    for (const r of deduped.values()) {
-      r.contextTerms = presentTerms;
-    }
-  }
-
-  return Array.from(deduped.values());
-}
-
-// ---------------------------------------------------------------------------
-// Terms loader (same as memory-engine/src/relations/terms.ts)
-// ---------------------------------------------------------------------------
-
-let cachedTerms: string[] | null = null;
-let cachedAt = 0;
-
-function loadTerms(): string[] {
-  if (cachedTerms !== null && Date.now() - cachedAt < 60_000) return cachedTerms;
-  termRegexCache.clear();
-  try {
-    const raw = readFileSync(join(homedir(), ".threadclaw", "relations-terms.json"), "utf-8");
-    const parsed = JSON.parse(raw);
-    if (parsed && Array.isArray(parsed.terms)) {
-      cachedTerms = parsed.terms
-        .filter((t: unknown) => typeof t === "string" && t.trim().length > 0 && t.length <= 100 && VALID_TERM_RE.test(t as string))
-        .map((t: string) => t.trim())
-        .slice(0, 500);
-    } else {
-      cachedTerms = [];
-    }
-  } catch {
-    cachedTerms = [];
-  }
-  cachedAt = Date.now();
-  return cachedTerms!;
-}
+import { extractFast } from "../../memory-engine/src/relations/entity-extract.js";
+import { loadTerms } from "../../memory-engine/src/relations/terms.js";
+import type { ExtractionResult } from "../../memory-engine/src/relations/types.js";
 
 // ---------------------------------------------------------------------------
 // Graph store operations (using better-sqlite3 API, targeting memory_objects + provenance_links)
@@ -162,17 +49,24 @@ function storeEntities(
   const now = "strftime('%Y-%m-%dT%H:%M:%f','now')";
 
   // Upsert entity into memory_objects (kind='entity')
+  // Column list matches mo-store.ts upsertMemoryObject() schema exactly
   const upsertStmt = db.prepare(`
     INSERT INTO memory_objects (
-      composite_id, kind, content, structured_json, canonical_key,
-      provenance_json, confidence, trust_score, freshness, status,
-      scope_id, branch_id, influence_weight,
-      first_observed_at, last_observed_at, created_at, updated_at
+      composite_id, kind, canonical_key, content, structured_json,
+      scope_id, branch_id, status, confidence, trust_score,
+      influence_weight, superseded_by,
+      source_kind, source_id, source_detail, source_authority,
+      extraction_method, provisional,
+      first_observed_at, last_observed_at, observed_at,
+      created_at, updated_at
     ) VALUES (
       ?, 'entity', ?, ?, ?,
-      ?, 0.5, 0.5, 1.0, 'active',
-      ?, 0, 'standard',
-      ${now}, ${now}, ${now}, ${now}
+      ?, 0, 'active', 0.5, 0.5,
+      'standard', NULL,
+      'extraction', ?, ?, NULL,
+      'regex', 0,
+      ${now}, ${now}, ${now},
+      ${now}, ${now}
     )
     ON CONFLICT(composite_id) DO UPDATE SET
       structured_json = ?,
@@ -212,12 +106,6 @@ function storeEntities(
     const displayName = entity.name.trim();
     const entityType = entity.strategy.startsWith("ner:") ? entity.strategy.slice(4) : null;
     const canonicalKey = `entity::${name}`;
-    const provenanceJson = JSON.stringify({
-      source_kind: "extraction",
-      source_id: compositeId,
-      actor: "system",
-      trust: 0.5,
-    });
 
     // Check existing to increment mentionCount
     let mentionCount = 1;
@@ -236,10 +124,10 @@ function storeEntities(
       mentionCount,
     });
 
-    // Upsert — INSERT values + ON CONFLICT update values
+    // Upsert — INSERT values match mo-store.ts schema + ON CONFLICT update values
     upsertStmt.run(
-      compositeId, displayName, structuredJson, canonicalKey,
-      provenanceJson, scopeId,
+      compositeId, canonicalKey, displayName, structuredJson,
+      scopeId, compositeId, sourceDetail ?? null,
       structuredJson, // for the ON CONFLICT UPDATE
     );
 
@@ -287,6 +175,32 @@ export function deleteSourceData(db: Database.Database, sourceType: string, sour
  * Only clears memory_objects, provenance_links, and infrastructure data tables.
  */
 export function clearAllGraphTables(db: Database.Database): void {
+  // Log a reset event to the audit trail BEFORE wiping it
+  logger.warn("clearAllGraphTables: destroying all graph data including audit trail (evidence_log)");
+  try {
+    // Record the reset event so the audit trail captures why it was wiped
+    const now = new Date().toISOString();
+    db.prepare(`
+      INSERT INTO evidence_log
+        (scope_id, object_type, object_id, event_type, actor, payload_json, created_at)
+      VALUES (1, 'graph', 0, 'reset', 'system', ?, ?)
+    `).run(
+      JSON.stringify({ reason: "clearAllGraphTables called", timestamp: now }),
+      now,
+    );
+  } catch { /* table may not exist yet */ }
+
+  // Try to archive evidence_log to archive.db before deletion (sync best-effort)
+  try {
+    const esmRequire = createRequire(import.meta.url);
+    const archiveMod = esmRequire("../../memory-engine/src/relations/archive.js");
+    const archivePath = join(homedir(), ".threadclaw", "archive.db");
+    archiveMod.runArchive(db, archivePath, { eventRetentionDays: 0 });
+    logger.info("clearAllGraphTables: evidence_log archived before wipe");
+  } catch {
+    logger.warn("clearAllGraphTables: could not archive evidence_log before wipe (archive unavailable)");
+  }
+
   // Unified ontology tables
   try { db.prepare("DELETE FROM provenance_links").run(); } catch {}
   try { db.prepare("DELETE FROM memory_objects").run(); } catch {}

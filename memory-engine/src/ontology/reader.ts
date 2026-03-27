@@ -74,6 +74,27 @@ function escapeLike(keyword: string): string {
   return keyword.replace(/[%_\\]/g, "\\$&");
 }
 
+/** Escape FTS5 special characters for safe MATCH queries. */
+function escapeFts5(keyword: string): string {
+  // Quote the keyword to treat it as a literal phrase in FTS5
+  return '"' + keyword.replace(/"/g, '""') + '"';
+}
+
+/** Check if memory_objects_fts table exists (cached per db instance). */
+const _ftsAvailableCache = new WeakMap<object, boolean>();
+function isFts5Available(db: GraphDb): boolean {
+  const cached = _ftsAvailableCache.get(db);
+  if (cached !== undefined) return cached;
+  try {
+    db.prepare("SELECT 1 FROM memory_objects_fts LIMIT 0").get();
+    _ftsAvailableCache.set(db, true);
+    return true;
+  } catch {
+    _ftsAvailableCache.set(db, false);
+    return false;
+  }
+}
+
 // ── All queryable kinds ─────────────────────────────────────────────────────
 
 const ALL_QUERYABLE_KINDS: MemoryKind[] = [
@@ -123,11 +144,17 @@ export function readMemoryObjects(
       params.push(...statuses);
     }
 
-    // Keyword filter with LIKE wildcard escaping
+    // Keyword filter: prefer FTS5 for O(log n) search, fall back to LIKE
     if (keyword) {
-      const escaped = escapeLike(keyword);
-      sql += " AND content LIKE ? ESCAPE '\\'";
-      params.push(`%${escaped}%`);
+      if (isFts5Available(db)) {
+        const ftsEscaped = escapeFts5(keyword);
+        sql += " AND id IN (SELECT rowid FROM memory_objects_fts WHERE memory_objects_fts MATCH ?)";
+        params.push(ftsEscaped);
+      } else {
+        const escaped = escapeLike(keyword);
+        sql += " AND content LIKE ? ESCAPE '\\'";
+        params.push(`%${escaped}%`);
+      }
     }
 
     // Fetch more than requested to allow ranking to reorder before slicing

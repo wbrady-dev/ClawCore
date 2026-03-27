@@ -78,6 +78,8 @@ export function EvidenceOsScreen({ onBack }: { onBack: () => void }) {
 
   // Pagination
   const [entityPage, setEntityPage] = useState(0);
+  const [entityOffset, setEntityOffset] = useState(0);
+  const [entityTotal, setEntityTotal] = useState(0);
   const [mentionPage, setMentionPage] = useState(0);
 
   // Add term
@@ -104,6 +106,8 @@ export function EvidenceOsScreen({ onBack }: { onBack: () => void }) {
     if (!up) return;
 
     try {
+      setError(null);
+
       // Fetch stats
       const statsRes = await fetch(`${getApiBaseUrl()}/stats`, { signal: AbortSignal.timeout(3000) });
       if (statsRes.ok) {
@@ -117,12 +121,15 @@ export function EvidenceOsScreen({ onBack }: { onBack: () => void }) {
         }
       }
 
-      // Fetch entities
-      const entRes = await fetch(`${getApiBaseUrl()}/graph/entities?limit=50`, { signal: AbortSignal.timeout(3000) });
+      // Fetch entities (server-side pagination)
+      const entLimit = ENTITIES_PER_PAGE;
+      const entOffset = entityOffset;
+      const entRes = await fetch(`${getApiBaseUrl()}/graph/entities?limit=${entLimit}&offset=${entOffset}`, { signal: AbortSignal.timeout(3000) });
       if (entRes.ok) {
-        const data = await entRes.json() as { entities: EntityRow[] };
+        const data = await entRes.json() as { entities: EntityRow[]; total: number };
         cachedEntities = data.entities;
         setEntities(data.entities);
+        if (typeof data.total === "number") setEntityTotal(data.total);
       }
 
       // Fetch terms
@@ -138,6 +145,7 @@ export function EvidenceOsScreen({ onBack }: { onBack: () => void }) {
   };
 
   useEffect(() => { fetchData(); }, []);
+  useEffect(() => { fetchData(); }, [entityOffset]);
   useInterval(() => { if (level === "overview") fetchData(); }, 5000);
 
   const fetchEntityDetail = async (entity: EntityRow) => {
@@ -147,6 +155,7 @@ export function EvidenceOsScreen({ onBack }: { onBack: () => void }) {
     setEntityLoading(true);
     setLevel("entity-detail");
     try {
+      setError(null);
       const res = await fetch(`${getApiBaseUrl()}/graph/entities/${entity.id}`, { signal: AbortSignal.timeout(3000) });
       if (res.ok) {
         const data = await res.json() as { mentions: MentionRow[] };
@@ -238,16 +247,12 @@ export function EvidenceOsScreen({ onBack }: { onBack: () => void }) {
       );
     }
 
-    const totalEntityPages = Math.max(1, Math.ceil(entities.length / ENTITIES_PER_PAGE));
-    const pageStart = entityPage * ENTITIES_PER_PAGE;
-    const pageEnd = pageStart + ENTITIES_PER_PAGE;
-    const pageEntities = entities.slice(pageStart, pageEnd);
-    const remainingAfterPage = entities.length - pageEnd;
+    const totalEntityPages = Math.max(1, Math.ceil(entityTotal / ENTITIES_PER_PAGE));
 
     const items: MenuItem[] = [];
 
-    // Entity list (paginated)
-    for (const ent of pageEntities) {
+    // Entity list (already server-paginated)
+    for (const ent of entities) {
       const typeTag = ent.entity_type ? t.dim(` [${ent.entity_type}]`) : "";
       items.push({
         label: `${ent.display_name}${typeTag}`,
@@ -289,8 +294,8 @@ export function EvidenceOsScreen({ onBack }: { onBack: () => void }) {
         ) : (
           <Text>{"  " + t.dim("Loading...")}</Text>
         )}
-        {entities.length > ENTITIES_PER_PAGE && (
-          <Text>{"  " + t.dim(`Page ${entityPage + 1} of ${totalEntityPages}`)}</Text>
+        {entityTotal > ENTITIES_PER_PAGE && (
+          <Text>{"  " + t.dim(`Page ${entityPage + 1} of ${totalEntityPages} (${entityTotal} entities)`)}</Text>
         )}
         {error && <Text>{"  " + t.err(error)}</Text>}
         {status && <Text>{"  " + (status.startsWith("Failed") ? t.err(status) : t.ok(status))}</Text>}
@@ -298,8 +303,18 @@ export function EvidenceOsScreen({ onBack }: { onBack: () => void }) {
         <Menu items={items} onSelect={(value) => {
           if (value === "__back__") return onBack();
           if (value === "terms") { setLevel("terms"); return; }
-          if (value === "__prev_entity_page__") { setEntityPage(Math.max(0, entityPage - 1)); return; }
-          if (value === "__next_entity_page__") { setEntityPage(Math.min(totalEntityPages - 1, entityPage + 1)); return; }
+          if (value === "__prev_entity_page__") {
+            const newPage = Math.max(0, entityPage - 1);
+            setEntityPage(newPage);
+            setEntityOffset(newPage * ENTITIES_PER_PAGE);
+            return;
+          }
+          if (value === "__next_entity_page__") {
+            const newPage = Math.min(totalEntityPages - 1, entityPage + 1);
+            setEntityPage(newPage);
+            setEntityOffset(newPage * ENTITIES_PER_PAGE);
+            return;
+          }
           if (value.startsWith("entity:")) {
             const id = parseInt(value.slice(7), 10);
             const ent = entities.find((e) => e.id === id);

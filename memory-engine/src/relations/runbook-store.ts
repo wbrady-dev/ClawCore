@@ -267,16 +267,24 @@ export function inferRunbookFromAttempts(
   toolName: string,
   minSuccesses = 3,
 ): { runbookId: number; inferred: boolean } | null {
-  // Query attempts from memory_objects
-  const successes = db.prepare(`
+  // Query the N most recent attempts (any status) to check for consecutive successes
+  const recentAttempts = db.prepare(`
     SELECT id, composite_id, structured_json FROM memory_objects
     WHERE scope_id = ? AND kind = 'attempt' AND status = 'active'
       AND structured_json LIKE ? ESCAPE '\\'
-      AND structured_json LIKE '%"status":"success"%'
     ORDER BY created_at DESC LIMIT ?
   `).all(scopeId, `%"toolName":"${escapeLikeValue(toolName)}"%`, minSuccesses) as Array<{ id: number; composite_id: string; structured_json: string | null }>;
 
-  if (successes.length < minSuccesses) return null;
+  if (recentAttempts.length < minSuccesses) return null;
+
+  // All N most recent must be successes (consecutive check)
+  const allSuccesses = recentAttempts.every((a) => {
+    const parsed = safeParseStructured(a.structured_json);
+    return parsed.status === "success";
+  });
+  if (!allSuccesses) return null;
+
+  const successes = recentAttempts;
 
   // Build pattern from common input summaries
   const patterns = successes

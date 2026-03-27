@@ -155,13 +155,15 @@ function findExistingByCanonicalKey(
   kind: MemoryKind,
   canonicalKey: string,
   scopeId: number,
+  branchId?: number,
 ): ExistingMatch[] {
   try {
     const rows = db.prepare(`
       SELECT * FROM memory_objects
       WHERE canonical_key = ? AND scope_id = ? AND kind = ?
+        AND branch_id = ?
         AND status IN ('active', 'needs_confirmation')
-    `).all(canonicalKey, scopeId, kind) as Array<Record<string, unknown>>;
+    `).all(canonicalKey, scopeId, kind, branchId ?? 0) as Array<Record<string, unknown>>;
 
     return rows.map(toMatch);
   } catch {
@@ -247,6 +249,7 @@ export function reconcile(
       candidate.kind,
       candidate.canonical_key,
       candidate.scope_id,
+      candidate.branch_id,
     );
 
     // No existing match → plain insert
@@ -335,11 +338,14 @@ export function reconcile(
         }
       } else {
         // Rule 3: Lower confidence → add as evidence only
+        const candidateVal = extractValueForComparison(candidate);
+        const existingVal = match.value ?? match.content;
+        const contradicts = valuesContradict(candidateVal, existingVal);
         actions.push({
           type: "evidence",
           newObject: candidate,
           existingObjectId: match.id,
-          predicate: "supports",
+          predicate: contradicts ? "contradicts" : "supports",
           reason: `lower confidence: ${candidate.confidence.toFixed(2)} < ${match.confidence.toFixed(2)}`,
         });
       }
@@ -446,7 +452,7 @@ function createConflictObject(
       canonicalKey: objA.canonical_key,
       kind: objA.kind,
     },
-    canonical_key: buildCanonicalKey("conflict", `${contentA} vs ${contentB}`),
+    canonical_key: `conflict::${contentA} vs ${contentB}::${Date.now()}`,
     provenance: {
       source_kind: "inference",
       source_id: objA.id,

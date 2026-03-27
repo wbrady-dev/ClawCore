@@ -40,6 +40,7 @@ const CLAIM_EXTRACTION_SYSTEM = `You are a structured data extractor. Extract fa
 - subject: the entity or topic (string)
 - predicate: the relationship or property (string)
 - object: the value or related entity (string)
+- topic: a short canonical label (1-3 words) for WHAT ASPECT of the subject this describes (string, REQUIRED). Two claims about the same aspect of the same subject MUST use the same topic. Examples: "database", "manager", "status", "technology", "location", "port", "version".
 - confidence: how confident you are in this claim (0.0 to 1.0)
 
 Only extract factual claims, decisions, or stated preferences. Skip opinions, questions, and hypotheticals.
@@ -93,24 +94,29 @@ export async function extractClaimsDeep(
       const subject = String(item.subject ?? "").toLowerCase().trim().slice(0, maxFieldLength);
       const predicate = String(item.predicate ?? "").toLowerCase().trim().slice(0, maxFieldLength);
       const objectText = String(item.object ?? "").trim().slice(0, maxFieldLength);
+      const topic = typeof item.topic === "string" ? item.topic.toLowerCase().trim().slice(0, maxFieldLength) : undefined;
       const confidence = typeof item.confidence === "number" ? Math.min(1, Math.max(0, item.confidence)) : 0.5;
 
       if (!subject || !predicate || !objectText) continue;
+
+      // Use topic-aware canonical key when topic is available (matches LLM semantic-extractor keys)
+      const canonicalKey = buildCanonicalKey(subject, predicate, topic);
 
       results.push({
         claim: {
           subject,
           predicate,
           objectText,
+          topic,
           valueType: "text" as const,
           confidence,
           trustScore: defaultTrust,
           sourceAuthority: defaultAuthority,
-          canonicalKey: buildCanonicalKey(subject, predicate),
+          canonicalKey,
         },
         evidence: {
           sourceType: "deep_extraction",
-          sourceId: `deep:${Date.now()}`,
+          sourceId: `deep:${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
           sourceDetail: "LLM extracted from text",
           evidenceRole: "support" as const,
           confidenceDelta: 0.1,

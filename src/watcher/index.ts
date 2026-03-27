@@ -43,10 +43,16 @@ function logError(msg: string): void {
  * File watcher service.
  * Monitors directories for new/changed files and auto-ingests them into ThreadClaw.
  */
+/** Exponential backoff delays for retry queue (attempts 1, 2, 3) */
+const RETRY_DELAYS = [5_000, 30_000, 120_000];
+const MAX_RETRY_ATTEMPTS = 3;
+
 export class ThreadClawWatcher {
   private watchers: ReturnType<typeof watch>[] = [];
   private configs: WatchConfig[];
   private processing = new Set<string>();
+  private retryQueue = new Map<string, { attempts: number; nextRetry: number; wc: WatchConfig }>();
+  private retryDrainTimer: ReturnType<typeof setTimeout> | null = null;
 
   /** Optional callback invoked when the underlying watcher emits an error. */
   onError?: (err: Error) => void;
@@ -245,6 +251,58 @@ export class ThreadClawWatcher {
       if (err instanceof Error && err.stack) {
         logError(err.stack);
       }
+      this.scheduleRetry(filePath, wc);
+    }
+  }
+
+  /** Add a failed file to the retry queue with exponential backoff. */
+  private scheduleRetry(filePath: string, wc: WatchConfig): void {
+    const existing = this.retryQueue.get(filePath);
+    const attempts = existing ? existing.attempts + 1 : 1;
+
+    if (attempts > MAX_RETRY_ATTEMPTS) {
+      logger.warn({ filePath, attempts: MAX_RETRY_ATTEMPTS }, "Max retry attempts reached — giving up on file");
+      this.retryQueue.delete(filePath);
+      return;
+    }
+
+    const delay = RETRY_DELAYS[attempts - 1] ?? RETRY_DELAYS[RETRY_DELAYS.length - 1];
+    this.retryQueue.set(filePath, { attempts, nextRetry: Date.now() + delay, wc });
+    logger.info({ filePath, attempt: attempts, delayMs: delay }, "Scheduled retry for failed ingestion");
+
+    // Ensure the retry drain timer is running
+    this.ensureRetryDrainTimer();
+  }
+
+  /** Start the retry drain timer if not already running. */
+  private ensureRetryDrainTimer(): void {
+    if (this.retryDrainTimer) return;
+    this.retryDrainTimer = setTimeout(() => {
+      this.retryDrainTimer = null;
+      this.drainRetryQueue();
+    }, 5000);
+    this.retryDrainTimer.unref();
+  }
+
+  /** Check retry queue for files past their nextRetry time and re-queue them. */
+  private drainRetryQueue(): void {
+    const now = Date.now();
+    for (const [filePath, entry] of this.retryQueue) {
+      if (now >= entry.nextRetry) {
+        this.retryQueue.delete(filePath);
+        logger.info({ filePath, attempt: entry.attempts }, "Retrying failed ingestion");
+        // Re-queue through normal path (handleFile checks will be bypassed since
+        // the file isn't in processing set and isn't in ingestQueue)
+        if (!this.processing.has(filePath) && !this.ingestQueue.some((q) => q.filePath === filePath)) {
+          this.ingestQueue.push({ filePath, wc: entry.wc });
+        }
+      }
+    }
+    this.drainQueue();
+
+    // Reschedule if there are still items in the retry queue
+    if (this.retryQueue.size > 0) {
+      this.ensureRetryDrainTimer();
     }
   }
 
@@ -255,6 +313,13 @@ export class ThreadClawWatcher {
       this.retryTimer = null;
       this.retryPending = false;
     }
+
+    // Cancel pending retry drain timer
+    if (this.retryDrainTimer) {
+      clearTimeout(this.retryDrainTimer);
+      this.retryDrainTimer = null;
+    }
+    this.retryQueue.clear();
 
     // Drain the ingest queue (discard pending items)
     this.ingestQueue.length = 0;

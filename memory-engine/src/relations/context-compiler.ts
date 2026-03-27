@@ -5,7 +5,7 @@
  * them into a compact system prompt injection within a token budget.
  *
  * Scoring: (usefulness × confidence × freshness × scopeFit) / tokenCost
- * Budget tiers: lite=110, standard=190, premium=280 tokens
+ * Budget tiers: lite=110, standard=190, premium=380 tokens
  */
 
 import type { GraphDb } from "./types.js";
@@ -32,7 +32,7 @@ import { estimateTokens as canonicalEstimateTokens } from "../utils/tokens.js";
 const BUDGET_TIERS: Record<string, number> = {
   lite: 110,
   standard: 190,
-  premium: 280,
+  premium: 380,
 };
 
 // ---------------------------------------------------------------------------
@@ -71,12 +71,13 @@ function maybeAutoArchive(
 const CAPSULE_ORDER: Record<string, number> = {
   anti_runbook: 0,
   invariant: 1,
-  decision: 2,
-  claim: 3,
-  loop: 4,
-  delta: 5,
-  runbook: 6,
-  relation: 7,
+  conflict: 2,
+  decision: 3,
+  claim: 4,
+  loop: 5,
+  delta: 6,
+  runbook: 7,
+  relation: 8,
 };
 
 // ---------------------------------------------------------------------------
@@ -123,7 +124,7 @@ function claimCapsules(claims: ClaimRow[]): CapsuleCandidate[] {
     if (HISTORICAL_PREDICATES.has(predicateLower)) continue;
 
     const daysSince = daysSinceIso(c.last_seen_at);
-    const conf = effectiveConfidence(c.confidence, 1, daysSince);
+    const conf = effectiveConfidence(c.confidence, c.mention_count ?? 1, daysSince);
     const text = `[claim] ${c.subject} ${c.predicate}: ${c.object_text ?? "(no value)"} (conf=${c.confidence.toFixed(2)})`;
     const tokens = estimateTokens(text);
 
@@ -261,9 +262,47 @@ function relationCapsules(relations: Array<{ subject_name: string; predicate: st
   });
 }
 
+function conflictCapsules(rows: Array<Record<string, unknown>>): CapsuleCandidate[] {
+  return rows.map((row) => {
+    const s = safeParseStructured(row.structured_json);
+    const sideA = String(s.objectIdA ?? "?");
+    const sideB = String(s.objectIdB ?? "?");
+    const status = String(row.status ?? "active");
+    const label = status === "active" ? "unresolved" : status;
+    const text = `[conflict] ${sideA} vs ${sideB} (${label})`;
+    const tokens = estimateTokens(text);
+    // Conflicts scored between decisions (0.9) and anti-runbooks (0.95)
+    const score = 0.85;
+    return {
+      type: "conflict",
+      text,
+      tokens,
+      score,
+      scorePerToken: score / Math.max(1, tokens),
+    };
+  });
+}
+
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+
+/**
+ * Compute keyword overlap between a query and capsule text.
+ * Returns a relevance factor in [0.2, 1.0] — 0.2 floor ensures
+ * unrelated capsules are demoted but not zeroed entirely.
+ */
+function queryRelevance(queryWords: string[], capsuleText: string): number {
+  if (queryWords.length === 0) return 1.0;
+  const lowerText = capsuleText.toLowerCase();
+  let hits = 0;
+  for (const w of queryWords) {
+    if (lowerText.includes(w)) hits++;
+  }
+  const overlap = hits / queryWords.length; // 0..1
+  // Map 0..1 overlap to 0.2..1.0 relevance factor
+  return 0.2 + 0.8 * overlap;
+}
 
 function daysSinceIso(isoDate: string): number {
   try {
@@ -281,6 +320,8 @@ function daysSinceIso(isoDate: string): number {
 export interface ContextCompilerConfig {
   tier: string | number;
   scopeId: number;
+  /** Optional query string for relevance-weighted scoring. */
+  queryContext?: string;
   maxClaims?: number;
   maxDecisions?: number;
   maxLoops?: number;
@@ -342,7 +383,7 @@ export function compileContextCapsules(
     const allRows = db.prepare(`
       SELECT * FROM memory_objects
       WHERE scope_id = ? AND branch_id = 0 AND status = 'active'
-        AND kind IN ('claim', 'decision', 'loop', 'invariant', 'procedure', 'relation')
+        AND kind IN ('claim', 'decision', 'loop', 'invariant', 'procedure', 'relation', 'conflict')
       ORDER BY kind, confidence DESC, last_observed_at DESC
     `).all(scopeId) as Array<Record<string, unknown>>;
 
@@ -354,10 +395,11 @@ export function compileContextCapsules(
     const maxRunbooks = 5;
     const maxAntiRunbooks = 5;
     const maxRelations = 10;
+    const maxConflicts = 5;
 
     // Counters
     let claimCount = 0, decisionCount = 0, loopCount = 0;
-    let invariantCount = 0, runbookCount = 0, antiRunbookCount = 0, relationCount = 0;
+    let invariantCount = 0, runbookCount = 0, antiRunbookCount = 0, relationCount = 0, conflictCount = 0;
 
     for (const row of allRows) {
       const kind = String(row.kind);
@@ -389,6 +431,9 @@ export function compileContextCapsules(
             candidates.push(...relationCapsules([rel]));
           }
           break;
+        case "conflict":
+          if (conflictCount++ < maxConflicts) candidates.push(...conflictCapsules([row]));
+          break;
       }
     }
   } catch { /* non-fatal: unified query failure should not break compilation */ }
@@ -415,13 +460,28 @@ export function compileContextCapsules(
     }
   }
 
+  // Query-aware relevance boosting: multiply scores by keyword overlap
+  const queryWords = config.queryContext
+    ? config.queryContext.toLowerCase().split(/\s+/).filter((w) => w.length > 2)
+    : [];
+  if (queryWords.length > 0) {
+    for (const c of deduped) {
+      const relevance = queryRelevance(queryWords, c.text);
+      c.score *= relevance;
+      c.scorePerToken = c.score / Math.max(1, c.tokens);
+    }
+  }
+
   // ROI Governor: rank by score-per-token, greedy knapsack fill
   deduped.sort((a, b) => b.scorePerToken - a.scorePerToken);
 
   const selected: CapsuleCandidate[] = [];
-  let spent = 0;
+  // Pre-deduct header cost: "[ThreadClaw Evidence]\n" ≈ 6 tokens
+  const headerTokens = estimateTokens("[ThreadClaw Evidence]\n");
+  let spent = headerTokens;
 
   for (const c of deduped) {
+    if (c.score <= 0) continue;
     if (spent + c.tokens <= budget) {
       selected.push(c);
       spent += c.tokens;

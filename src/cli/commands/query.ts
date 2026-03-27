@@ -7,8 +7,8 @@ export const queryCommand = new Command("query")
   .argument("<question>", "The query text")
   .option("-c, --collection <name>", 'Collection to search (use "all" for every collection)', "default")
   .option("-k, --top-k <number>", "Number of results", "3")
-  .option("--brief", "Compressed output (~200 tokens) — best for agents")
-  .option("--titles", "Return only matching document titles (~30 tokens)")
+  .option("--brief", "Compressed output (~250 tokens) — best for agents")
+  .option("--titles", "Return only matching document titles (~50 tokens)")
   .option("--full", "Return full chunks with rich citations")
   .option("--no-rerank", "Skip cross-encoder reranking")
   .option("--no-bm25", "Skip BM25 sparse search")
@@ -67,8 +67,8 @@ Examples:
         if (opts.json) {
           console.log(JSON.stringify(result, null, 2));
         } else {
-          if (result.context) {
-            console.log(result.context);
+          if (result.highlighted ?? result.context) {
+            console.log(result.highlighted ?? result.context);
           } else {
             console.log("No results found.");
           }

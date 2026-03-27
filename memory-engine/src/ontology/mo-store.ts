@@ -74,7 +74,7 @@ function validStatus(val: unknown): MemoryStatus {
 export function upsertMemoryObject(
   db: GraphDb,
   obj: MemoryObject,
-  opts?: { skipCanonicalDedup?: boolean },
+  opts?: { skipCanonicalDedup?: boolean; isSupersession?: boolean },
 ): { moId: number; isNew: boolean } {
   const structuredJson = obj.structured != null
     ? JSON.stringify(obj.structured)
@@ -89,7 +89,7 @@ export function upsertMemoryObject(
   const sourceId = obj.provenance?.source_id ?? "";
   const sourceDetail = obj.provenance?.source_detail ?? null;
   const sourceAuthority = obj.provenance?.trust ?? 0.5;
-  const branchId = 0; // default branch
+  const branchId = obj.branch_id ?? 0;
 
   // Try upsert by composite_id first
   let existing = db.prepare(
@@ -111,10 +111,16 @@ export function upsertMemoryObject(
 
   if (existing) {
     // Weighted confidence blend: new * 0.7 + old * 0.3 (gives recent evidence more weight)
-    const oldRow = db.prepare("SELECT confidence FROM memory_objects WHERE id = ?").get(existing.id) as { confidence: number } | undefined;
-    const oldConf = Math.min(1.0, Math.max(0.0, Number(oldRow?.confidence ?? 0.5)));
+    // Skip blending for supersessions — the TruthEngine already computed the correct confidence
     const newConf = Math.min(1.0, Math.max(0.0, Number(obj.confidence ?? 0.5)));
-    const blendedConfidence = Math.min(1.0, Math.max(0.0, newConf * 0.7 + oldConf * 0.3));
+    let blendedConfidence: number;
+    if (opts?.isSupersession) {
+      blendedConfidence = newConf;
+    } else {
+      const oldRow = db.prepare("SELECT confidence FROM memory_objects WHERE id = ?").get(existing.id) as { confidence: number } | undefined;
+      const oldConf = Math.min(1.0, Math.max(0.0, Number(oldRow?.confidence ?? 0.5)));
+      blendedConfidence = Math.min(1.0, Math.max(0.0, newConf * 0.7 + oldConf * 0.3));
+    }
 
     db.prepare(`
       UPDATE memory_objects SET
@@ -372,6 +378,7 @@ export function rowToMemoryObject(row: Record<string, unknown>): MemoryObject {
 
     observed_at: safeStr(row.observed_at) || safeStr(row.first_observed_at) || isoNow(),
     scope_id: safeNum(row.scope_id, 1),
+    branch_id: safeNum(row.branch_id, 0),
     influence_weight: validInfluenceWeight(row.influence_weight),
 
     created_at: safeStr(row.created_at) || isoNow(),

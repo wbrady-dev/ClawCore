@@ -124,30 +124,44 @@ async function ingestFileInner(
     };
   }
 
+  // Check for existing document at same path in same collection
+  const existing = db
+    .prepare(
+      "SELECT id, content_hash, text_content_hash, file_mtime FROM documents WHERE source_path = ? AND collection_id = ?",
+    )
+    .get(absPath, collection.id) as
+    | { id: string; content_hash: string; text_content_hash: string | null; file_mtime: string | null }
+    | undefined;
+
+  // Issue 4 fix: fast mtime pre-check — skip file read if mtime matches exactly
+  if (existing && !options.force && existing.file_mtime && existing.file_mtime === fileMtime) {
+    logger.debug({ filePath: absPath }, "File mtime unchanged — skipping without read");
+    return {
+      documentsAdded: 0,
+      documentsUpdated: 0,
+      chunksCreated: 0,
+      duplicatesSkipped: 1,
+      elapsedMs: Date.now() - start,
+    };
+  }
+
   // TODO: Streaming — entire file is read into memory as a single buffer.
   // For very large files (near the size limit), consider streaming to parsers.
   const fileBuf = await readFile(absPath);
   let raw: string;
+  let isBinaryFormat = false;
   try {
     raw = new TextDecoder("utf-8", { fatal: true }).decode(fileBuf);
   } catch {
     // Binary files (pdf, docx, pptx) — text decode fails, parser handles natively
     raw = "";
+    isBinaryFormat = true;
   }
 
   // Stable hash from the buffer (avoids re-reading for binary files)
   const hash = raw
     ? await contentHash(raw)
     : await contentHashBytes(new Uint8Array(fileBuf));
-
-  // Check for existing document at same path in same collection
-  const existing = db
-    .prepare(
-      "SELECT id, content_hash, file_mtime FROM documents WHERE source_path = ? AND collection_id = ?",
-    )
-    .get(absPath, collection.id) as
-    | { id: string; content_hash: string; file_mtime: string | null }
-    | undefined;
 
   if (existing) {
     if (!options.force && existing.content_hash === hash) {
@@ -200,6 +214,37 @@ async function ingestFileInner(
     };
   }
 
+  // Issue 2 fix: For binary formats where byte hash changed, check if parsed text is
+  // actually unchanged. Regenerated PDFs with identical text but different binary
+  // encoding will match on text hash, avoiding a full re-ingest.
+  if (isBinaryFormat && existing && !options.force && existing.text_content_hash && parsed.text) {
+    const parsedTextHash = await contentHash(parsed.text);
+    if (existing.text_content_hash === parsedTextHash) {
+      // Text content identical — update byte hash and mtime but skip full re-ingest
+      db.prepare(
+        "UPDATE documents SET content_hash = ?, file_mtime = ? WHERE id = ?",
+      ).run(hash, fileMtime, existing.id);
+      logger.debug({ filePath: absPath }, "Binary bytes changed but parsed text unchanged — skipping re-ingest");
+      return {
+        documentsAdded: 0,
+        documentsUpdated: 0,
+        chunksCreated: 0,
+        duplicatesSkipped: 1,
+        elapsedMs: Date.now() - start,
+      };
+    }
+  }
+
+  // Check if parsed text is an error placeholder — don't chunk/embed error strings
+  const ERROR_PLACEHOLDER_RE = /^\[(PDF|DOCX|PPTX|EPUB|Image|Audio):\s.*(\u2014|--)\s*(parse failed|no text detected|no speech detected|OCR failed|OCR unavailable|transcription failed|transcription disabled|file not found|file too large|Whisper not installed)/;
+  if (ERROR_PLACEHOLDER_RE.test(parsed.text.trim())) {
+    logger.warn({ filePath: absPath }, `Parser returned error placeholder: ${parsed.text.substring(0, 120)}`);
+    return {
+      documentsAdded: 0, documentsUpdated: 0, chunksCreated: 0,
+      duplicatesSkipped: 0, elapsedMs: Date.now() - start,
+    };
+  }
+
   // Enrich metadata with auto-tags
   const autoTags = generateAutoTags(absPath, parsed.metadata.fileType);
   const allTags = [...(options.tags ?? []), ...autoTags];
@@ -224,12 +269,27 @@ async function ingestFileInner(
   );
   const embeddings = await embedBatch(chunkTexts, "passage");
 
+  // Issue 1 fix: For updates, delete old document's chunks BEFORE running cross-DB dedup.
+  // This prevents self-matching (old embeddings matching new ones) while still catching
+  // cross-document duplicates. Wrapped in a transaction for atomicity.
+  if (existing) {
+    const deleteOld = db.transaction(() => {
+      const oldChunkIds = db.prepare("SELECT id FROM chunks WHERE document_id = ?").all(existing.id) as { id: string }[];
+      if (oldChunkIds.length > 0) {
+        const delVecStmt = db.prepare("DELETE FROM chunk_vectors WHERE chunk_id = ?");
+        for (const c of oldChunkIds) delVecStmt.run(c.id);
+      }
+      db.prepare("DELETE FROM chunks WHERE document_id = ?").run(existing.id);
+      db.prepare("DELETE FROM metadata_index WHERE document_id = ?").run(existing.id);
+      db.prepare("DELETE FROM documents WHERE id = ?").run(existing.id);
+    });
+    deleteOld();
+  }
+
   // Semantic deduplication — remove near-duplicate chunks
-  // Skip cross-DB dedup when force=true or updating existing doc: the old version's
-  // embeddings are still in the DB at this point (deleted inside the transaction below),
-  // so they would falsely match as duplicates of the new version.
+  // Now safe to run cross-DB dedup even for updates: old embeddings are already gone.
   const intraDupes = findIntraBatchDuplicates(embeddings);
-  const existingDupes = (options.force || existing)
+  const existingDupes = options.force
     ? new Set<number>()
     : findExistingDuplicates(db, embeddings, collection.id);
   const allDupes = new Set([...intraDupes, ...existingDupes]);
@@ -265,27 +325,34 @@ async function ingestFileInner(
   const chunkIds: string[] = dedupedIndices.map(() => uuidv4());
   const isUpdate = !!existing;
 
-  const store = db.transaction(() => {
-    // Remove old version FIRST to avoid UNIQUE constraint on source_path
-    // and to free up space before inserting new data.
-    if (existing) {
-      const oldChunkIds = db.prepare("SELECT id FROM chunks WHERE document_id = ?").all(existing.id) as { id: string }[];
-      if (oldChunkIds.length > 0) {
-        // BUG 2+10: inline vector deletion to avoid nested transaction from deleteVectors
-        const delVecStmt = db.prepare("DELETE FROM chunk_vectors WHERE chunk_id = ?");
-        for (const c of oldChunkIds) delVecStmt.run(c.id);
-      }
-      db.prepare("DELETE FROM documents WHERE id = ?").run(existing.id);
-    }
+  // Issue 2 fix: compute text_content_hash for binary formats after parsing.
+  // Binary files (PDF, DOCX, etc.) with same text but different binary encoding
+  // will match on text hash, avoiding unnecessary re-ingestion.
+  const textContentHash = isBinaryFormat && parsed.text
+    ? await contentHash(parsed.text)
+    : null;
 
-    // Insert document with mtime for incremental indexing
+  const store = db.transaction(() => {
+    // Old version already deleted above (before dedup) for updates.
+
+    // Insert document with mtime for incremental indexing.
+    // ON CONFLICT handles race-condition duplicates (Issue 3).
     db.prepare(
-      "INSERT INTO documents (id, collection_id, source_path, content_hash, metadata_json, size_bytes, file_mtime) VALUES (?, ?, ?, ?, ?, ?, ?)",
+      `INSERT INTO documents (id, collection_id, source_path, content_hash, text_content_hash, metadata_json, size_bytes, file_mtime)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT(source_path, collection_id) DO UPDATE SET
+         id = excluded.id,
+         content_hash = excluded.content_hash,
+         text_content_hash = excluded.text_content_hash,
+         metadata_json = excluded.metadata_json,
+         size_bytes = excluded.size_bytes,
+         file_mtime = excluded.file_mtime`,
     ).run(
       documentId,
       collection.id,
       absPath,
       hash,
+      textContentHash,
       JSON.stringify(metadata),
       metadata.sizeBytes ?? null,
       fileMtime,

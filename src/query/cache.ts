@@ -52,10 +52,11 @@ export function getCached<T>(key: string): T | null {
  * Store a result in the cache.
  */
 export function setCached(key: string, result: unknown): void {
-  // Evict oldest if at capacity
-  if (cache.size >= MAX_ENTRIES) {
+  // Evict oldest entries until under capacity (handles runtime config reduction)
+  while (cache.size >= MAX_ENTRIES) {
     const firstKey = cache.keys().next().value;
     if (firstKey) cache.delete(firstKey);
+    else break;
   }
 
   cache.set(key, { result: structuredClone(result), timestamp: Date.now() });

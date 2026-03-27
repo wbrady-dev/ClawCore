@@ -12,6 +12,7 @@ import type { GraphDb } from "./types.js";
 import type { MemoryObject } from "../ontology/types.js";
 import { logEvidence } from "./evidence-log.js";
 import { upsertMemoryObject } from "../ontology/mo-store.js";
+import { insertProvenanceLink } from "../ontology/projector.js";
 import { buildCanonicalKey, normalizePredicate } from "../ontology/canonical.js";
 import { safeParseStructured } from "../ontology/json-utils.js";
 
@@ -99,6 +100,12 @@ export function upsertRelation(
   const subject = resolveEntity(db, input.subjectEntityId);
   const object = resolveEntity(db, input.objectEntityId);
 
+  // Guard: reject self-referential relations
+  if (subject.compositeId === object.compositeId) {
+    console.warn(`[relation-store] skipping self-referential relation: ${subject.compositeId} → ${input.predicate}`);
+    return { relationId: 0, isNew: false };
+  }
+
   const predNorm = normalizePredicate(input.predicate);
   const compositeId = `relation:${input.scopeId}:${input.subjectEntityId}:${predNorm}:${input.objectEntityId}`;
   const content = `${subject.name} ${predNorm} ${object.name}`;
@@ -141,6 +148,17 @@ export function upsertRelation(
   };
 
   const result = upsertMemoryObject(db, mo);
+
+  // Project a provenance_link so health/stats can count relations via provenance_links
+  insertProvenanceLink(
+    db,
+    subject.compositeId,
+    "relates_to",
+    object.compositeId,
+    confidence,
+    predNorm,                // detail = the specific relationship predicate
+    input.scopeId,
+  );
 
   logEvidence(db, {
     scopeId: input.scopeId,

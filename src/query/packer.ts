@@ -18,6 +18,8 @@ export interface SourceInfo {
 
 export interface PackedResult {
   context: string;
+  /** Context with matched query terms highlighted in markdown bold */
+  highlighted?: string;
   sources: SourceInfo[];
   chunksUsed: number;
   tokensUsed: number;
@@ -36,6 +38,7 @@ export interface PackedResult {
 export function packContext(
   chunks: PackedChunk[],
   tokenBudget: number,
+  queryText?: string,
 ): PackedResult {
   if (chunks.length === 0) {
     return { context: "", sources: [], chunksUsed: 0, tokensUsed: 0 };
@@ -121,8 +124,27 @@ export function packContext(
     collection: s.collection,
   }));
 
+  const contextText = lines.join("\n").trim();
+
+  // Generate highlighted version with matched query terms in markdown bold
+  let highlighted: string | undefined;
+  if (queryText) {
+    const queryTerms = [...new Set(
+      queryText.toLowerCase()
+        .replace(/[^\w\s]/g, "")
+        .split(/\s+/)
+        .filter((t) => t.length >= 3),
+    )];
+    if (queryTerms.length > 0) {
+      const escapedTerms = queryTerms.map((t) => t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+      const pattern = new RegExp(`\\b(${escapedTerms.join("|")})\\b`, "gi");
+      highlighted = contextText.replace(/\*\*/g, "").replace(pattern, "**$1**");
+    }
+  }
+
   return {
-    context: lines.join("\n").trim(),
+    context: contextText,
+    highlighted,
     sources,
     chunksUsed,
     tokensUsed,
@@ -131,7 +153,7 @@ export function packContext(
 
 /**
  * Titles-only mode — return just document names and collections.
- * ~30 tokens per query. For exploratory "what do I have?" searches.
+ * ~50 tokens per query (capped). For exploratory "what do I have?" searches.
  */
 export function packTitles(chunks: { sourcePath: string | null; collectionName: string | null }[]): {
   text: string;

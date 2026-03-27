@@ -630,4 +630,34 @@ export function runLcmMigrations(
       DELETE FROM summaries_fts WHERE summary_id = OLD.summary_id;
     END;
   `);
+
+  // FTS5 INSERT triggers — auto-index new messages and summaries
+  db.exec(`
+    CREATE TRIGGER IF NOT EXISTS messages_fts_insert AFTER INSERT ON messages
+    BEGIN
+      INSERT INTO messages_fts(rowid, content) VALUES (NEW.message_id, NEW.content);
+    END;
+  `);
+  db.exec(`
+    CREATE TRIGGER IF NOT EXISTS summaries_fts_insert AFTER INSERT ON summaries
+    BEGIN
+      INSERT INTO summaries_fts(summary_id, content) VALUES (NEW.summary_id, NEW.content);
+    END;
+  `);
+
+  // FTS5 UPDATE triggers — keep FTS in sync when content changes
+  db.exec(`
+    CREATE TRIGGER IF NOT EXISTS messages_fts_update AFTER UPDATE OF content ON messages
+    BEGIN
+      DELETE FROM messages_fts WHERE rowid = OLD.message_id;
+      INSERT INTO messages_fts(rowid, content) VALUES (NEW.message_id, NEW.content);
+    END;
+  `);
+  db.exec(`
+    CREATE TRIGGER IF NOT EXISTS summaries_fts_update AFTER UPDATE OF content ON summaries
+    BEGIN
+      DELETE FROM summaries_fts WHERE summary_id = OLD.summary_id;
+      INSERT INTO summaries_fts(summary_id, content) VALUES (NEW.summary_id, NEW.content);
+    END;
+  `);
 }

@@ -388,20 +388,56 @@ export function buildAwarenessNote(
     let tokenBudget = config.maxTokens - headerTokens;
 
     if (matchedIds.length === 0) {
-      // Proactive awareness: surface high-value entities even when none match current turn
+      // Proactive awareness: prefer entities that co-occur with entities mentioned in the conversation
       try {
-        const highValue = withBudgetGuard(
-          () => db.prepare(`
-            SELECT content AS name,
-                   COALESCE(json_extract(structured_json, '$.mentionCount'), 1) AS mention_count
-            FROM memory_objects
-            WHERE kind = 'entity' AND status = 'active'
-              AND COALESCE(json_extract(structured_json, '$.mentionCount'), 1) >= ?
-            ORDER BY CAST(COALESCE(json_extract(structured_json, '$.mentionCount'), 1) AS INTEGER) DESC
-            LIMIT 3
-          `).all(config.minMentions) as Array<{ name: string; mention_count: number }>,
-          25,
-        );
+        // Extract any entity names from conversation text (case-insensitive substring match)
+        const lowerText = text.toLowerCase();
+        const conversationEntityNames = cache
+          .filter((e) => e.name && lowerText.includes(e.name))
+          .map((e) => e.composite_id);
+
+        let highValue: Array<{ name: string; mention_count: number }> = [];
+
+        // Try co-occurrence first: find entities sharing a source with conversation entities
+        if (conversationEntityNames.length > 0) {
+          const placeholders = conversationEntityNames.map(() => "?").join(",");
+          highValue = withBudgetGuard(
+            () => db.prepare(`
+              SELECT mo.content AS name,
+                     COALESCE(json_extract(mo.structured_json, '$.mentionCount'), 1) AS mention_count
+              FROM provenance_links pl1
+              JOIN provenance_links pl2 ON pl1.object_id = pl2.object_id
+                AND pl1.subject_id != pl2.subject_id
+              JOIN memory_objects mo ON pl2.subject_id = mo.composite_id
+              WHERE pl1.predicate = 'mentioned_in'
+                AND pl2.predicate = 'mentioned_in'
+                AND pl1.subject_id IN (${placeholders})
+                AND mo.kind = 'entity' AND mo.status = 'active'
+                AND COALESCE(json_extract(mo.structured_json, '$.mentionCount'), 1) >= ?
+              GROUP BY mo.composite_id
+              ORDER BY COUNT(*) DESC, mention_count DESC
+              LIMIT 3
+            `).all(...conversationEntityNames, config.minMentions) as Array<{ name: string; mention_count: number }>,
+            25,
+          );
+        }
+
+        // Fallback: global top 3 by mention count if no co-occurring entities found
+        if (highValue.length === 0) {
+          highValue = withBudgetGuard(
+            () => db.prepare(`
+              SELECT content AS name,
+                     COALESCE(json_extract(structured_json, '$.mentionCount'), 1) AS mention_count
+              FROM memory_objects
+              WHERE kind = 'entity' AND status = 'active'
+                AND COALESCE(json_extract(structured_json, '$.mentionCount'), 1) >= ?
+              ORDER BY CAST(COALESCE(json_extract(structured_json, '$.mentionCount'), 1) AS INTEGER) DESC
+              LIMIT 3
+            `).all(config.minMentions) as Array<{ name: string; mention_count: number }>,
+            25,
+          );
+        }
+
         for (const hv of highValue) {
           if (noteLines.length >= config.maxNotes || tokenBudget <= 0) break;
           const line = `Background: "${hv.name}" (${hv.mention_count} mentions) — high-activity entity`;

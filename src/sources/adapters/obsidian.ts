@@ -9,6 +9,7 @@ import { existsSync, readdirSync } from "fs";
 import { resolve, join } from "path";
 import { homedir } from "os";
 import { ThreadClawWatcher } from "../../watcher/index.js";
+import { config } from "../../config.js";
 import type { SourceAdapter, SourceConfig, SourceStatus } from "../types.js";
 
 /** Common vault locations by platform */
@@ -124,8 +125,7 @@ export class ObsidianAdapter implements SourceAdapter {
       .map((c) => ({
         paths: [resolve(c.path)],
         collection: c.collection,
-        // TODO: debounceMs is hardcoded — consider using config.watch.debounceMs
-        debounceMs: 3000,
+        debounceMs: config.watch.debounceMs,
       }));
 
     if (watchConfigs.length === 0) {

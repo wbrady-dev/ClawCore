@@ -65,6 +65,8 @@ export interface UpsertEntityInput {
   name: string;
   displayName?: string;
   entityType?: string;
+  actor?: string;
+  runId?: string;
 }
 
 export interface InsertMentionInput {
@@ -103,11 +105,15 @@ export interface UpsertClaimInput {
   objectText?: string;
   objectJson?: string;
   valueType?: ValueType;
+  /** Semantic topic label for canonical key alignment with LLM extraction. */
+  topic?: string;
   confidence?: number;
   trustScore?: number;
   sourceAuthority?: number;
   canonicalKey: string;
   extractionVersion?: number;
+  actor?: string;
+  runId?: string;
 }
 
 export interface UpsertClaimResult {
@@ -140,6 +146,8 @@ export interface UpsertDecisionInput {
   sourceType?: string;
   sourceId?: string;
   sourceDetail?: string;
+  actor?: string;
+  runId?: string;
 }
 
 export interface UpsertDecisionResult {
@@ -172,6 +180,7 @@ export interface UpdateLoopInput {
   loopId: number;
   status?: LoopStatus;
   priority?: number;
+  owner?: string;
   waitingOn?: string;
 }
 

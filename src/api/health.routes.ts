@@ -163,7 +163,8 @@ export function registerHealthRoutes(server: FastifyInstance, onShutdown?: () =>
             claims: safe("SELECT COUNT(*) as cnt FROM memory_objects WHERE kind = 'claim' AND status = 'active'"),
             decisions: safe("SELECT COUNT(*) as cnt FROM memory_objects WHERE kind = 'decision' AND status = 'active'"),
             loops: safe("SELECT COUNT(*) as cnt FROM memory_objects WHERE kind = 'loop' AND status = 'active'"),
-            relations: safe("SELECT COUNT(*) as cnt FROM provenance_links WHERE predicate = 'relates_to'"),
+            relations: safe("SELECT COUNT(*) as cnt FROM provenance_links WHERE predicate = 'relates_to'")
+              || safe("SELECT COUNT(*) as cnt FROM memory_objects WHERE kind = 'relation' AND status = 'active'"),
             attempts: safe("SELECT COUNT(*) as cnt FROM memory_objects WHERE kind = 'attempt'"),
             evidenceEvents: safe("SELECT COUNT(*) as cnt FROM evidence_log"),
             graphDbSizeMB: Math.round(statSync(config.relations.graphDbPath).size / 1024 / 1024 * 100) / 100,

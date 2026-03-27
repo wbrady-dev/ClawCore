@@ -226,6 +226,11 @@ export function promoteBranch(db: GraphDb, branchId: number, actor?: string): vo
 export function discardBranch(db: GraphDb, branchId: number, actor?: string): void {
   const branch = db.prepare("SELECT scope_id FROM branch_scopes WHERE id = ?").get(branchId) as { scope_id: number } | undefined;
 
+  // Retract all memory objects in the discarded branch so they don't leak into queries
+  db.prepare(
+    "UPDATE memory_objects SET status = 'retracted', updated_at = strftime('%Y-%m-%dT%H:%M:%f', 'now') WHERE branch_id = ? AND status IN ('active', 'needs_confirmation')",
+  ).run(branchId);
+
   db.prepare(
     "UPDATE branch_scopes SET status = 'discarded' WHERE id = ?",
   ).run(branchId);

@@ -108,6 +108,9 @@ export function extractClaimsFromUserExplicit(
     const sentence = claimText.split(/[.!?]\s/)[0].trim();
     if (sentence.length < 3 || sentence.length > 300) continue;
 
+    // Skip explicit non-fact markers (e.g., "Note: don't store this")
+    if (/\b(don'?t store|example only|just kidding|not real|hypothetical|just an example|ignore this)\b/i.test(sentence)) continue;
+
     // Try to parse "subject predicate object" from the sentence
     // Pattern: "X owns/is/uses/has Y" or "X: Y"
     const kvMatch = sentence.match(/^(.+?)\s+(?:is|are|was|has|have|owns|uses|runs|manages|depends|requires|needs|expires|rotates|must|should|cannot|never)\s+(.+)$/i);
@@ -366,6 +369,7 @@ const LOOP_RE = /(?:^|\n)\s*(?:task|todo|remind(?:er|\s+me)|action\s*item|open\s
 export interface LoopExtractionResult {
   text: string;
   loopType: "task" | "question" | "follow_up" | "dependency";
+  priority: number;
   sourceType: string;
   sourceId: string;
 }
@@ -387,18 +391,21 @@ export function extractLoopsFromText(
     const sentence = raw.split(/[.!?]\s/)[0].trim();
     if (sentence.length < 5 || sentence.length > 300) continue;
 
-    // Determine loop type from the matched keyword
+    // Determine loop type and priority from the matched keyword
     const fullMatch = match[0].toLowerCase();
     let loopType: "task" | "question" | "follow_up" | "dependency" = "task";
-    if (fullMatch.includes("question")) loopType = "question";
-    else if (fullMatch.includes("follow")) loopType = "follow_up";
-    else if (fullMatch.includes("remind")) loopType = "follow_up"; // matches "reminder" and "remind me"
-    else if (fullMatch.includes("next step")) loopType = "follow_up";
-    else if (fullMatch.includes("blocker")) loopType = "dependency";
+    let priority = 4; // default for tasks
+    if (fullMatch.includes("blocker")) { loopType = "dependency"; priority = 8; }
+    else if (fullMatch.includes("urgent")) { priority = 7; }
+    else if (fullMatch.includes("question")) { loopType = "question"; priority = 3; }
+    else if (fullMatch.includes("follow")) { loopType = "follow_up"; priority = 2; }
+    else if (fullMatch.includes("remind")) { loopType = "follow_up"; priority = 2; } // matches "reminder" and "remind me"
+    else if (fullMatch.includes("next step")) { loopType = "follow_up"; priority = 2; }
 
     results.push({
       text: sentence,
       loopType,
+      priority,
       sourceType: "message",
       sourceId,
     });
@@ -673,6 +680,11 @@ export function extractClaimsFast(
   },
 ): ClaimExtractionResult[] {
   if (!text && !context.toolResult) return [];
+
+  // Strip code blocks before regex extraction — code is not user facts
+  if (text) {
+    text = text.replace(/```[\s\S]*?```/g, '').replace(/`[^`]+`/g, '');
+  }
 
   const all: ClaimExtractionResult[] = [];
 

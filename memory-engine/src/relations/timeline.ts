@@ -21,6 +21,8 @@ export interface TimelineOptions {
   since?: string;
   before?: string;
   objectType?: string;
+  eventType?: string;
+  objectId?: number;
   actor?: string;
   limit?: number;
 }
@@ -52,6 +54,14 @@ export function getTimeline(
   if (opts?.objectType) {
     where.push("object_type = ?");
     args.push(opts.objectType);
+  }
+  if (opts?.eventType) {
+    where.push("event_type = ?");
+    args.push(opts.eventType);
+  }
+  if (opts?.objectId != null) {
+    where.push("object_id = ?");
+    args.push(opts.objectId);
   }
   if (opts?.actor) {
     where.push("actor = ?");

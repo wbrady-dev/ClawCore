@@ -155,6 +155,7 @@ export interface MemoryObject {
 
   // Scope and influence
   scope_id: number;
+  branch_id?: number;
   influence_weight: InfluenceWeight;
 
   created_at: string;

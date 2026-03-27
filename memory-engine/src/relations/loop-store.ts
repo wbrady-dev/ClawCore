@@ -100,6 +100,7 @@ export function updateLoop(db: GraphDb, input: UpdateLoopInput): void {
 
   // Apply updates to structured data
   if (input.priority != null) structured.priority = input.priority;
+  if (input.owner !== undefined) structured.owner = input.owner;
   if (input.waitingOn !== undefined) structured.waitingOn = input.waitingOn;
   // Store the loop-specific status in structured data (open, blocked, closed, stale)
   if (input.status != null) structured.loopStatus = input.status;

@@ -45,11 +45,14 @@ import {
   createCcClaimsTool,
   createCcDecisionsTool,
   createCcLoopsTool,
+  createCcManageLoopTool,
   createCcAttemptsTool,
   createCcBranchTool,
   createCcProceduresTool,
   createCcDiagnosticsTool,
   createCcMemoryTool,
+  createCcStateTool,
+  createCcConflictsTool,
   // createCcSynthesizeTool is available but not registered — cc_memory subsumes its functionality
 } from "./src/relations/tools.js";
 import type { LcmDependencies } from "./src/types.js";
@@ -1460,6 +1463,10 @@ const lcmPlugin = {
         { name: "cc_loops" },
       );
       api.registerTool(
+        () => createCcManageLoopTool({ deps, graphDb }),
+        { name: "cc_manage_loop" },
+      );
+      api.registerTool(
         () => createCcAttemptsTool({ deps, graphDb }),
         { name: "cc_attempts" },
       );
@@ -1483,6 +1490,14 @@ const lcmPlugin = {
           agentId: resolveAgentId(ctx.sessionKey),
         }),
         { name: "cc_memory" },
+      );
+      api.registerTool(
+        () => createCcStateTool({ deps, graphDb }),
+        { name: "cc_state" },
+      );
+      api.registerTool(
+        () => createCcConflictsTool({ deps, graphDb }),
+        { name: "cc_conflicts" },
       );
     }
 
