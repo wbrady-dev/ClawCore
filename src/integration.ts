@@ -259,8 +259,8 @@ export function computeIntegrationHash(oc: any): string {
     memoryCoreEnabled: oc?.plugins?.entries?.["memory-core"]?.enabled,
     threadclawMemoryEnabled: oc?.plugins?.entries?.["threadclaw-memory"]?.enabled,
     hasMemorySearch: oc?.agents?.defaults?.memorySearch !== undefined,
-    loadPaths: oc?.plugins?.load?.paths ?? [],
-    allowList: oc?.plugins?.allow ?? [],
+    loadPaths: [...(oc?.plugins?.load?.paths ?? [])].sort(),
+    allowList: [...(oc?.plugins?.allow ?? [])].sort(),
   };
   return sha256(JSON.stringify(managed));
 }
