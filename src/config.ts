@@ -137,10 +137,12 @@ if (existsSync(envPath)) {
 
 // ── Main config (frozen at startup for model/port/path settings) ──
 
-// Warn if no API key is configured — the server will accept unauthenticated requests
-if (!process.env.THREADCLAW_API_KEY) {
-  // Use console.warn since logger may not be initialized yet
-  console.warn("[threadclaw] THREADCLAW_API_KEY is not set — API endpoints are unauthenticated");
+// API key warning is deferred to server startup (warnIfNoApiKey) to avoid
+// flashing in the TUI when config.ts is imported by CLI commands.
+export function warnIfNoApiKey(): void {
+  if (!process.env.THREADCLAW_API_KEY) {
+    console.warn("[threadclaw] THREADCLAW_API_KEY is not set — API endpoints are unauthenticated");
+  }
 }
 
 export const config = {

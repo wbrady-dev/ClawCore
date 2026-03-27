@@ -3,7 +3,7 @@ import { resolve } from "path";
 import { existsSync, chmodSync, mkdirSync } from "fs";
 import { homedir } from "os";
 import { createHash, timingSafeEqual } from "crypto";
-import { config } from "./config.js";
+import { config, warnIfNoApiKey } from "./config.js";
 import { logger } from "./utils/logger.js";
 import { getDb, closeDb, runMigrations, ensureCollection, closeGraphDb } from "./storage/index.js";
 import { registerRoutes } from "./api/routes.js";
@@ -150,6 +150,7 @@ export async function startServer() {
   // Start HTTP server
   // Bind to localhost only — ThreadClaw serves local processes (OpenClaw, TUI)
   // Set THREADCLAW_HOST=0.0.0.0 in .env to expose to the network if needed
+  warnIfNoApiKey();
   await server.listen({ port: config.port, host: config.host });
   logger.info({ port: config.port }, "ThreadClaw HTTP server running");
 
