@@ -36,7 +36,7 @@ function tripCircuit(): void {
   if (!circuitOpen) {
     circuitOpen = true;
     circuitOpenedAt = Date.now();
-    logger.error("Embedding server unreachable — circuit breaker tripped, pausing for 30s");
+    logger.error(`Embedding server unreachable — circuit breaker tripped, pausing for ${Math.round(getCircuitCooldownMs() / 1000)}s`);
   }
 }
 
