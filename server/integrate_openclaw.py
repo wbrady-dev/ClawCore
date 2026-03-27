@@ -236,8 +236,10 @@ exec: threadclaw ingest "path/to/file" --collection default
             watch_value = ",".join(watch_entries)
 
             if "WATCH_PATHS=" in env_content:
-                # Use re.escape on replacement to prevent backslash interpretation on Windows paths
-                env_content = re.sub(r"WATCH_PATHS=.*", re.escape(f"WATCH_PATHS={watch_value}"), env_content)
+                # Use string replace instead of re.sub to avoid backslash issues on Windows paths
+                old_line = next((l for l in env_content.splitlines() if l.startswith("WATCH_PATHS=")), None)
+                if old_line:
+                    env_content = env_content.replace(old_line, f"WATCH_PATHS={watch_value}")
             else:
                 env_content += f"\nWATCH_PATHS={watch_value}\n"
 

@@ -54,7 +54,7 @@ export function registerGraphRoutes(server: FastifyInstance) {
 
         // Fix: total count respects search filter
         total = (db.prepare(
-          "SELECT COUNT(*) as cnt FROM memory_objects WHERE kind = 'entity' AND json_extract(structured_json, '$.name') LIKE ? ESCAPE '\\\\'",
+          "SELECT COUNT(*) as cnt FROM memory_objects WHERE kind = 'entity' AND json_extract(structured_json, '$.name') LIKE ? ESCAPE '\\'",
         ).get(pattern) as { cnt: number }).cnt;
       } else {
         entities = db.prepare(`

@@ -7,7 +7,7 @@ ROOT="$(pwd)"
 command -v git >/dev/null 2>&1 || { echo "[ERROR] git not found"; exit 1; }
 
 # ── Record current version and commit for rollback ──
-OLD_VERSION=$(node -e "console.log(require('./package.json').version)" 2>/dev/null || echo "unknown")
+OLD_VERSION=$(node --input-type=commonjs -e "console.log(require('./package.json').version)" 2>/dev/null || echo "unknown")
 OLD_HASH=$(git rev-parse HEAD 2>/dev/null || echo "unknown")
 
 # ── Use tracking branch ──
@@ -138,7 +138,7 @@ else
 fi
 
 # ── Show update summary ──
-NEW_VERSION=$(node -e "console.log(require('./package.json').version)" 2>/dev/null || echo "unknown")
+NEW_VERSION=$(node --input-type=commonjs -e "console.log(require('./package.json').version)" 2>/dev/null || echo "unknown")
 echo ""
 echo "[OK] ThreadClaw updated successfully."
 echo "     Version: $OLD_VERSION -> $NEW_VERSION"

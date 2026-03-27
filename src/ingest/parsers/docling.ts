@@ -18,7 +18,8 @@ export async function parseWithDocling(
   // to the external Docling service
   const absPath = resolve(filePath);
   const allowedBase = resolve(config.dataDir, "..");
-  if (!absPath.startsWith(allowedBase)) {
+  const { sep } = await import("path");
+  if (!absPath.startsWith(allowedBase + sep) && absPath !== allowedBase) {
     logger.warn({ filePath: absPath }, "Docling: file path outside allowed base directory, skipping");
     return null;
   }

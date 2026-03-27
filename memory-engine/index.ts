@@ -922,26 +922,28 @@ function createLcmDependencies(api: OpenClawPluginApi): LcmDependencies {
       pathResolve(homedir(), ".threadclaw", ".env"),              // standalone install
     ];
     const envPath = candidates.find((p) => existsSync(p));
-    if (!envPath) return; // No .env found — non-fatal, use defaults
-    if (process.env.DEBUG) console.log(`[cc-mem] Loading .env from: ${envPath}`);
-    const envContent = readFileSync(envPath, "utf8");
-    for (const line of envContent.split("\n")) {
-      const trimmed = line.trim();
-      if (!trimmed || trimmed.startsWith("#")) continue;
-      const eqIdx = trimmed.indexOf("=");
-      if (eqIdx < 0) continue;
-      const key = trimmed.substring(0, eqIdx).trim();
-      let value = trimmed.substring(eqIdx + 1).trim();
-      // BUG 10 FIX: Strip surrounding quotes so "true" and 'true' match === "true"
-      if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) {
-        value = value.slice(1, -1);
-      }
-      // Don't override existing env vars (system env takes precedence)
-      if (!process.env[key]) {
-        process.env[key] = value;
+    if (envPath) {
+      if (process.env.DEBUG) console.log(`[cc-mem] Loading .env from: ${envPath}`);
+      const envContent = readFileSync(envPath, "utf8");
+      for (const line of envContent.split("\n")) {
+        const trimmed = line.trim();
+        if (!trimmed || trimmed.startsWith("#")) continue;
+        const eqIdx = trimmed.indexOf("=");
+        if (eqIdx < 0) continue;
+        const key = trimmed.substring(0, eqIdx).trim();
+        let value = trimmed.substring(eqIdx + 1).trim();
+        // BUG 10 FIX: Strip surrounding quotes so "true" and 'true' match === "true"
+        if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) {
+          value = value.slice(1, -1);
+        }
+        // Don't override existing env vars (system env takes precedence)
+        if (!process.env[key]) {
+          process.env[key] = value;
+        }
       }
     }
-  } catch { /* .env file may not exist — non-fatal */ }
+    // No .env found is non-fatal — continue with defaults from process.env
+  } catch { /* .env read error — non-fatal */ }
 
   const envSnapshot = snapshotPluginEnv();
   envSnapshot.openclawDefaultModel = readDefaultModelFromConfig(api.config);

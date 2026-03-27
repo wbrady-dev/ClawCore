@@ -24,10 +24,10 @@ check() {
   shift
   if "$@" > /dev/null 2>&1; then
     echo -e "  ${GREEN}✓${RESET} $name"
-    ((pass++))
+    pass=$((pass + 1))
   else
     echo -e "  ${RED}✗${RESET} $name"
-    ((fail++))
+    fail=$((fail + 1))
   fi
 }
 
@@ -36,10 +36,10 @@ check_warn() {
   shift
   if "$@" > /dev/null 2>&1; then
     echo -e "  ${GREEN}✓${RESET} $name"
-    ((pass++))
+    pass=$((pass + 1))
   else
     echo -e "  ${YELLOW}!${RESET} $name (optional)"
-    ((warn++))
+    warn=$((warn + 1))
   fi
 }
 

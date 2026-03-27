@@ -12,7 +12,7 @@ if %errorlevel% neq 0 (
 )
 
 :: ── Record current version and commit for rollback ──
-for /f "tokens=*" %%v in ('node -e "console.log(require('./package.json').version)" 2^>nul') do set "OLD_VERSION=%%v"
+for /f "tokens=*" %%v in ('node --input-type=commonjs -e "console.log(require('./package.json').version)" 2^>nul') do set "OLD_VERSION=%%v"
 if not defined OLD_VERSION set "OLD_VERSION=unknown"
 for /f "tokens=*" %%h in ('git rev-parse HEAD 2^>nul') do set "OLD_HASH=%%h"
 
@@ -161,7 +161,7 @@ if %errorlevel% equ 0 (
 )
 
 :: ── Show update summary ──
-for /f "tokens=*" %%v in ('node -e "console.log(require('./package.json').version)" 2^>nul') do set "NEW_VERSION=%%v"
+for /f "tokens=*" %%v in ('node --input-type=commonjs -e "console.log(require('./package.json').version)" 2^>nul') do set "NEW_VERSION=%%v"
 if not defined NEW_VERSION set "NEW_VERSION=unknown"
 echo.
 echo [OK] ThreadClaw updated successfully.

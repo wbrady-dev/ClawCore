@@ -123,7 +123,7 @@ export function registerHealthRoutes(server: FastifyInstance, onShutdown?: () =>
           COUNT(c.id) as chunks,
           COALESCE(SUM(c.token_count), 0) as tokens
         FROM documents d
-        LEFT JOIN chunks c ON c.id = d.id
+        LEFT JOIN chunks c ON c.document_id = d.id
       `).get() as { documents: number; chunks: number; tokens: number };
 
       // Use SQLite's internal page accounting for accurate size (not affected by WAL bloat)

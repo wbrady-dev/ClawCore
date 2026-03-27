@@ -8,9 +8,8 @@ set -e
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 
-# NOTE: require() works here because node -e runs in CJS mode by default,
-# regardless of "type": "module" in package.json.
-VERSION=$(node -e "console.log(require('./package.json').version)")
+# Force CJS mode for node -e so require() works with "type": "module" in package.json.
+VERSION=$(node --input-type=commonjs -e "console.log(require('./package.json').version)")
 
 echo ""
 echo "  ========================================"

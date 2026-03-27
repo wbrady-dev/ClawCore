@@ -60,6 +60,7 @@ export function selectMenu(items: MenuItem[]): Promise<string | null> {
     process.stdin.resume();
 
     const cleanup = () => {
+      if (escTimer) { clearTimeout(escTimer); escTimer = null; }
       process.stdin.removeListener("data", onKey);
       process.removeListener("SIGINT", onSigint);
       if (process.stdin.isTTY) process.stdin.setRawMode(false);
