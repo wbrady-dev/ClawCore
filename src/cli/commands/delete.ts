@@ -3,6 +3,7 @@ import { config } from "../../config.js";
 import { getInitializedDb, deleteVectors } from "../../storage/index.js";
 
 import { escapeLike } from "../../utils/sql.js";
+import { clearCache } from "../../query/cache.js";
 
 export const deleteCommand = new Command("delete")
   .description("Delete a document from the knowledge base")
@@ -62,6 +63,7 @@ Examples:
             }
           }
 
+          clearCache();
           console.log(
             `Deleted ${deletedCount} documents (${chunksDeleted} chunks) from "${coll.name}"` +
             (errors > 0 ? ` (${errors} failed)` : ""),
@@ -81,6 +83,7 @@ Examples:
           }
 
           const chunks = await deleteDocument(db, doc.id);
+          clearCache();
           console.log(`Deleted: ${doc.source_path} (${chunks} chunks)`);
           return;
         }
@@ -127,6 +130,7 @@ Examples:
           }
 
           const chunks = await deleteDocument(db, docs[0].id);
+          clearCache();
           const name = docs[0].source_path.replace(/\\/g, "/").split("/").pop();
           console.log(`Deleted: ${name} (${chunks} chunks)`);
           return;

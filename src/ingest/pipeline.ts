@@ -18,7 +18,7 @@ import { embedBatch } from "../embeddings/batch.js";
 import { findIntraBatchDuplicates, findExistingDuplicates } from "./dedup.js";
 import { invalidateCollection } from "../query/cache.js";
 import { getGraphDb } from "../storage/graph-sqlite.js";
-import { extractEntitiesFromDocument } from "../relations/ingest-hook.js";
+import { extractEntitiesFromDocument, deleteSourceData } from "../relations/ingest-hook.js";
 
 export interface IngestOptions {
   collection?: string;
@@ -349,6 +349,10 @@ async function ingestFileInner(
   if (config.relations.enabled) {
     try {
       const graphDb = getGraphDb(config.relations.graphDbPath);
+      // Clean up old document's graph data on update (old ID differs from new ID)
+      if (existing) {
+        try { deleteSourceData(graphDb, "document", existing.id); } catch {}
+      }
       const relationChunkTexts = dedupedIndices.map((i) => ({
         text: chunks[i].text,
         position: chunks[i].position,
