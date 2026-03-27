@@ -70,7 +70,7 @@ export function closeDb(): void {
     const ref = db;
     db = null; // Clear reference first to prevent use-after-close
     try {
-      ref.pragma("wal_checkpoint(TRUNCATE)");
+      ref.pragma("wal_checkpoint(PASSIVE)");
     } catch {}
     try {
       ref.close();

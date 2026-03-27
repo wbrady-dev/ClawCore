@@ -25,7 +25,7 @@ export function registerEventStreamRoute(server: FastifyInstance) {
     // Send initial connected event
     reply.raw.write(`data: ${JSON.stringify({ ts: Date.now(), type: "connected", detail: { listeners: listenerCount() + 1 } })}\n\n`);
 
-    // Keepalive every 15s
+    // Keepalive every 15s (.unref so it doesn't block process.exit)
     const keepalive = setInterval(() => {
       try {
         reply.raw.write(`: keepalive ${Date.now()}\n\n`);
@@ -33,6 +33,7 @@ export function registerEventStreamRoute(server: FastifyInstance) {
         cleanup();
       }
     }, 15000);
+    if (keepalive.unref) keepalive.unref();
 
     // Subscribe to pipeline events
     const unsub = onPipelineEvent((event) => {

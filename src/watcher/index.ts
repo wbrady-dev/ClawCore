@@ -324,16 +324,11 @@ export class ThreadClawWatcher {
     // Drain the ingest queue (discard pending items)
     this.ingestQueue.length = 0;
 
-    // Wait for active ingests to finish (up to 10s)
-    // NOTE: This is a busy-wait with 100ms polling. An event-based approach
-    // (Promise that resolves when activeIngests hits 0) would be more efficient.
-    const deadline = Date.now() + 10_000;
-    while (this.activeIngests > 0 && Date.now() < deadline) {
-      await new Promise((r) => setTimeout(r, 100));
-    }
-
+    // Close watchers immediately — don't wait for active ingests to finish.
+    // Active ingests will fail gracefully when the DB closes during shutdown.
+    // Orphaned chunks (no embeddings) are cleaned on next startup.
     for (const watcher of this.watchers) {
-      await watcher.close();
+      try { await watcher.close(); } catch {}
     }
     this.watchers = [];
     log("Watcher stopped.");

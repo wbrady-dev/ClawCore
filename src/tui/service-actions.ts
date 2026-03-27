@@ -9,7 +9,7 @@ function safeParseInt(value: string | undefined, fallback: number): number {
 
 const MODEL_WAIT_TIMEOUT = safeParseInt(process.env.THREADCLAW_MODEL_TIMEOUT, 180000);
 const API_WAIT_TIMEOUT = safeParseInt(process.env.THREADCLAW_API_TIMEOUT, 30000);
-const STOP_WAIT_TIMEOUT = safeParseInt(process.env.THREADCLAW_STOP_TIMEOUT, 20000);
+const STOP_WAIT_TIMEOUT = safeParseInt(process.env.THREADCLAW_STOP_TIMEOUT, 3000);
 
 export type ServiceAction = "start" | "stop" | "restart";
 
@@ -56,7 +56,7 @@ export async function performServiceAction(
         apiStillUp ? forceKillByPort(getApiPort()) : Promise.resolve(),
         modelsStillUp ? forceKillByPort(getModelPort()) : Promise.resolve(),
       ]);
-      await sleep(2000);
+      await sleep(1000);
 
       const [apiFinal, modelsFinal] = await Promise.all([
         isPortReachable(getApiPort(), 1000),
@@ -75,8 +75,8 @@ export async function performServiceAction(
       return { success: true, message: "Services stopped" };
     }
 
-    // Brief pause to let ports and GPU memory fully release before restarting
-    await sleep(2000);
+    // Brief pause to let ports release before restarting
+    await sleep(500);
   }
 
   // Clear logs on start (not stop) so log viewers see only output from the new
@@ -184,14 +184,9 @@ async function waitForPortClosed(
   while (Date.now() - start < timeoutMs) {
     try {
       await fetch(`http://127.0.0.1:${port}/health`, {
-        signal: AbortSignal.timeout(800),
+        signal: AbortSignal.timeout(500),
       });
-      const elapsed = Date.now() - start;
-      if (elapsed - lastLogAt >= 5000) {
-        lastLogAt = elapsed;
-        onStatus?.(`Waiting for services to stop... (${Math.round(elapsed / 1000)}s elapsed)`);
-      }
-      await sleep(400);
+      await sleep(200);
     } catch {
       return;
     }

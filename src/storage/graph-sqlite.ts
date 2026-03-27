@@ -45,7 +45,7 @@ export function closeGraphDb(): void {
     const ref = graphDb;
     graphDb = null;
     try {
-      ref.pragma("wal_checkpoint(TRUNCATE)");
+      ref.pragma("wal_checkpoint(PASSIVE)");
     } catch {
       // Non-critical
     }

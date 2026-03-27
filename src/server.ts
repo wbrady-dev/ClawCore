@@ -76,6 +76,18 @@ export async function startServer() {
   runMigrations(db);
   ensureCollection(db, config.defaults.collection);
 
+  // Clean up orphaned chunks from interrupted ingests (chunks without embeddings).
+  // Fast (<50ms) — prevents stale partial data from prior crash/restart.
+  try {
+    const orphaned = db.prepare(
+      `DELETE FROM chunks WHERE id NOT IN (SELECT rowid FROM chunk_vectors)`,
+    ).run();
+    if (orphaned.changes > 0) {
+      logger.info({ count: orphaned.changes }, "Cleaned up orphaned chunks from interrupted ingest");
+    }
+  } catch {}
+
+
   const server = Fastify({
     logger: false,
     // Explicit body size limit (10 MiB). The default is 1 MiB which may be
@@ -115,20 +127,19 @@ export async function startServer() {
     logger.info("API key authentication enabled");
   }
 
-  // Graceful shutdown (guarded against double-call from SIGINT + /shutdown race)
+  // Aggressive shutdown — exit fast, don't wait for connections to drain.
+  // SQLite WAL handles crash recovery; orphaned chunks cleaned on next startup.
   let shuttingDown = false;
   const shutdown = async () => {
     if (shuttingDown) return;
     shuttingDown = true;
     logger.info("Shutting down...");
     flushTokens();
-    await stopSources();
-    await server.close();
+    // Don't await stopSources — watcher ingests will fail gracefully when DB closes
+    stopSources().catch(() => {});
+    // Skip server.close() — it waits for connections to drain. Just close DBs and exit.
     closeDb();
     closeGraphDb();
-    // process.exit(0) ensures clean shutdown even if timers/handles are still open.
-    // Note: any in-flight HTTP response will be dropped — the /shutdown endpoint
-    // should send its response before calling this callback.
     process.exit(0);
   };
 
