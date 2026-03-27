@@ -10,7 +10,7 @@ import { searchBm25 } from "../storage/bm25.js";
 import { embed, embedQuery } from "../embeddings/client.js";
 import { reciprocalRankFusion } from "./hybrid.js";
 import { rerank } from "./rerank.js";
-import { packContext, packTitles, type PackedChunk } from "./packer.js";
+import { packContext, packTitles, type PackedChunk, type SourceInfo } from "./packer.js";
 import { extractBrief, type BriefInput } from "./brief.js";
 import { cacheKey, getCached, setCached } from "./cache.js";
 import { recordQuery } from "../analytics/query-recorder.js";
@@ -37,12 +37,7 @@ export interface QueryOptions {
   titlesOnly?: boolean;
 }
 
-export interface SourceInfo {
-  source: string;
-  chunkCount: number;
-  avgScore: number;
-  collection?: string;
-}
+export type { SourceInfo };
 
 export interface QueryResult {
   context: string;

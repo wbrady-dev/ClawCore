@@ -30,7 +30,9 @@ export function createCollection(
     "INSERT INTO collections (id, name, description) VALUES (?, ?, ?)",
   ).run(id, name, description ?? null);
 
-  return getCollection(db, id)!;
+  const result = getCollection(db, id);
+  if (!result) throw new Error(`Failed to create collection '${name}' — row not found after insert`);
+  return result;
 }
 
 export function getCollection(
@@ -245,5 +247,7 @@ export function ensureCollection(
     "INSERT OR IGNORE INTO collections (id, name) VALUES (?, ?)",
   ).run(id, name);
 
-  return getCollectionByName(db, name)!;
+  const result = getCollectionByName(db, name);
+  if (!result) throw new Error(`Failed to ensure collection '${name}' — row not found after upsert`);
+  return result;
 }

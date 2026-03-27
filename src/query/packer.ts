@@ -9,8 +9,6 @@ export interface PackedChunk {
   score: number;
 }
 
-// NOTE: SourceInfo is also defined in query/pipeline.ts. This is the canonical
-// definition — pipeline.ts should import from here to avoid duplication.
 export interface SourceInfo {
   source: string;
   chunkCount: number;

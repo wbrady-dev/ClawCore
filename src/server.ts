@@ -84,7 +84,7 @@ export async function startServer() {
   });
 
   // Global error handlers — catch unhandled errors and 404s
-  server.setErrorHandler((error, _request, reply) => {
+  server.setErrorHandler((error: Error & { statusCode?: number }, _request, reply) => {
     logger.error({ err: error }, "Unhandled server error");
     reply.code(error.statusCode ?? 500).send({ error: error.message ?? "Internal server error" });
   });

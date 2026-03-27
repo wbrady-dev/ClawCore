@@ -26,7 +26,10 @@ export function getDb(dbPath: string): Database.Database {
   db.pragma("journal_mode = WAL");
   db.pragma("foreign_keys = ON");
   db.pragma("busy_timeout = 5000");
-  // Checkpoint WAL every 1000 pages (~4MB) to prevent unbounded growth
+  db.pragma("synchronous = NORMAL");
+  db.pragma("cache_size = -16000"); // 16MB
+  db.pragma("temp_store = MEMORY");
+  db.pragma("mmap_size = 67108864"); // 64MB
   db.pragma("wal_autocheckpoint = 1000");
 
   // Load sqlite-vec extension

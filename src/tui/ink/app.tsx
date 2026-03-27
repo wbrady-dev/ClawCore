@@ -264,7 +264,7 @@ async function runResetKnowledgeBase(): Promise<void> {
         const res = await fetch(`${getApiBaseUrl()}/reset`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ clearGraph, clearMemory }),
+          body: JSON.stringify({ clearGraph, clearMemory, confirm: true }),
           signal: AbortSignal.timeout(10000),
         });
         if (res.ok) data = await res.json();

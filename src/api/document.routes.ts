@@ -1,10 +1,8 @@
 import type { FastifyInstance } from "fastify";
-import { config } from "../config.js";
 import { getMainDb } from "../storage/index.js";
 import { listDocuments, deleteDocument, getCollectionByName } from "../storage/collections.js";
 import { clearCache } from "../query/cache.js";
 import { isLocalRequest } from "./guards.js";
-import { logger } from "../utils/logger.js";
 
 const DOC_ID_RE = /^[\w\-]{1,128}$/;
 
@@ -48,20 +46,9 @@ export function registerDocumentRoutes(server: FastifyInstance) {
         return reply.status(404).send({ error: "Document not found" });
       }
 
+      // deleteDocument handles graph cleanup internally
       const result = deleteDocument(database, id);
       clearCache();
-
-      // Clean up graph data if relations enabled
-      if (config.relations?.enabled) {
-        try {
-          const { getGraphDb } = await import("../storage/graph-sqlite.js");
-          const { deleteSourceData } = await import("../relations/ingest-hook.js");
-          const graphDb = getGraphDb(config.relations.graphDbPath);
-          deleteSourceData(graphDb, "document", id);
-        } catch (e) {
-          logger.warn({ documentId: id, error: String(e) }, "Graph cleanup failed during document deletion");
-        }
-      }
 
       return { deleted: true, chunksRemoved: result.chunksDeleted, source_path: doc.source_path };
     } catch (err) {

@@ -2,7 +2,7 @@ import type Database from "better-sqlite3";
 import { logger } from "../utils/logger.js";
 import { config } from "../config.js";
 
-const SCHEMA_VERSION = 5;
+const SCHEMA_VERSION = 6;
 
 function getMigrationStatements(): Record<number, string[]> {
   // NOTE: Embedding dimension is baked at migration time. If the dimension changes
@@ -119,6 +119,12 @@ function getMigrationStatements(): Record<number, string[]> {
       `CREATE INDEX IF NOT EXISTS idx_metadata_doc ON metadata_index(document_id)`,
       `CREATE INDEX IF NOT EXISTS idx_watch_paths_collection ON watch_paths(collection_id)`,
     ],
+
+    6: [
+      `CREATE INDEX IF NOT EXISTS idx_chunk_doc_pos ON chunks(document_id, position)`,
+      `CREATE INDEX IF NOT EXISTS idx_doc_collection_time ON documents(collection_id, created_at)`,
+      `CREATE INDEX IF NOT EXISTS idx_metadata_kv_doc ON metadata_index(key, value, document_id)`,
+    ],
   };
 }
 
@@ -161,7 +167,7 @@ export function runMigrations(db: Database.Database): void {
           // intentionally broad to handle both SQLite's exact message and edge cases.
           // Other errors (syntax, constraint) are re-thrown.
           const msg = String(err);
-          if (!msg.includes("duplicate column")) throw err;
+          if (!msg.includes("duplicate column name")) throw err;
         }
       }
 

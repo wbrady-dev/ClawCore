@@ -118,8 +118,8 @@ export function extractBrief(
       const finalScore = (normalizedRelevance * config.brief.relevanceWeight + termScore * config.brief.termMatchWeight) * posMultiplier * lengthMultiplier;
 
       // NOTE: Using > 0 excludes zero-scored sentences. This is intentional —
-    // zero-scored sentences have no term match and no retrieval relevance signal.
-    if (finalScore > 0) {
+      // zero-scored sentences have no term match and no retrieval relevance signal.
+      if (finalScore > 0) {
         allSentences.push({
           text: sent,
           score: finalScore,

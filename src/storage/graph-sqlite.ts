@@ -32,6 +32,9 @@ export function getGraphDb(dbPath: string): Database.Database {
   graphDb.pragma("journal_mode = WAL");
   graphDb.pragma("foreign_keys = ON");
   graphDb.pragma("busy_timeout = 5000");
+  graphDb.pragma("synchronous = NORMAL");
+  graphDb.pragma("cache_size = -8000"); // 8MB
+  graphDb.pragma("temp_store = MEMORY");
   graphDb.pragma("wal_autocheckpoint = 1000");
 
   return graphDb;

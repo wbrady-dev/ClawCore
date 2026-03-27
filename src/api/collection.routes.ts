@@ -11,7 +11,6 @@ import {
 } from "../storage/collections.js";
 import { invalidateCollection } from "../query/cache.js";
 import { isLocalRequest } from "./guards.js";
-import { logger } from "../utils/logger.js";
 
 function db() {
   return getMainDb();
@@ -81,28 +80,9 @@ export function registerCollectionRoutes(server: FastifyInstance) {
         return reply.status(400).send({ error: "Cannot delete the default collection" });
       }
 
-      // Get document IDs BEFORE deletion (CASCADE will remove them)
-      const docIds = database.prepare(
-        "SELECT id FROM documents WHERE collection_id = ?",
-      ).all(id) as Array<{ id: string }>;
-
-      // Perform deletion before invalidating cache (reorder: delete first, then invalidate)
+      // deleteCollection handles graph cleanup internally
       deleteCollection(database, id);
       invalidateCollection(collection.name);
-
-      // Clean up graph data for deleted documents
-      if (config.relations?.enabled && docIds.length > 0) {
-        try {
-          const { getGraphDb } = await import("../storage/graph-sqlite.js");
-          const { deleteSourceData } = await import("../relations/ingest-hook.js");
-          const graphDb = getGraphDb(config.relations.graphDbPath);
-          for (const doc of docIds) {
-            deleteSourceData(graphDb, "document", doc.id);
-          }
-        } catch (e) {
-          logger.warn({ collectionId: id, error: String(e) }, "Graph cleanup failed during collection deletion");
-        }
-      }
 
       return { deleted: true, collection: collection.name };
     } catch (err) {

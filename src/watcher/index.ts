@@ -157,9 +157,10 @@ export class ThreadClawWatcher {
 
   /** Handle file deletion — remove document from index. */
   private handleUnlink(filePath: string, wc: WatchConfig): void {
-    const ext = extname(filePath).toLowerCase();
+    const normalizedPath = resolve(filePath);
+    const ext = extname(normalizedPath).toLowerCase();
     if (!supportedExts.has(ext)) return;
-    if (this.processing.has(filePath)) return; // Don't remove mid-ingest
+    if (this.processing.has(normalizedPath)) return; // Don't remove mid-ingest
 
     try {
       const db = getDb(resolve(config.dataDir, "threadclaw.db"));
