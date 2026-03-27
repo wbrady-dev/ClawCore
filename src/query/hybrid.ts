@@ -41,5 +41,5 @@ export function reciprocalRankFusion(
   // Sort by fused score descending
   return Array.from(scores.entries())
     .map(([chunkId, score]) => ({ chunkId, score }))
-    .sort((a, b) => b.score - a.score);
+    .sort((a, b) => b.score - a.score || a.chunkId.localeCompare(b.chunkId));
 }
