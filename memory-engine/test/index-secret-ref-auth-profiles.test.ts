@@ -1,5 +1,5 @@
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { OpenClawPluginApi } from "openclaw/plugin-sdk";
@@ -162,7 +162,7 @@ describe("auth-profile SecretRef resolution in complete()", () => {
               tokenRef: {
                 source: "env",
                 provider: "default",
-                id: "LOSSLESS_SECRET_REF_ENV",
+                id: "LOSSLESS_SECRET_REF_TOKEN",
               },
             },
           },
@@ -176,7 +176,7 @@ describe("auth-profile SecretRef resolution in complete()", () => {
       "utf8",
     );
 
-    vi.stubEnv("LOSSLESS_SECRET_REF_ENV", "env-secret-value");
+    vi.stubEnv("LOSSLESS_SECRET_REF_TOKEN", "env-secret-value");
 
     await callComplete({
       agentDir,
@@ -192,12 +192,14 @@ describe("auth-profile SecretRef resolution in complete()", () => {
   });
 
   it("resolves file-backed keyRef values through configured secret providers", async () => {
-    const rootDir = mkdtempSync(join(tmpdir(), "lossless-claw-secret-provider-"));
-    tempDirs.add(rootDir);
+    // Secret file must be under ~/.openclaw to pass path-traversal validation
+    const openclawDir = join(homedir(), ".openclaw", "test-secrets-" + Date.now());
+    mkdirSync(openclawDir, { recursive: true });
+    tempDirs.add(openclawDir);
 
-    const agentDir = join(rootDir, "agent");
+    const agentDir = join(openclawDir, "agent");
     mkdirSync(agentDir, { recursive: true });
-    const mountedSecretPath = join(rootDir, "mounted-secret.txt");
+    const mountedSecretPath = join(openclawDir, "mounted-secret.txt");
     writeFileSync(mountedSecretPath, "single-value-secret\n", "utf8");
 
     writeFileSync(
