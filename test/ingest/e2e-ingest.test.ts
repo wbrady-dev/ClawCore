@@ -62,6 +62,8 @@ vi.mock("../../src/config.js", async () => {
     watch: { paths: "", debounceMs: 3000, excludePatterns: "", maxConcurrent: 5, maxQueue: 1000 },
     defaults: {
       collection: "default",
+      // Use smaller chunk sizes than production (100/1024/512) so the small
+      // test document produces multiple chunks for meaningful coverage.
       chunkMinTokens: 50,
       chunkMaxTokens: 512,
       chunkTargetTokens: 256,
@@ -69,14 +71,19 @@ vi.mock("../../src/config.js", async () => {
       queryTokenBudget: 4000,
     },
     relations: { enabled: false, graphDbPath: "" },
-    brief: { enabled: false, url: "", model: "", apiKey: "", maxTokens: 1024, timeoutMs: 15000, maxSentences: 5, diversitySources: 3 },
+    brief: { maxPerSource: 3, relevanceWeight: 0.7, termMatchWeight: 0.3 },
+    audio: { enabled: false, whisperModel: "base" },
   }};
 });
 
-// Mock embedding — return deterministic fake vectors
+// Mock embedding — return deterministic but UNIQUE vectors per chunk.
+// Using the same vector for all chunks would cause findIntraBatchDuplicates
+// to dedup everything to a single chunk (cosine similarity = 1.0).
 vi.mock("../../src/embeddings/batch.js", () => ({
   embedBatch: vi.fn(async (texts: string[]) =>
-    texts.map(() => Array.from({ length: 1024 }, (_, i) => Math.sin(i * 0.1)))
+    texts.map((_, textIdx) =>
+      Array.from({ length: 1024 }, (_, i) => Math.sin(i * 0.1 + textIdx * 2.0))
+    )
   ),
 }));
 
@@ -178,7 +185,7 @@ describe("end-to-end ingest pipeline", () => {
     const result = await ingestFile(testFilePath, { collection: "test-collection" });
 
     expect(result.documentsAdded).toBe(1);
-    expect(result.chunksCreated).toBeGreaterThan(0);
+    expect(result.chunksCreated).toBeGreaterThanOrEqual(2);
     // duplicatesSkipped may be > 0 due to intra-batch dedup (overlapping chunks)
 
     // Verify via direct DB queries
