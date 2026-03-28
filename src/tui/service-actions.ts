@@ -34,6 +34,18 @@ export async function performServiceAction(
     options.onStatus?.("Stopping model server...");
     await forceKillByPort(getModelPort());
     await waitForPortClosed(getModelPort(), STOP_WAIT_TIMEOUT);
+    // Verify port is actually closed
+    const { isPortReachable } = await import("./runtime-status.js");
+    const stillUp = await isPortReachable(getModelPort(), 1000);
+    if (stillUp) {
+      // Retry force-kill
+      await forceKillByPort(getModelPort());
+      await sleep(1000);
+      const finalCheck = await isPortReachable(getModelPort(), 1000);
+      if (finalCheck) {
+        return { success: false, message: `Could not stop model server on port ${getModelPort()}` };
+      }
+    }
     return { success: true, message: "Model server stopped (VRAM freed)" };
   }
 

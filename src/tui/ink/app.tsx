@@ -386,12 +386,17 @@ function notifyServiceActionListeners() {
   for (const fn of serviceActionListeners) fn();
 }
 
-function fireServiceAction(action: "start" | "stop" | "restart"): void {
+function fireServiceAction(action: "start" | "stop" | "restart" | "stop-models" | "start-models"): void {
   if (activeServiceAction && !activeServiceAction.done) return; // already running
 
-  const label = action === "start" ? "Starting services"
-    : action === "stop" ? "Stopping services"
-    : "Restarting services";
+  const labelMap: Record<string, string> = {
+    start: "Starting services",
+    stop: "Stopping services",
+    restart: "Restarting services",
+    "stop-models": "Freeing VRAM",
+    "start-models": "Starting model server",
+  };
+  const label = labelMap[action] ?? "Service action";
 
   activeServiceAction = { label, detail: "Preparing...", done: false, success: false, message: "" };
   notifyServiceActionListeners();
