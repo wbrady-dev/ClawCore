@@ -62,6 +62,7 @@ export function packContext(
     collection?: string;
     chunkCount: number;
     scores: number[];
+    snippet: string;
   }[] = [];
 
   // Compute relative relevance thresholds from the actual score distribution

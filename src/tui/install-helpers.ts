@@ -580,6 +580,7 @@ export async function performInstallPlan(plan: InstallPlan): Promise<void> {
   // ── Run schema migrations + write manifest (same as `threadclaw upgrade`) ──
   // Fresh installs need this for DB init, schema creation, and manifest.
   try {
+    // @ts-expect-error — paths resolve at runtime from dist/ bundle, not from src/
     const { ensureThreadClawHome, getAppVersion, readManifest, writeManifest, THREADCLAW_DATA_DIR } = await import("../../version.js");
     ensureThreadClawHome();
 
@@ -587,8 +588,11 @@ export async function performInstallPlan(plan: InstallPlan): Promise<void> {
     const ragDbPath = resolve(THREADCLAW_DATA_DIR, "threadclaw.db");
     try {
       mkdirSync(dirname(ragDbPath), { recursive: true });
+      // @ts-expect-error — paths resolve at runtime from dist/ bundle
       const { getDb, closeDb } = await import("../../storage/sqlite.js");
+      // @ts-expect-error — paths resolve at runtime from dist/ bundle
       const { runMigrations } = await import("../../storage/index.js");
+      // @ts-expect-error — paths resolve at runtime from dist/ bundle
       const { ensureCollection } = await import("../../storage/collections.js");
       const ragDb = getDb(ragDbPath);
       runMigrations(ragDb);
@@ -725,6 +729,7 @@ export async function applyOpenClawIntegration(
     sp.succeed("OpenClaw integrated");
   } catch {
     try {
+      // @ts-expect-error — paths resolve at runtime from dist/ bundle
       const { applyOpenClawIntegration } = await import("../../integration.js");
       applyOpenClawIntegration(resolve(root, "memory-engine"));
       sp.succeed("OpenClaw integrated (fallback path)");
