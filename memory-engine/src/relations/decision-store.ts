@@ -123,7 +123,7 @@ export interface DecisionRow {
   decision_text: string;
   status: string;
   decided_at: string;
-  superseded_by: number | null;
+  superseded_by: string | null;
   source_type: string | null;
   source_id: string | null;
   source_detail: string | null;
@@ -142,7 +142,7 @@ export function moRowToDecisionRow(row: Record<string, unknown>): DecisionRow {
     decision_text: String(structured.decisionText ?? row.content ?? ""),
     status: String(row.status ?? "active"),
     decided_at: String(row.created_at ?? ""),
-    superseded_by: row.superseded_by != null ? Number(row.superseded_by) : null,
+    superseded_by: row.superseded_by != null ? String(row.superseded_by) : null,
     source_type: row.source_kind != null ? String(row.source_kind) : null,
     source_id: row.source_id != null ? String(row.source_id) : null,
     source_detail: row.source_detail != null ? String(row.source_detail) : null,

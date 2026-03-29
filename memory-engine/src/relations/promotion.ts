@@ -148,22 +148,22 @@ export function promoteBranch(db: GraphDb, branchId: number, actor?: string): vo
   withWriteTransaction(db, () => {
     // --- Claims: on conflict (same canonical_key), higher confidence wins ---
     const branchClaims = db.prepare(
-      "SELECT id, canonical_key, confidence FROM memory_objects WHERE scope_id = ? AND branch_id = ? AND kind = 'claim'",
-    ).all(scopeId, branchId) as Array<{ id: number; canonical_key: string; confidence: number }>;
+      "SELECT id, composite_id, canonical_key, confidence FROM memory_objects WHERE scope_id = ? AND branch_id = ? AND kind = 'claim'",
+    ).all(scopeId, branchId) as Array<{ id: number; composite_id: string; canonical_key: string; confidence: number }>;
 
     for (const bc of branchClaims) {
       const shared = db.prepare(
-        "SELECT id, confidence FROM memory_objects WHERE scope_id = ? AND branch_id = 0 AND kind = 'claim' AND canonical_key = ?",
-      ).get(scopeId, bc.canonical_key) as { id: number; confidence: number } | undefined;
+        "SELECT id, composite_id, confidence FROM memory_objects WHERE scope_id = ? AND branch_id = 0 AND kind = 'claim' AND canonical_key = ?",
+      ).get(scopeId, bc.canonical_key) as { id: number; composite_id: string; confidence: number } | undefined;
 
       if (shared) {
         if (bc.confidence > shared.confidence) {
           // Branch wins: supersede shared, then move branch claim to shared scope
-          db.prepare("UPDATE memory_objects SET status = 'superseded', superseded_by = ?, canonical_key = 'superseded:' || canonical_key, updated_at = strftime('%Y-%m-%dT%H:%M:%f', 'now') WHERE id = ?").run(bc.id, shared.id);
+          db.prepare("UPDATE memory_objects SET status = 'superseded', superseded_by = ?, canonical_key = 'superseded:' || canonical_key, updated_at = strftime('%Y-%m-%dT%H:%M:%f', 'now') WHERE id = ?").run(bc.composite_id, shared.id);
           db.prepare("UPDATE memory_objects SET branch_id = 0 WHERE id = ?").run(bc.id);
         } else {
           // Shared wins: mark branch claim as superseded
-          db.prepare("UPDATE memory_objects SET status = 'superseded', superseded_by = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%f', 'now') WHERE id = ?").run(shared.id, bc.id);
+          db.prepare("UPDATE memory_objects SET status = 'superseded', superseded_by = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%f', 'now') WHERE id = ?").run(shared.composite_id, bc.id);
         }
       } else {
         // No conflict: move to shared scope
@@ -173,8 +173,8 @@ export function promoteBranch(db: GraphDb, branchId: number, actor?: string): vo
 
     // --- Decisions: on conflict (same canonical_key/topic), supersede shared one ---
     const branchDecisions = db.prepare(
-      "SELECT id, canonical_key FROM memory_objects WHERE scope_id = ? AND branch_id = ? AND kind = 'decision' AND status = 'active'",
-    ).all(scopeId, branchId) as Array<{ id: number; canonical_key: string }>;
+      "SELECT id, composite_id, canonical_key FROM memory_objects WHERE scope_id = ? AND branch_id = ? AND kind = 'decision' AND status = 'active'",
+    ).all(scopeId, branchId) as Array<{ id: number; composite_id: string; canonical_key: string }>;
 
     for (const bd of branchDecisions) {
       if (bd.canonical_key) {
@@ -183,7 +183,7 @@ export function promoteBranch(db: GraphDb, branchId: number, actor?: string): vo
         ).get(scopeId, bd.canonical_key) as { id: number } | undefined;
 
         if (shared) {
-          db.prepare("UPDATE memory_objects SET status = 'superseded', superseded_by = ? WHERE id = ?").run(bd.id, shared.id);
+          db.prepare("UPDATE memory_objects SET status = 'superseded', superseded_by = ? WHERE id = ?").run(bd.composite_id, shared.id);
         }
       }
       db.prepare("UPDATE memory_objects SET branch_id = 0 WHERE id = ?").run(bd.id);

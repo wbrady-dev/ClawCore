@@ -236,15 +236,15 @@ export function deduplicateActiveObjects(db: GraphDb, scopeId: number): number {
   for (const { canonical_key } of dupes) {
     // Get all active objects for this key, ordered by confidence DESC then id DESC (newest wins ties)
     const rows = db.prepare(`
-      SELECT id FROM memory_objects
+      SELECT id, composite_id FROM memory_objects
       WHERE scope_id = ? AND canonical_key = ? AND status = 'active'
       ORDER BY confidence DESC, id DESC
-    `).all(scopeId, canonical_key) as Array<{ id: number }>;
+    `).all(scopeId, canonical_key) as Array<{ id: number; composite_id: string }>;
 
     if (rows.length <= 1) continue;
 
     // Keep the first (highest confidence), supersede the rest
-    const keepId = rows[0].id;
+    const keepCompositeId = rows[0].composite_id;
     const supersedIds = rows.slice(1).map((r) => r.id);
 
     for (const id of supersedIds) {
@@ -252,7 +252,7 @@ export function deduplicateActiveObjects(db: GraphDb, scopeId: number): number {
         UPDATE memory_objects
         SET status = 'superseded', superseded_by = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%f', 'now')
         WHERE id = ? AND status = 'active'
-      `).run(keepId, id);
+      `).run(keepCompositeId, id);
       totalSuperseded++;
     }
   }

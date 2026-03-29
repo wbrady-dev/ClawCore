@@ -53,7 +53,7 @@ export function getStateAtTime(
     WHERE scope_id = ? AND kind = 'decision' AND created_at <= ?
       AND (status = 'active'
            OR (superseded_by IS NOT NULL
-               AND (SELECT created_at FROM memory_objects WHERE id = memory_objects.superseded_by) > ?))
+               AND (SELECT created_at FROM memory_objects WHERE composite_id = memory_objects.superseded_by) > ?))
     ORDER BY created_at DESC
     LIMIT 50
   `).all(scopeId, timestamp, timestamp) as Record<string, unknown>[]).map(moRowToDecisionRow);
