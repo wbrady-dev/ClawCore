@@ -60,9 +60,12 @@ function writeCounts(counts: TokenCounts): void {
 }
 
 /** Async flush — non-blocking, used by the periodic timer. */
+let _flushing = false;
 async function flushAsync(): Promise<void> {
+  if (_flushing) return; // prevent overlapping flushes (race → negative pending)
   const hasPending = pending.ingest || pending.embed || pending.rerank || pending.queryExpansion;
   if (!hasPending) return;
+  _flushing = true;
 
   const snapshot = { ...pending };
 
@@ -90,6 +93,8 @@ async function flushAsync(): Promise<void> {
     pending.queryExpansion -= snapshot.queryExpansion;
   } catch {
     // Non-fatal — tokens stay in pending and will be retried next flush
+  } finally {
+    _flushing = false;
   }
 }
 
