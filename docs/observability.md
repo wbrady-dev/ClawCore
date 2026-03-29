@@ -27,6 +27,16 @@ Every evidence mutation is logged to `evidence_log` with:
 - `created_at`: Millisecond-precision timestamp
 - `scope_seq`: Scope-local sequence number
 
+#### Event Types
+| event_type | Description |
+|------------|-------------|
+| `claim_insert` | New claim written |
+| `claim_supersede` | Claim superseded by newer version |
+| `decision_insert` | New decision written |
+| `mention_insert` | Entity mention recorded |
+| `invariant_violation` | Write-time invariant enforcement triggered. Payload contains the violation details (invariant key, description, severity, match reason) and a truncated content preview. The violating object is set to `needs_confirmation` status. |
+| `reset` | Full graph data reset |
+
 ## Health Checks
 
 ### Database Health

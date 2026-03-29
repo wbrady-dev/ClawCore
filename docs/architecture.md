@@ -45,20 +45,23 @@ Both components can write to the shared evidence graph (consolidated into `threa
 4. Embed chunks with dense vector model
 5. Store in document DB
 6. **If relations enabled**: Extract entities from chunks, store as MemoryObjects in evidence graph
+7. **If deep ingest enabled** (`THREADCLAW_DEEP_INGEST_ENABLED=true`): LLM-based claim extraction from document chunks via `extractDeepFromDocument()`. Sends chunks to the model server with a factual-claim-extraction system prompt. Max 2 concurrent extractions, max 10 chunks per document, 200ms delay between chunks. Claims capped at confidence 0.4 and trust 0.4 (lower than conversation-sourced claims).
 
 ### Conversation Processing
 1. Memory engine compacts messages into summaries
 2. **If relations enabled**: Semantic or fast extraction produces MemoryObjects (claims, decisions, entities, loops, etc.)
 3. TruthEngine reconciles new MemoryObjects against existing knowledge (supersession, conflict detection, correction handling)
-4. MemoryObjects written to `memory_objects` table via `mo-store.ts`
-5. Cross-references written to `provenance_links` table
-6. Store summaries in memory DB
+4. **Invariant enforcement**: Before writing any new MemoryObject (except invariants and conflicts themselves), `checkStrictInvariants()` scans content + structured fields against all strict-mode invariants. Violations set status to `needs_confirmation` and log an `invariant_violation` event. Uses NFKD normalization and strips zero-width chars to prevent Unicode bypass.
+5. MemoryObjects written to `memory_objects` table via `mo-store.ts`
+6. Cross-references written to `provenance_links` table
+7. Store summaries in memory DB
 
 ### Context Assembly (every turn)
 1. Assemble conversation context from DAG
-2. **If awareness enabled**: Build awareness notes from entity graph (15ms, 3 queries)
-3. **If relations enabled**: Compile evidence capsules via ROI governor (10ms)
-4. Inject into system prompt addition
+2. **Session briefing**: On session change, `buildSessionBriefing()` queries `memory_objects` for changes since the last session timestamp. Summarizes new/superseded decisions, claims, conflicts, and invariants. Prepended to system prompt addition.
+3. **If awareness enabled**: Build awareness notes from entity graph (15ms, 3 queries)
+4. **If relations enabled**: Compile evidence capsules via ROI governor (10ms). Capsules carry **epistemic labels** ([FIRM] for confidence >= 0.9, [CONTESTED] for objects in active conflicts, [PROVISIONAL] for confidence < 0.5). Scores are boosted by **query-aware relevance** — keyword overlap between the last user message and each capsule text (factor range 0.2-1.0).
+5. Inject into system prompt addition
 
 ## Background Jobs
 
@@ -104,7 +107,9 @@ memory-engine/src/relations/          -- Evidence OS stores + tools
   delta-store.ts      -- State change recording
   capability-store.ts -- Capability tracking
   invariant-store.ts  -- Constraint management
-  context-compiler.ts -- ROI-governed capsule compilation
+  context-compiler.ts -- ROI-governed capsule compilation, epistemic labels, query relevance
+  session-briefing.ts -- Session change detection, inter-session delta summary
+  invariant-check.ts  -- Write-time strict invariant enforcement (30s cached)
   attempt-store.ts    -- Tool outcome ledger
   runbook-store.ts    -- Success pattern learning
   anti-runbook-store.ts -- Failure pattern learning

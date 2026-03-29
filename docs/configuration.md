@@ -54,6 +54,7 @@ All configuration is via environment variables. Copy `.env.example` to `.env` an
 | `CHUNK_TARGET_TOKENS` | `512` | Target chunk size (tokens) |
 | `QUERY_TOP_K` | `10` | Default result count |
 | `QUERY_TOKEN_BUDGET` | `4000` | Token budget per query |
+| `QUERY_VECTOR_OVER_RETRIEVE_FACTOR` | `3` | Multiplier for vector candidates before reranking. Higher = better recall, more reranker work |
 
 ## Evidence Graph (Relations)
 
@@ -63,6 +64,7 @@ All configuration is via environment variables. Copy `.env.example` to `.env` an
 |----------|---------|-------------|
 | `THREADCLAW_RELATIONS_ENABLED` | `false` | Enable entity extraction in ingest pipeline |
 | `THREADCLAW_RELATIONS_GRAPH_DB_PATH` | `~/.threadclaw/data/threadclaw.db` | Graph database path (consolidated into threadclaw.db) |
+| `THREADCLAW_DEEP_INGEST_ENABLED` | `false` | Enable LLM-based claim extraction from ingested document chunks. Sends chunks to the model server for factual claim extraction. Claims are stored with capped confidence (0.4) and trust (0.4). Requires a model server running. |
 
 ### Memory Engine Plugin
 
@@ -88,7 +90,7 @@ All configuration is via environment variables. Copy `.env.example` to `.env` an
 |----------|---------|-------------|
 | `THREADCLAW_MEMORY_RELATIONS_CLAIM_EXTRACTION_ENABLED` | `false` | Extract claims from compacted messages |
 | `THREADCLAW_MEMORY_RELATIONS_USER_CLAIM_EXTRACTION_ENABLED` | `false` | Extract claims from "Remember:" statements |
-| `THREADCLAW_MEMORY_RELATIONS_CONTEXT_TIER` | `standard` | Context compiler budget: `lite` (110), `standard` (190), `premium` (280) |
+| `THREADCLAW_MEMORY_RELATIONS_CONTEXT_TIER` | `standard` | Context compiler budget: `lite` (110), `standard` (190), `premium` (380) |
 
 ### Durability (Horizon 3)
 

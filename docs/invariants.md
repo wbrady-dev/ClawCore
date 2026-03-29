@@ -18,7 +18,7 @@ Invariant-specific properties are stored in the `structured_json` field:
 | category | string | Grouping (e.g., "git", "deploy", "security") |
 | description | string | Human-readable rule (also in the content field) |
 | severity | critical, error, warning, info | Impact level |
-| enforcement_mode | advisory, warn, block | How strictly enforced |
+| enforcement_mode | strict, advisory | How strictly enforced (strict = always surfaced + write-time enforcement; advisory = ROI-scored display only) |
 | status | active, suspended, retired | Lifecycle state (also in the MO status field) |
 
 ## Severity Ordering
@@ -31,10 +31,25 @@ Invariants are always returned ordered by severity (most critical first):
 
 ## Enforcement Modes
 
-- **strict**: Always surfaced in CCL with score 1.0 (never filtered out by token budget)
-- **advisory**: Surfaced in context based on ROI scoring but not enforced
+- **strict**: Always surfaced in CCL with score 1.0 (never filtered out by token budget). Also enforced at write time (see below).
+- **advisory**: Surfaced in context based on ROI scoring but not enforced at write time.
 
 Strict invariants are guaranteed to appear in every compiled context. Advisory invariants compete for token budget like other capsules.
+
+## Write-Time Enforcement
+
+Strict invariants are enforced at write time, not just displayed. When a new MemoryObject is written to the evidence graph (via TruthEngine reconciliation or deep extraction), `checkStrictInvariants()` checks the content and structured fields against all strict-mode invariants before the write commits.
+
+**How it works:**
+
+1. Forbidden terms are extracted from invariant descriptions using negation patterns (e.g., "never use MongoDB" yields the term "mongodb").
+2. Content is normalized: NFKD Unicode decomposition, zero-width/control character stripping, lowercase. This prevents Unicode homoglyph bypass.
+3. If any forbidden term appears in the normalized text, the object's status is set to `needs_confirmation` instead of `active`.
+4. An `invariant_violation` event is logged to `evidence_log` with the violation details.
+
+**Exclusions:** Invariants and conflicts themselves are exempt from enforcement (to avoid circular blocking).
+
+**Performance:** Strict invariants are cached with a 30-second TTL to avoid repeated DB queries on every write. Only invariants with extractable forbidden terms are enforced (invariants without negation patterns in their descriptions are display-only).
 
 ## Context Compilation
 

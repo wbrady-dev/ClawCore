@@ -95,4 +95,32 @@ When new MemoryObjects are extracted, the TruthEngine reconciles them against ex
 6. Provisional statements ("I think...") don't override established beliefs
 
 ## Context Compiler & ROI Governor
-The context compiler scores every evidence capsule on usefulness, confidence, freshness, and scope fit. It ranks by score-per-token and fills the budget greedily. Budget tiers: Lite (110 tokens), Standard (190), Premium (280).
+The context compiler scores every evidence capsule on usefulness, confidence, freshness, and scope fit. It ranks by score-per-token and fills the budget greedily. Budget tiers: Lite (110 tokens), Standard (190), Premium (380).
+
+### Epistemic Labels
+Every capsule in the compiled context carries an epistemic label indicating confidence level:
+- **[FIRM]** — confidence >= 0.9 and not contested. High-certainty facts.
+- **[CONTESTED]** — the object is referenced by an active conflict (appears in either side of a Conflict object). The agent should treat this fact with caution.
+- **[PROVISIONAL]** — confidence < 0.5. Low-certainty, possibly inferred or weakly supported.
+- *(no label)* — confidence between 0.5 and 0.9, not contested. Normal confidence.
+
+Labels are appended to claim and decision capsule text (e.g., `[claim] Redis predicate: value [FIRM]`). Deduplication strips labels before comparison so the same claim at different confidence levels is not duplicated.
+
+### Query-Aware Relevance
+The context compiler accepts an optional `queryContext` string (set to the last user message during assembly). When provided, each capsule's score is multiplied by a keyword-overlap relevance factor:
+- Keywords are extracted from the query (words > 2 chars, lowercased, punctuation stripped).
+- Each capsule is checked for keyword overlap. The relevance factor ranges from 0.2 (no overlap) to 1.0 (full overlap).
+- This ensures capsules relevant to the current conversation turn are prioritized within the token budget.
+
+## Session Briefing
+When a new session is detected (the session ID changes), the engine generates a briefing summarizing what changed since the last session. `buildSessionBriefing()` queries `memory_objects` for objects updated since the previous session timestamp and counts:
+- New and superseded decisions
+- New and superseded claims
+- Claims flagged for review (`needs_confirmation`)
+- New conflicts
+- New invariants
+
+The briefing is formatted as a single line prepended to the system prompt: `[Session Briefing] Since last session (2h ago): 3 new claims, 1 conflict.` Returns null if nothing changed.
+
+## Deep Document Extraction
+When `THREADCLAW_DEEP_INGEST_ENABLED=true`, ingested documents undergo LLM-based claim extraction in addition to entity extraction. `extractDeepFromDocument()` sends document chunks to the model server with a factual-claim-extraction system prompt. Extracted claims are stored via `storeClaimExtractionResults()` with capped confidence (0.4) and trust (0.4) — lower than conversation-sourced claims to reflect the indirect, unverified nature of document-derived facts. Concurrency is limited to 2 simultaneous extractions with 200ms inter-chunk delay. The system prompt instructs the LLM to ignore any instructions embedded in the document text (prompt injection mitigation).
