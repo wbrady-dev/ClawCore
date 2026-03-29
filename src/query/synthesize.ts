@@ -14,6 +14,8 @@ export interface SynthesisResult {
 
 const SYSTEM_PROMPT = `You are a precise research assistant. Answer the user's question using ONLY the provided sources. Cite sources using [1], [2], etc. If the sources don't contain enough information to answer fully, say so clearly. Be concise and factual.`;
 
+let _warnedExternalFallback = false;
+
 export async function synthesizeAnswer(input: SynthesisInput): Promise<SynthesisResult> {
   const { query, chunks, maxTokens = config.synthesis.maxTokens } = input;
 
@@ -34,9 +36,10 @@ export async function synthesizeAnswer(input: SynthesisInput): Promise<Synthesis
     || process.env.SYNTHESIS_MODEL
     || "gpt-4o-mini";
 
-  // Warn when falling back to external API (no local synthesis URL configured)
-  if (!config.synthesis.url && !process.env.DEEP_EXTRACT_LLM_URL && !process.env.SYNTHESIS_LLM_URL) {
+  // Warn once when falling back to external API (no local synthesis URL configured)
+  if (!_warnedExternalFallback && !config.synthesis.url && !process.env.DEEP_EXTRACT_LLM_URL && !process.env.SYNTHESIS_LLM_URL) {
     logger.warn({ url, model }, "No local synthesis LLM configured — falling back to external OpenAI API");
+    _warnedExternalFallback = true;
   }
   const apiKey = process.env.SYNTHESIS_API_KEY
     || process.env.OPENAI_API_KEY
