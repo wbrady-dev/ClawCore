@@ -13,7 +13,7 @@
  * Read-only: ThreadClaw NEVER writes, modifies, or deletes Drive files.
  */
 import { google, type drive_v3 } from "googleapis";
-import { existsSync, readFileSync, writeFileSync, mkdirSync, unlinkSync, createWriteStream, chmodSync } from "fs";
+import { existsSync, readFileSync, writeFileSync, mkdirSync, unlinkSync, createWriteStream, chmodSync, renameSync } from "fs";
 import { resolve, join, extname } from "path";
 import { homedir } from "os";
 import { createServer } from "http";
@@ -224,11 +224,9 @@ async function initDriveClient(): Promise<drive_v3.Drive> {
         expiry_date: newTokens.expiry_date ?? tokens.expiry_date,
       };
       mkdirSync(CREDENTIALS_DIR, { recursive: true });
-      writeFileSync(CREDENTIALS_FILE, JSON.stringify(updated, null, 2));
-      // Restrict permissions on Unix (match initial OAuth write)
-      if (process.platform !== "win32") {
-        try { chmodSync(CREDENTIALS_FILE, 0o600); } catch {}
-      }
+      const tmpPath = CREDENTIALS_FILE + ".tmp";
+      writeFileSync(tmpPath, JSON.stringify(updated, null, 2), { mode: 0o600 });
+      try { renameSync(tmpPath, CREDENTIALS_FILE); } catch { writeFileSync(CREDENTIALS_FILE, JSON.stringify(updated, null, 2), { mode: 0o600 }); }
     } catch (err) {
       logger.error({ error: String(err) }, "Failed to persist refreshed Google Drive tokens");
     }
@@ -423,12 +421,9 @@ export async function runGDriveOAuth(clientId: string, clientSecret: string): Pr
     };
 
     mkdirSync(CREDENTIALS_DIR, { recursive: true });
-    writeFileSync(CREDENTIALS_FILE, JSON.stringify(saved, null, 2));
-
-    // Restrict permissions on Unix
-    if (process.platform !== "win32") {
-      chmodSync(CREDENTIALS_FILE, 0o600);
-    }
+    const tmpPath = CREDENTIALS_FILE + ".tmp";
+    writeFileSync(tmpPath, JSON.stringify(saved, null, 2), { mode: 0o600 });
+    try { renameSync(tmpPath, CREDENTIALS_FILE); } catch { writeFileSync(CREDENTIALS_FILE, JSON.stringify(saved, null, 2), { mode: 0o600 }); }
 
     return true;
   } catch (err) {

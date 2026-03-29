@@ -162,9 +162,10 @@ function claimCapsules(claims: ClaimRow[], compositeIds: string[], contestedIds:
   return results;
 }
 
-function decisionCapsules(decisions: DecisionRow[], compositeIds: string[], contestedIds: Set<string>): CapsuleCandidate[] {
+function decisionCapsules(decisions: DecisionRow[], compositeIds: string[], contestedIds: Set<string>, confidences: number[]): CapsuleCandidate[] {
   return decisions.map((d, i) => {
-    const label = epistemicLabel(0.9, compositeIds[i], contestedIds);
+    const conf = confidences[i] ?? 0.7;
+    const label = epistemicLabel(conf, compositeIds[i], contestedIds);
     const text = `[decision] ${d.topic}: ${d.decision_text}${label}`;
     const tokens = estimateTokens(text);
     // Decisions have high usefulness — they represent active choices
@@ -231,9 +232,10 @@ function invariantCapsules(invariants: InvariantRow[]): CapsuleCandidate[] {
   });
 }
 
-function antiRunbookCapsules(antiRunbooks: AntiRunbookRow[]): CapsuleCandidate[] {
-  return antiRunbooks.map((ar) => {
-    const text = `[anti-runbook] AVOID: ${ar.failure_pattern} (${ar.tool_name}, ${ar.failure_count} failures)`;
+function antiRunbookCapsules(antiRunbooks: AntiRunbookRow[], compositeIds: string[] = [], contestedIds: Set<string> = new Set()): CapsuleCandidate[] {
+  return antiRunbooks.map((ar, i) => {
+    const label = epistemicLabel(ar.confidence, compositeIds[i], contestedIds);
+    const text = `[anti-runbook] AVOID: ${ar.failure_pattern} (${ar.tool_name}, ${ar.failure_count} failures)${label}`;
     const tokens = estimateTokens(text);
     // Anti-runbooks get very high score — preventing known failures is critical
     const score = 0.95;
@@ -247,11 +249,12 @@ function antiRunbookCapsules(antiRunbooks: AntiRunbookRow[]): CapsuleCandidate[]
   });
 }
 
-function runbookCapsules(runbooks: Array<{ tool_name: string; pattern: string; confidence: number; success_count: number; failure_count: number }>): CapsuleCandidate[] {
-  return runbooks.map((rb) => {
+function runbookCapsules(runbooks: Array<{ tool_name: string; pattern: string; confidence: number; success_count: number; failure_count: number }>, compositeIds: string[] = [], contestedIds: Set<string> = new Set()): CapsuleCandidate[] {
+  return runbooks.map((rb, i) => {
     const rate = (rb.success_count + rb.failure_count) > 0
       ? ((rb.success_count / (rb.success_count + rb.failure_count)) * 100).toFixed(0) : "N/A";
-    const text = `[runbook] ${rb.tool_name}: ${rb.pattern} (${rate}% success)`;
+    const label = epistemicLabel(rb.confidence, compositeIds[i], contestedIds);
+    const text = `[runbook] ${rb.tool_name}: ${rb.pattern} (${rate}% success)${label}`;
     const tokens = estimateTokens(text);
     const score = rb.confidence * 0.85;
     return {
@@ -264,9 +267,10 @@ function runbookCapsules(runbooks: Array<{ tool_name: string; pattern: string; c
   });
 }
 
-function relationCapsules(relations: Array<{ subject_name: string; predicate: string; object_name: string; confidence: number }>): CapsuleCandidate[] {
-  return relations.map((r) => {
-    const text = `[relation] ${r.subject_name} ${r.predicate} ${r.object_name}`;
+function relationCapsules(relations: Array<{ subject_name: string; predicate: string; object_name: string; confidence: number }>, compositeIds: string[] = [], contestedIds: Set<string> = new Set()): CapsuleCandidate[] {
+  return relations.map((r, i) => {
+    const label = epistemicLabel(r.confidence, compositeIds[i], contestedIds);
+    const text = `[relation] ${r.subject_name} ${r.predicate} ${r.object_name}${label}`;
     const tokens = estimateTokens(text);
     const score = r.confidence * 0.8; // Slightly below claims
     return {
@@ -401,7 +405,7 @@ export function compileContextCapsules(
   try {
     const allRows = db.prepare(`
       SELECT * FROM memory_objects
-      WHERE scope_id = ? AND branch_id = 0 AND status = 'active'
+      WHERE scope_id = ? AND branch_id = 0 AND status IN ('active', 'needs_confirmation')
         AND kind IN ('claim', 'decision', 'loop', 'invariant', 'procedure', 'relation', 'conflict')
       ORDER BY kind, confidence DESC, last_observed_at DESC
     `).all(scopeId) as Array<Record<string, unknown>>;
@@ -437,7 +441,7 @@ export function compileContextCapsules(
           if (claimCount++ < maxClaims) candidates.push(...claimCapsules([moRowToClaimRow(row)], [String(row.composite_id ?? "")], contestedIds));
           break;
         case "decision":
-          if (decisionCount++ < maxDecisions) candidates.push(...decisionCapsules([moRowToDecisionRow(row)], [String(row.composite_id ?? "")], contestedIds));
+          if (decisionCount++ < maxDecisions) candidates.push(...decisionCapsules([moRowToDecisionRow(row)], [String(row.composite_id ?? "")], contestedIds, [Number(row.confidence ?? 0.7)]));
           break;
         case "loop":
           if (loopCount++ < maxLoops) candidates.push(...loopCapsules([moRowToLoopRow(row)]));
@@ -448,16 +452,16 @@ export function compileContextCapsules(
         case "procedure": {
           const s = safeParseStructured(row.structured_json);
           if (s.isNegative === true || s.isNegative === "true") {
-            if (antiRunbookCount++ < maxAntiRunbooks) candidates.push(...antiRunbookCapsules([moRowToAntiRunbookRow(row)]));
+            if (antiRunbookCount++ < maxAntiRunbooks) candidates.push(...antiRunbookCapsules([moRowToAntiRunbookRow(row)], [String(row.composite_id ?? "")], contestedIds));
           } else {
-            if (runbookCount++ < maxRunbooks) candidates.push(...runbookCapsules([moRowToRunbookRow(row)]));
+            if (runbookCount++ < maxRunbooks) candidates.push(...runbookCapsules([moRowToRunbookRow(row)], [String(row.composite_id ?? "")], contestedIds));
           }
           break;
         }
         case "relation":
           if (relationCount++ < maxRelations) {
             const rel = moRowToRelationRow(row);
-            candidates.push(...relationCapsules([rel]));
+            candidates.push(...relationCapsules([rel], [String(row.composite_id ?? "")], contestedIds));
           }
           break;
         case "conflict":

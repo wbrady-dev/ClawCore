@@ -667,28 +667,46 @@ export function stopServices(): { success: boolean; error?: string } {
 
 /**
  * Async force-kill: used by performServiceAction when ports are still open
- * after the graceful stop attempt. Runs taskkill/kill without blocking the
- * event loop (uses child_process.exec instead of execFileSync).
+ * after the graceful stop attempt. Uses execFile with argument arrays to
+ * avoid shell interpolation (command injection prevention).
  */
 export async function forceKillByPort(port: number): Promise<void> {
-  // Validate port is a safe integer to prevent command injection
+  // Validate port is a safe integer — defense-in-depth
   const safePort = Math.floor(Number(port));
   if (!Number.isFinite(safePort) || safePort < 1 || safePort > 65535) return;
 
-  const { exec } = await import("child_process");
+  const { execFile } = await import("child_process");
   const plat = getPlatform();
 
-  return new Promise((resolve) => {
-    if (plat === "windows") {
-      exec(`for /f "tokens=5" %a in ('netstat -ano ^| findstr :${safePort} ^| findstr LISTENING') do taskkill /F /PID %a`,
-        { shell: "cmd.exe", timeout: 8000 },
-        () => resolve());
-    } else {
-      exec(`lsof -ti :${safePort} | xargs kill -9 2>/dev/null`,
-        { timeout: 5000 },
-        () => resolve());
+  const run = (cmd: string, args: string[], opts?: { timeout?: number }): Promise<string> =>
+    new Promise((resolve) => {
+      execFile(cmd, args, { timeout: opts?.timeout ?? 8000, stdio: "pipe" } as any,
+        (_err, stdout) => resolve(String(stdout ?? "").trim()));
+    });
+
+  if (plat === "windows") {
+    // Parse netstat output to find PIDs listening on the target port
+    const netstatOut = await run("netstat", ["-ano"], { timeout: 8000 });
+    const pids = new Set<string>();
+    for (const line of netstatOut.split("\n")) {
+      // Match lines like "  TCP    0.0.0.0:3811   ... LISTENING  1234"
+      if (/LISTENING/i.test(line) && line.includes(`:${safePort}`)) {
+        const parts = line.trim().split(/\s+/);
+        const pid = parts[parts.length - 1];
+        if (/^\d+$/.test(pid) && pid !== "0") pids.add(pid);
+      }
     }
-  });
+    for (const pid of pids) {
+      await run("taskkill", ["/F", "/PID", pid], { timeout: 5000 });
+    }
+  } else {
+    // lsof -ti :PORT returns one PID per line
+    const lsofOut = await run("lsof", ["-ti", `:${safePort}`], { timeout: 5000 });
+    const pids = lsofOut.split("\n").map(s => s.trim()).filter(s => /^\d+$/.test(s));
+    if (pids.length > 0) {
+      await run("kill", ["-9", ...pids], { timeout: 5000 });
+    }
+  }
 }
 
 /** Install Windows scheduled tasks for ThreadClaw services (no admin required). */

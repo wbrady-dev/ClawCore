@@ -13,6 +13,8 @@ import type {
   InfluenceWeight,
 } from "./types.js";
 import { buildCanonicalKey } from "./canonical.js";
+import { checkStrictInvariants } from "../relations/invariant-check.js";
+import { logEvidence } from "../relations/evidence-log.js";
 
 /** Abstract DB interface — compatible with both node:sqlite DatabaseSync and better-sqlite3. */
 interface GraphDb {
@@ -96,6 +98,36 @@ export function upsertMemoryObject(
   const sourceDetail = obj.provenance?.source_detail ?? null;
   const sourceAuthority = obj.provenance?.trust ?? 0.5;
   const branchId = obj.branch_id ?? 0;
+
+  // ── Centralized invariant enforcement ──────────────────────────────────────
+  // Check all non-invariant, non-conflict objects against strict invariants.
+  // This ensures no code path (tool results, direct upserts, deep extraction)
+  // can bypass invariant enforcement.
+  if (obj.kind !== "invariant" && obj.kind !== "conflict" && obj.status !== "needs_confirmation") {
+    try {
+      const violations = checkStrictInvariants(
+        db as any,
+        obj.scope_id ?? 1,
+        obj.content,
+        (obj.structured as Record<string, unknown> | null) ?? null,
+      );
+      if (violations.length > 0) {
+        obj.status = "needs_confirmation";
+        // Log violation evidence (best-effort, non-fatal)
+        try {
+          db.prepare(`
+            INSERT INTO evidence_log
+              (scope_id, object_type, object_id, event_type, actor, payload_json)
+            VALUES (?, ?, 0, 'invariant_violation', 'system', ?)
+          `).run(
+            obj.scope_id ?? 1,
+            obj.kind,
+            JSON.stringify({ violations, content: obj.content.slice(0, 200) }),
+          );
+        } catch { /* evidence_log table may not exist yet */ }
+      }
+    } catch { /* invariant tables may not exist — skip silently */ }
+  }
 
   // Try upsert by composite_id first
   let existing = db.prepare(
@@ -268,10 +300,25 @@ export function deleteMemoryObjectsBySource(
   sourceKind: string,
   sourceId: string,
 ): void {
-  // Collect composite_ids before deletion so we can clean up provenance_links
+  // Collect composite_ids before deletion so we can log and clean up provenance_links
   const rows = db.prepare(
-    "SELECT composite_id FROM memory_objects WHERE source_kind = ? AND source_id = ?",
-  ).all(sourceKind, sourceId) as Array<{ composite_id: string }>;
+    "SELECT id, composite_id FROM memory_objects WHERE source_kind = ? AND source_id = ?",
+  ).all(sourceKind, sourceId) as Array<{ id: number; composite_id: string }>;
+
+  // Log each deletion to the evidence_log before removing
+  try {
+    for (const row of rows) {
+      logEvidence(db, {
+        scopeId: 1,
+        objectType: "memory_object",
+        objectId: row.id,
+        eventType: "source_cleanup",
+        actor: "system",
+        idempotencyKey: `source_cleanup:${sourceKind}:${sourceId}:${row.composite_id}`,
+        payload: { composite_id: row.composite_id, sourceKind, sourceId },
+      });
+    }
+  } catch { /* evidence_log may not exist yet — non-fatal */ }
 
   db.prepare(
     "DELETE FROM memory_objects WHERE source_kind = ? AND source_id = ?",

@@ -194,6 +194,40 @@ function storeEntities(
 export function deleteSourceData(db: Database.Database, sourceType: string, sourceId: string): void {
   const objectKey = `${sourceType}:${sourceId}`;
 
+  // Log mention deletions to the evidence_log before removing them
+  try {
+    const mentions = db.prepare(
+      "SELECT subject_id, object_id FROM provenance_links WHERE object_id = ? AND predicate = 'mentioned_in'",
+    ).all(objectKey) as Array<{ subject_id: string; object_id: string }>;
+
+    if (mentions.length > 0) {
+      const now = "strftime('%Y-%m-%dT%H:%M:%f','now')";
+      const scopeSeqBump = db.prepare(
+        "INSERT INTO scope_sequences (scope_id, next_seq) VALUES (1, 2) ON CONFLICT(scope_id) DO UPDATE SET next_seq = next_seq + 1",
+      );
+      const scopeSeqGet = db.prepare(
+        "SELECT next_seq - 1 AS seq FROM scope_sequences WHERE scope_id = 1",
+      );
+      const evidenceInsert = db.prepare(`
+        INSERT OR IGNORE INTO evidence_log
+          (scope_id, object_type, object_id, event_type, actor, idempotency_key, payload_json, created_at, scope_seq)
+        VALUES (1, ?, 0, 'mention_delete', 'system', ?, ?, ${now}, ?)
+      `);
+
+      for (const m of mentions) {
+        scopeSeqBump.run();
+        const seqRow = scopeSeqGet.get() as { seq: number } | undefined;
+        const seq = seqRow?.seq ?? 0;
+        evidenceInsert.run(
+          "provenance_link",
+          `delete:${m.subject_id}:${m.object_id}`,
+          JSON.stringify({ subject_id: m.subject_id, object_id: m.object_id, sourceType, sourceId }),
+          seq,
+        );
+      }
+    }
+  } catch { /* evidence_log may not exist yet — non-fatal */ }
+
   // Delete mentions (provenance_links with mentioned_in) for this source
   db.prepare(
     "DELETE FROM provenance_links WHERE object_id = ? AND predicate = 'mentioned_in'",
@@ -215,13 +249,24 @@ export function clearAllGraphTables(db: Database.Database): void {
   try {
     // Record the reset event so the audit trail captures why it was wiped
     const now = new Date().toISOString();
+    // Bump scope sequence for proper ordering
+    db.prepare(
+      "INSERT INTO scope_sequences (scope_id, next_seq) VALUES (1, 2) ON CONFLICT(scope_id) DO UPDATE SET next_seq = next_seq + 1",
+    ).run();
+    const seqRow = db.prepare(
+      "SELECT next_seq - 1 AS seq FROM scope_sequences WHERE scope_id = 1",
+    ).get() as { seq: number } | undefined;
+    const seq = seqRow?.seq ?? 0;
+
     db.prepare(`
       INSERT INTO evidence_log
-        (scope_id, object_type, object_id, event_type, actor, payload_json, created_at)
-      VALUES (1, 'graph', 0, 'reset', 'system', ?, ?)
+        (scope_id, object_type, object_id, event_type, actor, idempotency_key, payload_json, created_at, scope_seq)
+      VALUES (1, 'graph', 0, 'reset', 'system', ?, ?, ?, ?)
     `).run(
+      `reset:${now}`,
       JSON.stringify({ reason: "clearAllGraphTables called", timestamp: now }),
       now,
+      seq,
     );
   } catch { /* table may not exist yet */ }
 
@@ -325,7 +370,7 @@ export async function extractEntitiesFromDocument(
             merged.set(key, {
               name: ent.text,
               confidence: 0.8,
-              strategy: `ner:${ent.label}`,
+              strategy: "ner:" + ent.label.toLowerCase(),
             });
           }
         }

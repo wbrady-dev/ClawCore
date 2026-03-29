@@ -747,7 +747,7 @@ export function createCcMemoryTool(input: {
                    json_extract(structured_json, '$.predicate') as predicate,
                    json_extract(structured_json, '$.objectText') as object_text,
                    confidence
-            FROM memory_objects WHERE kind = 'claim' AND status = 'active' AND (${searchClause})
+            FROM memory_objects WHERE kind = 'claim' AND status = 'active' AND branch_id = 0 AND (${searchClause})
             ORDER BY confidence DESC LIMIT 5
           `).all(...searchArgs) as Array<{
             subject: string; predicate: string; object_text: string | null; confidence: number;
@@ -785,7 +785,7 @@ export function createCcMemoryTool(input: {
             SELECT json_extract(structured_json, '$.topic') as topic,
                    COALESCE(json_extract(structured_json, '$.decisionText'), content) as decision_text,
                    created_at as decided_at
-            FROM memory_objects WHERE kind = 'decision' AND status = 'active' AND (${decClause})
+            FROM memory_objects WHERE kind = 'decision' AND status = 'active' AND branch_id = 0 AND (${decClause})
             ORDER BY created_at DESC LIMIT 3
           `).all(...decArgs) as Array<{
             topic: string; decision_text: string; decided_at: string;
@@ -823,7 +823,7 @@ export function createCcMemoryTool(input: {
             SELECT id, canonical_key,
                    COALESCE(json_extract(structured_json, '$.displayName'), json_extract(structured_json, '$.name'), canonical_key) as name,
                    json_extract(structured_json, '$.type') as entity_type
-            FROM memory_objects WHERE kind = 'entity' AND status = 'active'
+            FROM memory_objects WHERE kind = 'entity' AND status = 'active' AND branch_id = 0
               AND (${entClause})
             ORDER BY confidence DESC LIMIT 5
           `).all(...entArgs) as Array<{
@@ -893,7 +893,7 @@ export function createCcMemoryTool(input: {
             SELECT json_extract(structured_json, '$.subject') as subject,
                    json_extract(structured_json, '$.predicate') as predicate,
                    json_extract(structured_json, '$.objectText') as object_text
-            FROM memory_objects WHERE kind = 'claim' AND status = 'active'
+            FROM memory_objects WHERE kind = 'claim' AND status = 'active' AND branch_id = 0
               AND json_extract(structured_json, '$.predicate') NOT IN ('is', 'states')
               AND (${relClause})
             ORDER BY confidence DESC LIMIT 5

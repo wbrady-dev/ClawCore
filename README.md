@@ -153,7 +153,7 @@ All models run locally. Cloud providers (OpenAI, Cohere, Voyage AI, Google) also
 Evidence OS is the intelligence layer that makes ThreadClaw more than a search engine. Here's what each component does:
 
 ### Entity Awareness
-Extracts named entities (people, projects, tools, services) from text and tracks them. When you mention "Project Orion" and later say "Orion", it knows they're the same thing. Includes **proactive awareness** — when no specific matches are found, top relevant entities are surfaced automatically.
+Extracts named entities (people, projects, tools, services) from text and tracks them. Entity resolution uses canonical key normalization (lowercased, trimmed) so "Project Orion" and "project orion" resolve to the same entity. Exact alias mapping (e.g. "Orion" resolving to "Project Orion") is planned for a future release. Includes **proactive awareness** — when no specific matches are found, top relevant entities are surfaced automatically.
 
 ### Claims & Decisions
 Every fact you state becomes a **claim** with a confidence score and evidence chain. Every choice you make becomes a **decision**. When facts change, old claims are superseded — not deleted — so you always have history.
@@ -164,7 +164,7 @@ The reconciliation engine that decides what happens when new information conflic
 - **Conflict creation** — contradictory facts from different sources are flagged
 - **Confidence blending** — repeated confirmations increase confidence
 - **Correction guards** — explicit corrections ("actually, not X — use Y") get priority
-- **Belief propagation** — contradict/support provenance links automatically adjust confidence on linked claims
+- **Belief propagation** — contradict/support provenance links record evidence relationships. Confidence is updated inline when evidence is added (not via backward graph traversal, which is deferred as unnecessary for personal knowledge bases)
 
 ### Canonical Key System
 How ThreadClaw knows two facts are about the same thing. Uses LLM-generated **topic labels** (not hardcoded rules) to group related claims:

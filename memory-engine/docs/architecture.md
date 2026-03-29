@@ -261,6 +261,8 @@ Both modes produce `MemoryObject` instances that are reconciled by the **TruthEn
 5. Correction signals auto-supersede (with 5-point guard)
 6. Provisional objects don't supersede firm beliefs
 
+Confidence is managed inline at reconciliation time (rule 1-3 above). Provenance links (`supports`, `contradicts`, `supersedes`) exist for audit trails and conflict tracking, not for backward graph traversal. Propagating confidence changes recursively through the provenance graph is intentionally deferred — inline reconciliation is sufficient for personal knowledge bases.
+
 ### Migrations
 
 The graph database uses 29 versioned migrations (v1-v29):

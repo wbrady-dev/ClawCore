@@ -393,7 +393,11 @@ export function buildAwarenessNote(
         // Extract any entity names from conversation text (case-insensitive substring match)
         const lowerText = text.toLowerCase();
         const conversationEntityNames = cache
-          .filter((e) => e.name && lowerText.includes(e.name))
+          .filter((e) => e.name && (() => {
+            if (!lowerText.includes(e.name)) return false;
+            const escaped = e.name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+            return new RegExp(`\\b${escaped}\\b`).test(lowerText);
+          })())
           .map((e) => e.composite_id);
 
         let highValue: Array<{ name: string; mention_count: number }> = [];

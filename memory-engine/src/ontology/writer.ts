@@ -152,6 +152,13 @@ export async function understandMessage(
     return { objects: [], signals: { isCorrection: false, correctionSignal: null, isUncertain: false, uncertaintySignal: null, isPreference: false, preferenceSignal: null, temporal: null }, eventTypes: [] };
   }
 
+  // Message-level trust signals — skip extraction entirely for untrusted messages
+  // Conservative regex fallback for when LLM trust detection is unavailable
+  const trustKillPatterns = /^(i'?m not sure|hypothetical|these are examples|don'?t store|testing|just brainstorming)/i;
+  if (trustKillPatterns.test(text.trim())) {
+    return { objects: [], signals: { isCorrection: false, correctionSignal: null, isUncertain: false, uncertaintySignal: null, isPreference: false, preferenceSignal: null, temporal: null }, eventTypes: [] };
+  }
+
   const signals = detectSignals(text);
   const objects: MemoryObject[] = [];
   const eventTypes: EventType[] = [];
@@ -251,6 +258,19 @@ export async function understandMessage(
       objects.push(obj);
     }
   } catch { /* extraction module may not be available in tests */ }
+
+  // ── Step 4b: Filter hypothetical and sarcastic claims (regex fallback) ──
+  // Conservative filters for when LLM-based trust detection is unavailable
+  const hypotheticalRe = /\b(what if|for example|like if|suppose|hypothetically|could potentially)\b/i;
+  const sarcasmRe = /\b(obviously|definitely|surely|clearly)\b.*\b(magic|unicorn|fairy|impossible|never)\b/i;
+  const filteredObjects = objects.filter((obj) => {
+    const t = obj.content || "";
+    if (hypotheticalRe.test(t)) return false;
+    if (sarcasmRe.test(t)) return false;
+    return true;
+  });
+  objects.length = 0;
+  objects.push(...filteredObjects);
 
   // ── Step 5: Apply correction/preference/temporal metadata ──
   for (const obj of objects) {

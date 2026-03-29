@@ -21,6 +21,7 @@ import { startCommand } from "./commands/start.js";
 import { stopCommand } from "./commands/stop.js";
 import { restartCommand } from "./commands/restart.js";
 import { logsCommand } from "./commands/logs.js";
+import { resetCommand } from "./commands/reset.js";
 import { getAppVersion } from "../version.js";
 
 // If no arguments provided, launch the interactive TUI
@@ -64,6 +65,7 @@ Quick start:
   program.addCommand(stopCommand);
   program.addCommand(restartCommand);
   program.addCommand(logsCommand);
+  program.addCommand(resetCommand);
 
   await program.parseAsync();
 }

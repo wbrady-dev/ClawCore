@@ -16,7 +16,7 @@ import type {
 } from "./types.js";
 import { logEvidence, withWriteTransaction } from "./evidence-log.js";
 import { buildCanonicalKey as ontologyCanonicalKey, normalize } from "../ontology/canonical.js";
-import { upsertMemoryObject, supersedeMemoryObject } from "../ontology/mo-store.js";
+import { upsertMemoryObject, supersedeMemoryObject, updateMemoryObjectStatus } from "../ontology/mo-store.js";
 import type { MemoryObject } from "../ontology/types.js";
 import { safeParseStructured, safeParseMetadata } from "../ontology/json-utils.js";
 import { recordStateDelta } from "./delta-store.js";
@@ -182,6 +182,16 @@ export function addClaimEvidence(db: GraphDb, input: AddClaimEvidenceInput, opts
           ).run(weight, input.claimId);
         }
       } catch (err) { console.warn("[rsma] belief propagation failed:", err); }
+
+      // After confidence change, check for auto-resolvable conflicts
+      try {
+        const updatedRow = db.prepare(
+          "SELECT composite_id, confidence FROM memory_objects WHERE id = ?",
+        ).get(input.claimId) as { composite_id: string; confidence: number } | undefined;
+        if (updatedRow) {
+          tryAutoResolveConflicts(db, updatedRow.composite_id, updatedRow.confidence);
+        }
+      } catch (err) { console.warn("[rsma] conflict auto-resolve check failed:", err); }
     }
 
     return evidenceId;
@@ -195,6 +205,82 @@ export function addClaimEvidence(db: GraphDb, input: AddClaimEvidenceInput, opts
       return doWork();
     }
     throw err;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Auto-resolve conflicts when evidence is overwhelming
+// ---------------------------------------------------------------------------
+
+/**
+ * After a claim's confidence changes significantly, check if it's involved in
+ * any active conflicts. If the confidence gap between the two sides exceeds 0.3,
+ * auto-resolve: retract the conflict, mark the loser as superseded.
+ *
+ * Conservative: only triggers when confidence < 0.1 or > 0.85.
+ */
+function tryAutoResolveConflicts(db: GraphDb, compositeId: string, newConfidence: number): void {
+  // Only act on extreme confidence values
+  if (newConfidence >= 0.1 && newConfidence <= 0.85) return;
+
+  try {
+    // Find active conflicts where this compositeId is one of the two sides
+    const conflicts = db.prepare(`
+      SELECT id, composite_id, structured_json, scope_id
+      FROM memory_objects
+      WHERE kind = 'conflict' AND status = 'active'
+        AND (
+          json_extract(structured_json, '$.objectIdA') = ?
+          OR json_extract(structured_json, '$.objectIdB') = ?
+        )
+    `).all(compositeId, compositeId) as Array<{
+      id: number;
+      composite_id: string;
+      structured_json: string;
+      scope_id: number;
+    }>;
+
+    for (const conflict of conflicts) {
+      const structured = safeParseStructured(conflict.structured_json);
+      const objectIdA = String(structured.objectIdA ?? "");
+      const objectIdB = String(structured.objectIdB ?? "");
+      const otherId = objectIdA === compositeId ? objectIdB : objectIdA;
+
+      // Get the other side's confidence
+      const otherRow = db.prepare(
+        "SELECT confidence, status FROM memory_objects WHERE composite_id = ?",
+      ).get(otherId) as { confidence: number; status: string } | undefined;
+
+      if (!otherRow || otherRow.status !== "active") continue;
+
+      const gap = Math.abs(newConfidence - otherRow.confidence);
+      if (gap < 0.3) continue;
+
+      // Determine winner and loser
+      const loserCompositeId = newConfidence > otherRow.confidence ? otherId : compositeId;
+      const winnerCompositeId = newConfidence > otherRow.confidence ? compositeId : otherId;
+
+      // Retract the conflict
+      updateMemoryObjectStatus(db, conflict.composite_id, "retracted");
+
+      // Mark loser as superseded by winner
+      supersedeMemoryObject(db, loserCompositeId, winnerCompositeId);
+
+      // Log evidence for auto-resolution
+      logEvidence(db, {
+        scopeId: conflict.scope_id,
+        objectType: "conflict",
+        objectId: conflict.id,
+        eventType: "retract",
+        payload: {
+          reason: `auto-resolved: confidence gap ${gap.toFixed(2)} (winner=${winnerCompositeId}, loser=${loserCompositeId})`,
+          winnerCompositeId,
+          loserCompositeId,
+        },
+      });
+    }
+  } catch (err) {
+    console.warn("[rsma] tryAutoResolveConflicts failed:", err);
   }
 }
 
@@ -404,24 +490,29 @@ export function storeClaimExtractionResults(
   // Phase 2: Apply a single aggregated confidence update per claim
   for (const [claimId, deltas] of claimDeltas) {
     try {
-      if (deltas.contradicts > 0) {
-        const weight = Math.min(1.0, deltas.contradicts);
-        db.prepare(
-          `UPDATE memory_objects SET
-             confidence = MAX(0.05, confidence * (1.0 - ?)),
-             updated_at = strftime('%Y-%m-%dT%H:%M:%f','now')
-           WHERE id = ?`,
-        ).run(weight, claimId);
-      }
-      if (deltas.supports > 0) {
-        const weight = Math.min(1.0, deltas.supports);
+      // Net-weight calculation: equal support and contradict cancel out,
+      // eliminating ordering bias from sequential application.
+      const supportWeight = Math.min(1.0, deltas.supports);
+      const contradictWeight = Math.min(1.0, deltas.contradicts);
+      const netWeight = supportWeight - contradictWeight;
+      if (netWeight > 0) {
+        // Net support: boost confidence
         db.prepare(
           `UPDATE memory_objects SET
              confidence = MIN(1.0, confidence + ? * (1.0 - confidence) * 0.7),
              updated_at = strftime('%Y-%m-%dT%H:%M:%f','now')
            WHERE id = ?`,
-        ).run(weight, claimId);
+        ).run(netWeight, claimId);
+      } else if (netWeight < 0) {
+        // Net contradict: reduce confidence (netWeight is negative, so 1.0 + netWeight < 1.0)
+        db.prepare(
+          `UPDATE memory_objects SET
+             confidence = MAX(0.05, confidence * (1.0 + ?)),
+             updated_at = strftime('%Y-%m-%dT%H:%M:%f','now')
+           WHERE id = ?`,
+        ).run(netWeight, claimId);
       }
+      // If netWeight === 0, equal evidence cancels out — no change
     } catch (err) { console.warn("[rsma] batch belief propagation failed for claim", claimId, err); }
   }
 }

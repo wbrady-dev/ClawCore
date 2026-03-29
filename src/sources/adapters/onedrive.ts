@@ -12,7 +12,7 @@
  * Polling-based: checks for changes on a configurable interval using delta queries.
  * Read-only: ThreadClaw NEVER writes, modifies, or deletes OneDrive files.
  */
-import { existsSync, readFileSync, writeFileSync, mkdirSync, unlinkSync, chmodSync } from "fs";
+import { existsSync, readFileSync, writeFileSync, mkdirSync, unlinkSync, chmodSync, renameSync } from "fs";
 import { resolve, join, extname } from "path";
 import { homedir } from "os";
 import { createServer } from "http";
@@ -357,10 +357,9 @@ export class OneDriveAdapter extends PollingAdapterBase {
 
   private saveTokens(tokens: SavedTokens): void {
     mkdirSync(CREDENTIALS_DIR, { recursive: true });
-    writeFileSync(TOKENS_FILE, JSON.stringify(tokens, null, 2));
-    if (process.platform !== "win32") {
-      try { chmodSync(TOKENS_FILE, 0o600); } catch {}
-    }
+    const tmpPath = TOKENS_FILE + ".tmp";
+    writeFileSync(tmpPath, JSON.stringify(tokens, null, 2), { mode: 0o600 });
+    try { renameSync(tmpPath, TOKENS_FILE); } catch { writeFileSync(TOKENS_FILE, JSON.stringify(tokens, null, 2), { mode: 0o600 }); }
   }
 
   private async ensureAccessToken(): Promise<string> {
@@ -418,7 +417,9 @@ export class OneDriveAdapter extends PollingAdapterBase {
 
   private saveDeltaToken(deltaLink: string): void {
     mkdirSync(CREDENTIALS_DIR, { recursive: true });
-    writeFileSync(DELTA_FILE, JSON.stringify({ deltaLink }, null, 2));
+    const tmpPath = DELTA_FILE + ".tmp";
+    writeFileSync(tmpPath, JSON.stringify({ deltaLink }, null, 2), { mode: 0o600 });
+    try { renameSync(tmpPath, DELTA_FILE); } catch { writeFileSync(DELTA_FILE, JSON.stringify({ deltaLink }, null, 2), { mode: 0o600 }); }
   }
 
   private clearDeltaToken(): void {
@@ -536,12 +537,9 @@ export async function runOneDriveOAuth(clientId: string): Promise<boolean> {
     };
 
     mkdirSync(CREDENTIALS_DIR, { recursive: true });
-    writeFileSync(TOKENS_FILE, JSON.stringify(saved, null, 2));
-
-    // Restrict permissions on Unix
-    if (process.platform !== "win32") {
-      chmodSync(TOKENS_FILE, 0o600);
-    }
+    const tmpPath = TOKENS_FILE + ".tmp";
+    writeFileSync(tmpPath, JSON.stringify(saved, null, 2), { mode: 0o600 });
+    try { renameSync(tmpPath, TOKENS_FILE); } catch { writeFileSync(TOKENS_FILE, JSON.stringify(saved, null, 2), { mode: 0o600 }); }
 
     return true;
   } catch (err) {
@@ -656,10 +654,9 @@ export async function listOneDriveFolders(): Promise<{ id: string; name: string 
         clientId: tokens.clientId,
       };
       mkdirSync(CREDENTIALS_DIR, { recursive: true });
-      writeFileSync(TOKENS_FILE, JSON.stringify(updated, null, 2));
-      if (process.platform !== "win32") {
-        try { chmodSync(TOKENS_FILE, 0o600); } catch {}
-      }
+      const tmpPath = TOKENS_FILE + ".tmp";
+      writeFileSync(tmpPath, JSON.stringify(updated, null, 2), { mode: 0o600 });
+      try { renameSync(tmpPath, TOKENS_FILE); } catch { writeFileSync(TOKENS_FILE, JSON.stringify(updated, null, 2), { mode: 0o600 }); }
     }
 
     const res = await fetch(`${GRAPH_BASE}/me/drive/root/children?$filter=folder ne null&$select=id,name&$orderby=name&$top=100`, {

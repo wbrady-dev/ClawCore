@@ -259,6 +259,8 @@ After extraction, the **TruthEngine** reconciles candidate MemoryObjects against
 5. **Correction signal auto-supersedes** — "actually..." triggers supersession with a 5-point guard (canonical key match, same scope, same kind family, minimum confidence 0.3, auditable reason trace)
 6. **Provisional objects don't supersede firm beliefs** — "I think..." doesn't override established facts
 
+Confidence is managed **inline at write time** — when a new claim is reconciled, its confidence is blended against existing claims via the rules above. Provenance links (`supports`, `contradicts`, `supersedes`) record evidence relationships for audit and conflict tracking, but backward graph traversal (propagating confidence changes through the full provenance graph) is intentionally not implemented. For personal knowledge bases, inline reconciliation at write time is sufficient and avoids the complexity of recursive graph updates.
+
 All extracted objects are unified as `MemoryObject` instances with 13 kinds (event, chunk, message, summary, claim, decision, entity, loop, attempt, procedure, invariant, delta, conflict). All knowledge is stored in the `memory_objects` table with a uniform metadata envelope (composite_id, kind, canonical_key, content, structured_json, scope_id, branch_id, status, confidence, trust_score, influence_weight, source provenance, timestamps). Cross-object relationships are stored in the `provenance_links` table with typed predicates (derived_from, supports, contradicts, supersedes, mentioned_in, relates_to, resolved_by). Together, these two tables replace 15+ legacy tables.
 
 ### Extraction Quality Filters

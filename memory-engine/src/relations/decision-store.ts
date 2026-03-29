@@ -41,7 +41,7 @@ export function upsertDecision(db: GraphDb, input: UpsertDecisionInput): UpsertD
       actor: "system",
       trust: 0.5,
     },
-    confidence: 0.5,
+    confidence: input.confidence ?? 0.7,
     freshness: 1.0,
     provisional: false,
     status: (input.status ?? "active") as MemoryStatus,

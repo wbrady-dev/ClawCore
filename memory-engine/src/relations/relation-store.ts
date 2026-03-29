@@ -217,7 +217,7 @@ export function getRelationGraph(
 ): Array<RelationRow & { subject_name: string; object_name: string }> {
   const limit = opts?.limit ?? 500;
 
-  const where = ["kind = 'relation'", "status = 'active'", "scope_id = ?"];
+  const where = ["kind = 'relation'", "status = 'active'", "branch_id = 0", "scope_id = ?"];
   const args: unknown[] = [scopeId];
 
   if (opts?.predicate) {

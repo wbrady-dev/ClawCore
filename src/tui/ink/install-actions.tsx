@@ -464,7 +464,7 @@ async function promptEvidenceSettings(): Promise<EvidenceConfig> {
 
   const deep = await promptConfirm({
     title: "Deep Extraction",
-    message: "Use an LLM to extract richer entities and relationships from text. Requires a local or cloud chat model (Ollama, LM Studio, OpenAI, etc.). Only runs when you call cc_ask — never automatic.",
+    message: "Use an LLM to extract richer entities and relationships from text. Requires a local or cloud chat model (Ollama, LM Studio, OpenAI, etc.). Runs automatically during document ingestion to enrich extracted knowledge.",
     confirmLabel: "Enable",
     cancelLabel: "Skip",
   });

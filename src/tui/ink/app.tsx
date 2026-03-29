@@ -304,7 +304,7 @@ async function runResetKnowledgeBase(): Promise<void> {
             const memPath = candidates.find((p) => existsSync(p)) ?? candidates[0];
             const memDb = new DatabaseSync(memPath);
             // Count before deleting
-            const ALLOWED_MEM_TABLES = new Set(["conversations", "messages", "summaries", "context_items", "summary_parents", "summary_messages", "message_parts", "large_files"]);
+            const ALLOWED_MEM_TABLES = new Set(["conversations", "messages", "summaries", "context_items", "summary_parents", "summary_messages", "message_parts", "large_files", "messages_fts", "summaries_fts"]);
             const safeCount = (tbl: string) => { if (!ALLOWED_MEM_TABLES.has(tbl)) return 0; try { return (memDb.prepare(`SELECT COUNT(*) as c FROM ${tbl}`).get() as any)?.c ?? 0; } catch { return 0; } };
             data.memoryStats = {
               conversations: safeCount("conversations"),

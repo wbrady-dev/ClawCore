@@ -151,6 +151,7 @@ export interface UpsertDecisionInput {
   sourceType?: string;
   sourceId?: string;
   sourceDetail?: string;
+  confidence?: number;
   actor?: string;
   runId?: string;
 }
@@ -187,6 +188,7 @@ export interface UpdateLoopInput {
   priority?: number;
   owner?: string;
   waitingOn?: string;
+  dueAt?: string;
 }
 
 // ---------------------------------------------------------------------------

@@ -54,7 +54,7 @@ export type LcmConfig = {
    * When RSMA is active, all user messages go through the semantic extractor.
    */
   relationsUserClaimExtractionEnabled: boolean;
-  /** Context compiler tier: lite (110 tokens), standard (190), premium (280). */
+  /** Context compiler tier: lite (110 tokens), standard (190), premium (380). */
   relationsContextTier: string;
   // ── Horizon 3: Attempts & Durability ───────────────────────────────────
   /** Enable attempt tracking for tool outcomes. */

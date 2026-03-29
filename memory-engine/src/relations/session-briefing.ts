@@ -51,7 +51,7 @@ export function buildSessionBriefing(
   // Build briefing
   const parts: string[] = [];
   if (newDecisions) parts.push(`${newDecisions} new decision${newDecisions > 1 ? "s" : ""}`);
-  if (supersededDecisions) parts.push(`${supersededDecisions} superseded`);
+  if (supersededDecisions) parts.push(`${supersededDecisions} decision${supersededDecisions > 1 ? "s" : ""} superseded`);
   if (newClaims) parts.push(`${newClaims} new claim${newClaims > 1 ? "s" : ""}`);
   if (supersededClaims) parts.push(`${supersededClaims} claim${supersededClaims > 1 ? "s" : ""} superseded`);
   if (flaggedClaims) parts.push(`${flaggedClaims} flagged for review`);

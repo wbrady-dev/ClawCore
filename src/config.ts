@@ -247,7 +247,7 @@ export const config = {
 
   relations: {
     get enabled() { return hotConfig.relationsEnabled; },
-    deepIngestEnabled: envBool("THREADCLAW_DEEP_INGEST_ENABLED", false),
+    deepIngestEnabled: envBool("THREADCLAW_MEMORY_RELATIONS_DEEP_EXTRACTION_ENABLED", envBool("THREADCLAW_DEEP_INGEST_ENABLED", false)),
     graphDbPath: env(
       "THREADCLAW_RELATIONS_GRAPH_DB_PATH",
       env("THREADCLAW_MEMORY_RELATIONS_GRAPH_DB_PATH",

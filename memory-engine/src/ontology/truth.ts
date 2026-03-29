@@ -452,7 +452,10 @@ function createConflictObject(
       canonicalKey: objA.canonical_key,
       kind: objA.kind,
     },
-    canonical_key: `conflict::${objA.canonical_key ?? contentA}::vs::${existing.canonicalKey ?? contentB}`,
+    canonical_key: (() => {
+      const keys = [objA.canonical_key ?? contentA, existing.canonicalKey ?? contentB].sort();
+      return `conflict::${keys[0]}::vs::${keys[1]}`;
+    })(),
     provenance: {
       source_kind: "inference",
       source_id: objA.id,

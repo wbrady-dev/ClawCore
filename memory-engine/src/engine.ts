@@ -1517,7 +1517,7 @@ export class LcmContextEngine implements ContextEngine {
         if (status === "success") {
           try {
             const { inferRunbookFromAttempts } = await import("./relations/runbook-store.js");
-            inferRunbookFromAttempts(graphDb, 1, toolName.substring(0, 100));
+            inferRunbookFromAttempts(graphDb, DEFAULT_SCOPE_ID, toolName.substring(0, 100));
           } catch { /* non-fatal */ }
         }
 
@@ -2141,6 +2141,13 @@ export class LcmContextEngine implements ContextEngine {
                           const violations = checkStrictInvariants(graphDb, action.object.scope_id ?? 1, action.object.content, action.object.structured as Record<string, unknown> | null);
                           if (violations.length > 0) {
                             action.object.status = "needs_confirmation";
+                            logEvidence(graphDb, {
+                              scopeId: action.object.scope_id ?? 1,
+                              objectType: action.object.kind,
+                              objectId: 0,
+                              eventType: 'invariant_violation',
+                              payload: { violations, content: action.object.content.slice(0, 200) },
+                            });
                           }
                         } catch {}
                       }
