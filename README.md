@@ -20,32 +20,6 @@ ThreadClaw works standalone or as a plugin for [OpenClaw](https://openclaw.ai).
 
 ---
 
-## OpenClaw vs OpenClaw + ThreadClaw
-
-Without ThreadClaw, your agent only knows what's in the current conversation. With ThreadClaw, it has persistent memory across sessions — documents, decisions, corrections, and context that builds over time.
-
-**Scenario:** You told your agent two weeks ago that your team switched from PostgreSQL to SQLite for staging. Today you ask:
-
-> *"What database does staging use?"*
-
-| OpenClaw alone | OpenClaw + ThreadClaw |
-|---|---|
-| *"I don't have that information. What database does staging use?"* | *"Staging uses SQLite. You switched from PostgreSQL on March 10."* |
-
-It asks you to repeat yourself because it doesn't remember. ThreadClaw remembered the conversation, extracted the fact, and superseded the old one automatically.
-
-**Scenario:** Over several conversations you said "we're using Valkey for caching", then later "actually no, switch to Redis", then "final answer: Redis." Today you ask:
-
-> *"What's our caching setup?"*
-
-| OpenClaw alone | OpenClaw + ThreadClaw |
-|---|---|
-| *"Could you tell me about your caching setup?"* | *"You're using Redis for caching. This was finalized after initially considering Valkey."* |
-
-ThreadClaw tracked the full correction chain — Valkey → Redis — and knows which answer is current. It also indexed your architecture docs so it can pull supporting context if needed.
-
----
-
 ## How It Works
 
 ThreadClaw has three layers that work together:
