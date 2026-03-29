@@ -12,7 +12,7 @@ import type { LcmConfig } from "./db/config.js";
  * Matches the signature of completeSimple from @mariozechner/pi-ai.
  */
 export type CompletionContentBlock = {
-  type: "text" | "tool_use" | "tool_result";
+  type: "text" | "tool_use" | "tool_result" | "thinking";
   text?: string;
   [key: string]: unknown;
 };
