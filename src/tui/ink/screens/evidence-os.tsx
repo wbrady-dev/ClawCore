@@ -94,7 +94,34 @@ interface ProvenanceRow {
 type Level = "overview" | "entity-detail" | "terms"
   | "claims" | "claim-detail"
   | "decisions" | "decision-detail"
-  | "loops" | "loop-detail";
+  | "loops" | "loop-detail"
+  | "truth-health" | "timeline";
+
+interface TruthHealthData {
+  recentlyChanged: any[];
+  lowConfidence: any[];
+  unresolvedConflicts: any[];
+}
+
+interface TimelineEvent {
+  id: number;
+  composite_id: string;
+  kind: string;
+  content: string;
+  confidence: number;
+  status: string;
+  canonical_key: string;
+  subject: string | null;
+  created_at: string;
+  updated_at: string;
+  last_observed_at: string;
+}
+
+interface SupersessionLink {
+  subject_id: string;
+  object_id: string;
+  created_at: string;
+}
 
 const ENTITIES_PER_PAGE = 20;
 const MENTIONS_PER_PAGE = 15;
@@ -154,6 +181,17 @@ export function EvidenceOsScreen({ onBack }: { onBack: () => void }) {
   const [selectedLoop, setSelectedLoop] = useState<LoopRow | null>(null);
   const [loopProvenance, setLoopProvenance] = useState<ProvenanceRow[]>([]);
   const [loopLoading, setLoopLoading] = useState(false);
+
+  // Truth Health state
+  const [truthHealth, setTruthHealth] = useState<TruthHealthData | null>(store.get<TruthHealthData>("truthHealth") ?? null);
+  const [truthLoading, setTruthLoading] = useState(false);
+
+  // Timeline state
+  const [timelineEvents, setTimelineEvents] = useState<TimelineEvent[]>([]);
+  const [timelineSupersessions, setTimelineSupersessions] = useState<SupersessionLink[]>([]);
+  const [timelineSubject, setTimelineSubject] = useState("");
+  const [timelineInput, setTimelineInput] = useState("");
+  const [timelineLoading, setTimelineLoading] = useState(false);
 
   // Escape key cancels "Add Term" input
   useInput((_input, key) => {
@@ -228,6 +266,44 @@ export function EvidenceOsScreen({ onBack }: { onBack: () => void }) {
       setError(`Failed to fetch entity details: ${err instanceof Error ? err.message : String(err)}`);
     } finally {
       setEntityLoading(false);
+    }
+  };
+
+  /* ── Truth Health fetch ── */
+
+  const fetchTruthHealth = async () => {
+    setTruthLoading(true);
+    try {
+      const res = await fetch(`${getApiBaseUrl()}/graph/truth-health?limit=20`, { signal: AbortSignal.timeout(5000) });
+      if (res.ok) {
+        const data = await res.json() as TruthHealthData;
+        setTruthHealth(data);
+        store.set("truthHealth", data);
+      }
+    } catch (err) {
+      setError(`Truth Health: ${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      setTruthLoading(false);
+    }
+  };
+
+  /* ── Timeline fetch ── */
+
+  const fetchTimeline = async (subject: string) => {
+    setTimelineLoading(true);
+    try {
+      const params = new URLSearchParams({ limit: "50" });
+      if (subject) params.set("subject", subject);
+      const res = await fetch(`${getApiBaseUrl()}/graph/timeline?${params}`, { signal: AbortSignal.timeout(5000) });
+      if (res.ok) {
+        const data = await res.json() as { events: TimelineEvent[]; supersessions: SupersessionLink[] };
+        setTimelineEvents(data.events ?? []);
+        setTimelineSupersessions(data.supersessions ?? []);
+      }
+    } catch (err) {
+      setError(`Timeline: ${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      setTimelineLoading(false);
     }
   };
 
@@ -442,6 +518,8 @@ export function EvidenceOsScreen({ onBack }: { onBack: () => void }) {
       items.push({ label: "Next page \u2192", value: "__next_entity_page__" });
     }
 
+    items.push({ label: "Truth Health", value: "truth-health", description: "Changed facts, low confidence, conflicts" });
+    items.push({ label: "Timeline", value: "timeline", description: "Track how knowledge evolves" });
     items.push({ label: "Claims", value: "claims", description: `${graphStats?.claims ?? 0}` });
     items.push({ label: "Decisions", value: "decisions", description: `${graphStats?.decisions ?? 0}` });
     items.push({ label: "Loops", value: "loops", description: `${graphStats?.loops ?? 0}` });
@@ -478,6 +556,8 @@ export function EvidenceOsScreen({ onBack }: { onBack: () => void }) {
         <Separator />
         <Menu items={items} onSelect={(value) => {
           if (value === "__back__") return onBack();
+          if (value === "truth-health") { setError(null); setStatus(""); fetchTruthHealth(); setLevel("truth-health"); return; }
+          if (value === "timeline") { setError(null); setStatus(""); setLevel("timeline"); return; }
           if (value === "claims") { setError(null); setStatus(""); setClaimPage(0); setClaimOffset(0); fetchClaims(); setLevel("claims"); return; }
           if (value === "decisions") { setError(null); setStatus(""); setDecisionPage(0); setDecisionOffset(0); fetchDecisions(); setLevel("decisions"); return; }
           if (value === "loops") { setError(null); setStatus(""); setLoopPage(0); setLoopOffset(0); fetchLoops(); setLevel("loops"); return; }
@@ -915,6 +995,104 @@ export function EvidenceOsScreen({ onBack }: { onBack: () => void }) {
           if (value.startsWith("remove:")) {
             setConfirmRemove(value.slice(7));
           }
+        }} />
+      </Box>
+    );
+  }
+
+  // ── Truth Health ──
+  if (level === "truth-health") {
+    const kindIcon = (k: string) => k === "claim" ? "📌" : k === "decision" ? "⚖️" : k === "loop" ? "🔄" : k === "conflict" ? "⚡" : "●";
+    const confColor = (c: number) => c < 0.3 ? t.err : c < 0.5 ? t.warn : t.ok;
+
+    return (
+      <Box flexDirection="column">
+        <Section title="Truth Health" />
+        {truthLoading ? (
+          <Spinner label="Loading..." />
+        ) : truthHealth ? (
+          <>
+            <Text>{" " + t.label("Recently Changed Facts") + t.dim(` (${truthHealth.recentlyChanged.length})`)}</Text>
+            {truthHealth.recentlyChanged.length === 0 && <Text>{"  " + t.dim("No recently changed facts.")}</Text>}
+            {truthHealth.recentlyChanged.slice(0, 10).map((item: any) => (
+              <Text key={item.id}>{"  " + kindIcon(item.kind) + " " + confColor(item.confidence ?? 0)(`[${((item.confidence ?? 0) * 100).toFixed(0)}%]`) + " " + (item.subject ?? item.content ?? "").slice(0, 60)}</Text>
+            ))}
+            <Text>{""}</Text>
+            <Text>{" " + t.label("Low Confidence Claims") + t.dim(` (${truthHealth.lowConfidence.length})`)}</Text>
+            {truthHealth.lowConfidence.length === 0 && <Text>{"  " + t.dim("No low-confidence claims.")}</Text>}
+            {truthHealth.lowConfidence.slice(0, 10).map((item: any) => (
+              <Text key={item.id}>{"  " + t.warn(`[${((item.confidence ?? 0) * 100).toFixed(0)}%]`) + " " + [item.subject, item.predicate, item.object].filter(Boolean).join(" → ").slice(0, 70)}</Text>
+            ))}
+            <Text>{""}</Text>
+            <Text>{" " + t.label("Active Conflicts") + t.dim(` (${truthHealth.unresolvedConflicts.length})`)}</Text>
+            {truthHealth.unresolvedConflicts.length === 0 && <Text>{"  " + t.dim("No active conflicts.")}</Text>}
+            {truthHealth.unresolvedConflicts.slice(0, 10).map((item: any) => (
+              <Text key={item.id}>{"  " + "⚡ " + (item.content ?? "").slice(0, 70)}</Text>
+            ))}
+          </>
+        ) : (
+          <Text>{"  " + t.dim("No data available.")}</Text>
+        )}
+        <Separator />
+        <Menu items={[
+          { label: "Refresh", value: "refresh" },
+          { label: "Back", value: "__back__", color: t.dim },
+        ]} onSelect={(value) => {
+          if (value === "__back__") { setLevel("overview"); return; }
+          if (value === "refresh") { fetchTruthHealth(); return; }
+        }} />
+      </Box>
+    );
+  }
+
+  // ── Timeline ──
+  if (level === "timeline") {
+    const kindIcon = (k: string) => k === "claim" ? "📌" : k === "decision" ? "⚖️" : k === "loop" ? "🔄" : k === "entity" ? "👤" : "●";
+    const confColor = (c: number) => c < 0.3 ? t.err : c < 0.5 ? t.warn : t.ok;
+    const relativeTime = (dateStr: string) => {
+      const ms = Date.now() - new Date(dateStr).getTime();
+      const mins = Math.floor(ms / 60000);
+      if (mins < 60) return `${mins}m ago`;
+      const hours = Math.floor(mins / 60);
+      if (hours < 24) return `${hours}h ago`;
+      const days = Math.floor(hours / 24);
+      return `${days}d ago`;
+    };
+
+    const supersededIds = new Set(timelineSupersessions.map((s) => s.object_id));
+
+    return (
+      <Box flexDirection="column">
+        <Section title="Memory Timeline" />
+        <Box>
+          <Text>{"  " + t.label("Subject: ")}</Text>
+          <TextInput value={timelineInput} onChange={setTimelineInput} onSubmit={(val) => {
+            setTimelineSubject(val);
+            fetchTimeline(val);
+          }} placeholder="Type a subject and press Enter..." />
+        </Box>
+        {timelineSubject && <Text>{"  " + t.dim(`Showing events for "${timelineSubject}"`)}</Text>}
+        {timelineLoading ? (
+          <Spinner label="Searching..." />
+        ) : timelineEvents.length > 0 ? (
+          <>
+            <Text>{""}</Text>
+            {timelineEvents.map((evt) => {
+              const superseded = supersededIds.has(evt.composite_id);
+              const line = `${kindIcon(evt.kind)} ${confColor(evt.confidence)(`[${(evt.confidence * 100).toFixed(0)}%]`)} ${superseded ? t.dim("(superseded) ") : ""}${(evt.content ?? "").slice(0, 55)} ${t.dim(relativeTime(evt.updated_at))}`;
+              return <Text key={evt.id}>{"  " + line}</Text>;
+            })}
+          </>
+        ) : timelineSubject ? (
+          <Text>{"  " + t.dim("No events found for this subject.")}</Text>
+        ) : null}
+        <Separator />
+        <Menu items={[
+          ...(timelineSubject ? [{ label: "Refresh", value: "refresh" }] : []),
+          { label: "Back", value: "__back__", color: t.dim },
+        ]} onSelect={(value) => {
+          if (value === "__back__") { setLevel("overview"); return; }
+          if (value === "refresh") { fetchTimeline(timelineSubject); return; }
         }} />
       </Box>
     );

@@ -1375,3 +1375,67 @@ export function createCcConflictsTool(input: {
     },
   };
 }
+
+// ═══════════════════════════════════════════════════════════════════
+// cc_timeline — subject-centric memory evolution
+// ═══════════════════════════════════════════════════════════════════
+
+const CcTimelineSchema = Type.Object({
+  subject: Type.String({ description: "Entity or subject name to trace" }),
+  from: Type.Optional(Type.String({ description: "Start date (YYYY-MM-DD)" })),
+  to: Type.Optional(Type.String({ description: "End date (YYYY-MM-DD)" })),
+  kind: Type.Optional(Type.String({ description: "Filter by kind (claim, decision, loop, entity)" })),
+});
+
+export function createCcTimelineTool(): AnyAgentTool {
+  const port = process.env.THREADCLAW_PORT ?? "18800";
+
+  return {
+    name: "cc_timeline",
+    description: "Show how knowledge about a subject evolved over time — supersessions, corrections, confidence changes.",
+    inputSchema: CcTimelineSchema,
+    async execute(input: { subject: string; from?: string; to?: string; kind?: string }) {
+      try {
+        const params = new URLSearchParams({ subject: input.subject, limit: "30" });
+        if (input.from) params.set("from", input.from);
+        if (input.to) params.set("to", input.to);
+        if (input.kind) params.set("kind", input.kind);
+
+        const res = await fetch(`http://127.0.0.1:${port}/graph/timeline?${params}`, {
+          signal: AbortSignal.timeout(10000),
+        });
+
+        if (!res.ok) {
+          return jsonResult({ error: `Timeline API returned ${res.status}` });
+        }
+
+        const data = await res.json() as {
+          events: Array<{ kind: string; content: string; confidence: number; status: string; created_at: string; updated_at: string; composite_id: string }>;
+          supersessions: Array<{ subject_id: string; object_id: string; created_at: string }>;
+        };
+
+        if (!data.events?.length) {
+          return { content: [{ type: "text", text: `No timeline events found for "${input.subject}".` }] };
+        }
+
+        const supersededIds = new Set(data.supersessions?.map((s) => s.object_id) ?? []);
+
+        const lines: string[] = [`Timeline for "${input.subject}" (${data.events.length} events):\n`];
+        for (const evt of data.events) {
+          const superseded = supersededIds.has(evt.composite_id) ? " [SUPERSEDED]" : "";
+          const conf = ((evt.confidence ?? 0) * 100).toFixed(0);
+          lines.push(`[${evt.updated_at?.slice(0, 10)}] ${evt.kind} (${conf}% confidence)${superseded}`);
+          lines.push(`  ${(evt.content ?? "").slice(0, 120)}`);
+          lines.push("");
+        }
+
+        return {
+          content: [{ type: "text", text: lines.join("\n") }],
+          details: { count: data.events.length, supersessions: data.supersessions?.length ?? 0 },
+        };
+      } catch (err) {
+        return jsonResult({ error: err instanceof Error ? err.message : String(err) });
+      }
+    },
+  };
+}

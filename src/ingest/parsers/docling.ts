@@ -24,6 +24,14 @@ export async function parseWithDocling(
     return null;
   }
 
+  // Ensure Python server is running (lazy-spawn if needed)
+  try {
+    const { ensurePythonRunning } = await import("../../utils/python-manager.js");
+    await ensurePythonRunning();
+  } catch {
+    logger.debug("Python manager not available — assuming server is already running");
+  }
+
   // NOTE: Uses config.reranker.url because the Python model server hosts both
   // the reranker and Docling endpoints on the same HTTP server.
   const url = `${config.reranker.url}/parse`;

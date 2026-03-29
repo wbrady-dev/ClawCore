@@ -500,6 +500,17 @@ export function findModelsScript(root: string): string {
  * On Unix: detached spawn (systemd/launchd handled separately via auto-start).
  */
 export function startModelServer(): { success: boolean; error?: string } {
+  // Skip if external (non-localhost) endpoints are configured
+  if (process.env.PYTHON_SERVER_REQUIRED !== "true") {
+    const embUrl = process.env.EMBEDDING_URL ?? "";
+    const rrUrl = process.env.RERANKER_URL ?? "";
+    const isExternal = (url: string) => {
+      if (!url) return false;
+      try { const h = new URL(url).hostname; return h !== "127.0.0.1" && h !== "localhost" && h !== "::1"; } catch { return false; }
+    };
+    if (isExternal(embUrl) && isExternal(rrUrl)) return { success: true };
+  }
+
   if (isPortOpen(getModelPort())) return { success: true }; // already running
 
   const root = getRootDir();

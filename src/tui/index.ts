@@ -30,16 +30,11 @@ async function launchTui(): Promise<void> {
   }
 
   // Safety net: re-check config/env even after rich install path, in case it
-  // silently failed or the user cancelled. This duplicates the hasConfig/hasEnv
-  // check above intentionally — the rich install may have created these files.
+  // silently failed or the user cancelled.
   if (!readConfig() || !existsSync(resolve(getRootDir(), ".env"))) {
-    const { runInstall } = await import("./screens/install.js");
-    await runInstall();
-    if (!readConfig() || !existsSync(resolve(getRootDir(), ".env"))) {
-      console.error("Installation incomplete. Missing .env or config.json.");
-      console.error("Run: threadclaw install");
-      process.exit(1);
-    }
+    console.error(t.err("Installation incomplete. Missing .env or config.json."));
+    console.error(t.dim("Run: threadclaw install --non-interactive"));
+    process.exit(1);
   }
 
   const { launchInkTui } = await import("./ink/app.js");

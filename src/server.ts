@@ -1,11 +1,11 @@
 import Fastify from "fastify";
 import { resolve } from "path";
-import { existsSync, chmodSync, mkdirSync } from "fs";
+import { existsSync, chmodSync, mkdirSync, renameSync } from "fs";
 import { homedir } from "os";
 import { createHash, timingSafeEqual } from "crypto";
 import { config, warnIfNoApiKey } from "./config.js";
 import { logger } from "./utils/logger.js";
-import { getDb, closeDb, runMigrations, ensureCollection, closeGraphDb } from "./storage/index.js";
+import { getDb, closeDb, runMigrations, ensureCollection } from "./storage/index.js";
 import { registerRoutes } from "./api/routes.js";
 import { registerRateLimit } from "./api/ratelimit.js";
 import { startSources, stopSources } from "./sources/index.js";
@@ -44,7 +44,6 @@ function hardenPermissions(): void {
     { path: resolve(config.dataDir, "threadclaw.db"), mode: 0o600 },
     { path: resolve(config.dataDir, "threadclaw.db-wal"), mode: 0o600 },
     { path: resolve(config.dataDir, "threadclaw.db-shm"), mode: 0o600 },
-    { path: config.relations.graphDbPath, mode: 0o600 },
   ];
 
   for (const t of targets) {
@@ -63,6 +62,67 @@ function hardenPermissions(): void {
   logger.info("File permissions hardened");
 }
 
+/**
+ * One-time migration: copy data from the old separate graph.db into the main
+ * threadclaw.db. Renames the old file to .migrated after success.
+ */
+function migrateOldGraphDb(db: ReturnType<typeof getDb>): void {
+  const oldPaths = [
+    resolve(config.dataDir, "threadclaw-graph.db"),
+    resolve(config.dataDir, "..", "graph.db"),
+    resolve(homedir(), ".threadclaw", "data", "graph.db"),
+  ];
+  const oldPath = oldPaths.find((p) => existsSync(p));
+  if (!oldPath) return;
+
+  // Check if we already have graph data (migration already done)
+  try {
+    const row = db.prepare(
+      "SELECT COUNT(*) AS cnt FROM _evidence_migrations",
+    ).get() as { cnt: number } | undefined;
+    if (row && row.cnt > 0) {
+      // Already migrated — rename old file
+      try { renameSync(oldPath, oldPath + ".migrated"); } catch {}
+      return;
+    }
+  } catch {
+    // _evidence_migrations doesn't exist yet — migration will create it
+  }
+
+  logger.info({ oldPath }, "Migrating data from old graph.db into main database...");
+  try {
+    db.exec(`ATTACH DATABASE '${oldPath.replace(/'/g, "''")}' AS old_graph`);
+
+    // Get list of tables in old_graph
+    const tables = (db.prepare(
+      "SELECT name FROM old_graph.sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'",
+    ).all() as { name: string }[]).map((r) => r.name);
+
+    for (const table of tables) {
+      // Create table in main DB if it doesn't exist (copy DDL)
+      const ddlRow = db.prepare(
+        "SELECT sql FROM old_graph.sqlite_master WHERE type = 'table' AND name = ?",
+      ).get(table) as { sql: string } | undefined;
+      if (ddlRow?.sql) {
+        try { db.exec(ddlRow.sql); } catch { /* table already exists */ }
+      }
+      // Copy data
+      try {
+        db.exec(`INSERT OR IGNORE INTO "${table}" SELECT * FROM old_graph."${table}"`);
+      } catch (err) {
+        logger.warn({ table, err: err instanceof Error ? err.message : String(err) }, "Skipped table during graph migration");
+      }
+    }
+
+    db.exec("DETACH DATABASE old_graph");
+    renameSync(oldPath, oldPath + ".migrated");
+    logger.info("Graph data migration complete");
+  } catch (err) {
+    logger.error({ err: err instanceof Error ? err.message : String(err) }, "Graph data migration failed — old graph.db preserved");
+    try { db.exec("DETACH DATABASE old_graph"); } catch {}
+  }
+}
+
 export async function startServer() {
   // Check OpenClaw integration (read-only — never writes)
   await checkIntegrationOnStartup();
@@ -74,6 +134,20 @@ export async function startServer() {
   const dbPath = resolve(config.dataDir, "threadclaw.db");
   const db = getDb(dbPath);
   runMigrations(db);
+
+  // Run graph/evidence migrations against the same DB (consolidated from graph.db)
+  try {
+    const schemaPath = resolve(config.rootDir, "memory-engine", "src", "relations", "schema.js");
+    const { runGraphMigrations } = await import(schemaPath);
+    runGraphMigrations(db);
+    logger.info("Graph migrations applied to main database");
+  } catch (err) {
+    logger.warn({ err: err instanceof Error ? err.message : String(err) }, "Graph migrations skipped — memory-engine not available");
+  }
+
+  // Migrate data from old separate graph.db if it exists
+  migrateOldGraphDb(db);
+
   ensureCollection(db, config.defaults.collection);
 
   // Clean up orphaned chunks from interrupted ingests (chunks without embeddings).
@@ -139,9 +213,8 @@ export async function startServer() {
     flushTokens();
     // Don't await stopSources — watcher ingests will fail gracefully when DB closes
     stopSources().catch(() => {});
-    // Skip server.close() — it waits for connections to drain. Just close DBs and exit.
+    // Skip server.close() — it waits for connections to drain. Just close DB and exit.
     closeDb();
-    closeGraphDb();
     process.exit(0);
   };
 

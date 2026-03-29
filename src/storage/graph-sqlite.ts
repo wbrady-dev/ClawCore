@@ -1,58 +1,24 @@
 /**
- * Graph database connection for the main ThreadClaw process (better-sqlite3).
+ * Graph database connection — delegates to the main ThreadClaw DB singleton.
  *
- * Opens `threadclaw-graph.db` with WAL mode and the same pragmas
- * as the memory-engine's node:sqlite opener.
+ * After database consolidation, graph tables (memory_objects, provenance_links,
+ * evidence_log, etc.) live in the same threadclaw.db alongside RAG tables.
+ * This module preserves the getGraphDb/closeGraphDb API so callers don't change.
  */
 
-import Database from "better-sqlite3";
-import { mkdirSync } from "fs";
-import { dirname, resolve } from "path";
-import { logger } from "../utils/logger.js";
+import type Database from "better-sqlite3";
+import { getDb } from "./sqlite.js";
 
-let graphDb: Database.Database | null = null;
-let storedGraphPath: string | null = null;
-
-export function getGraphDb(dbPath: string): Database.Database {
-  const normalized = resolve(dbPath);
-  if (graphDb) {
-    if (storedGraphPath && storedGraphPath !== normalized) {
-      throw new Error(
-        `getGraphDb called with path "${normalized}" but already connected to "${storedGraphPath}". ` +
-        `ThreadClaw uses a singleton DB connection — cannot open two databases.`,
-      );
-    }
-    return graphDb;
-  }
-  storedGraphPath = normalized;
-
-  mkdirSync(dirname(normalized), { recursive: true });
-
-  graphDb = new Database(normalized);
-  graphDb.pragma("journal_mode = WAL");
-  graphDb.pragma("foreign_keys = ON");
-  graphDb.pragma("busy_timeout = 5000");
-  graphDb.pragma("synchronous = NORMAL");
-  graphDb.pragma("cache_size = -8000"); // 8MB
-  graphDb.pragma("temp_store = MEMORY");
-  graphDb.pragma("wal_autocheckpoint = 1000");
-
-  return graphDb;
+/**
+ * Returns the main ThreadClaw database (same instance as getDb()).
+ * The dbPath argument is accepted for backward compatibility but ignored —
+ * the singleton is always the main DB initialized by server.ts.
+ */
+export function getGraphDb(_dbPath?: string): Database.Database {
+  return getDb();
 }
 
+/** No-op — lifecycle is managed by closeDb() in sqlite.ts. */
 export function closeGraphDb(): void {
-  if (graphDb) {
-    const ref = graphDb;
-    graphDb = null;
-    try {
-      ref.pragma("wal_checkpoint(PASSIVE)");
-    } catch {
-      // Non-critical
-    }
-    try {
-      ref.close();
-    } catch {
-      // Ignore close errors
-    }
-  }
+  // Intentionally empty — DB closed via closeDb()
 }

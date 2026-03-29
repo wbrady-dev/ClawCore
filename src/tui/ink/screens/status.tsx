@@ -145,6 +145,9 @@ export function StatusScreen({ onBack }: { onBack: () => void }) {
   const dbExists = existsSync(dbPath);
   const dbSize = dbExists ? (statSync(dbPath).size / 1024 / 1024).toFixed(2) : "0";
 
+  // Embedding URL (for external detection)
+  const embUrl = envContent.match(/EMBEDDING_URL=(.+)/)?.[1]?.trim() ?? "";
+
   // Network
   const tPort = envContent.match(/THREADCLAW_PORT=(\d+)/)?.[1] ?? String(getApiPort());
   const mPort = envContent.match(/RERANKER_URL=.*:(\d+)/)?.[1] ?? String(getModelPort());
@@ -154,7 +157,7 @@ export function StatusScreen({ onBack }: { onBack: () => void }) {
   return (
     <Box flexDirection="column">
       <Section title="Services" />
-      <StatusDot ok={svc.models.running} label="Models" detail={`port ${getModelPort()}`} />
+      <StatusDot ok={svc.models.running} label="Models" detail={svc.models.running ? `port ${getModelPort()}` : embUrl && !embUrl.includes("127.0.0.1") && !embUrl.includes("localhost") ? "External" : "off"} />
       <StatusDot ok={svc.threadclaw.running} label="ThreadClaw RAG API" detail={`port ${getApiPort()}`} />
       <StatusDot ok={autoStart} label="Auto-Startup" />
       <KV label="Game Mode" value={gameModeOn ? t.warn("on (VRAM freed)") : t.dim("off")} />

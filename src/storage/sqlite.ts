@@ -7,17 +7,23 @@ import { logger } from "../utils/logger.js";
 let db: Database.Database | null = null;
 let storedPath: string | null = null;
 
-export function getDb(dbPath: string): Database.Database {
-  const normalized = resolve(dbPath);
+export function getDb(dbPath?: string): Database.Database {
   if (db) {
-    if (storedPath && storedPath !== normalized) {
-      throw new Error(
-        `getDb called with path "${normalized}" but already connected to "${storedPath}". ` +
-        `ThreadClaw uses a singleton DB connection — cannot open two databases.`,
-      );
+    if (dbPath) {
+      const normalized = resolve(dbPath);
+      if (storedPath && storedPath !== normalized) {
+        throw new Error(
+          `getDb called with path "${normalized}" but already connected to "${storedPath}". ` +
+          `ThreadClaw uses a singleton DB connection — cannot open two databases.`,
+        );
+      }
     }
     return db;
   }
+  if (!dbPath) {
+    throw new Error("getDb: no path provided and database not yet initialized");
+  }
+  const normalized = resolve(dbPath);
   storedPath = normalized;
 
   mkdirSync(dirname(normalized), { recursive: true });

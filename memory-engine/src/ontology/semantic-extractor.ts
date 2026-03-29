@@ -33,15 +33,9 @@ import type { WriterResult } from "./writer.js";
 import { understandMessage as regexUnderstand } from "./writer.js";
 import { detectSignals } from "./correction.js";
 
-const LLM_TIMEOUT_MS = 60_000;
+import { withTimeout } from "../utils/timeout.js";
 
-function withTimeout<T>(promise: Promise<T>, ms: number, msg: string): Promise<T> {
-  let timer: ReturnType<typeof setTimeout>;
-  const timeout = new Promise<never>((_, reject) => {
-    timer = setTimeout(() => reject(new Error(msg)), ms);
-  });
-  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer!));
-}
+const LLM_TIMEOUT_MS = 60_000;
 
 // ── Types ───────────────────────────────────────────────────────────────────
 

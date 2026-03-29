@@ -375,6 +375,115 @@ export function registerGraphObjectRoutes(server: FastifyInstance) {
       return reply.status(503).send({ error: "Graph DB unavailable" });
     }
   });
+  // ─────────────────────────────────────────────────────────────────
+  // Truth Health — confidence dashboard data
+  // ─────────────────────────────────────────────────────────────────
+
+  /** GET /graph/truth-health — recently changed, low-confidence, and conflict data. */
+  server.get("/graph/truth-health", async (req, reply) => {
+    if (!isLocalRequest(req)) return reply.status(403).send({ error: "Forbidden" });
+    const graphDbPath = config.relations?.graphDbPath;
+    if (!graphDbPath) return reply.status(404).send({ error: "Relations not configured" });
+
+    const limit = clampInt((req.query as any).limit, 20, 1, 100);
+
+    try {
+      const db = getGraphDb(graphDbPath);
+
+      const recentlyChanged = db.prepare(`
+        SELECT id, composite_id, kind,
+               json_extract(structured_json, '$.subject') as subject,
+               content, confidence, status, created_at, updated_at
+        FROM memory_objects
+        WHERE updated_at != created_at AND status = 'active'
+        ORDER BY updated_at DESC LIMIT ?
+      `).all(limit);
+
+      const lowConfidence = db.prepare(`
+        SELECT id, composite_id,
+               json_extract(structured_json, '$.subject') as subject,
+               json_extract(structured_json, '$.predicate') as predicate,
+               json_extract(structured_json, '$.object') as object,
+               content, confidence, status, created_at
+        FROM memory_objects
+        WHERE confidence < 0.5 AND status = 'active' AND kind = 'claim'
+        ORDER BY confidence ASC LIMIT ?
+      `).all(limit);
+
+      const unresolvedConflicts = db.prepare(`
+        SELECT id, composite_id, content, confidence, status, created_at
+        FROM memory_objects
+        WHERE kind = 'conflict' AND status = 'active'
+        ORDER BY created_at DESC LIMIT ?
+      `).all(limit);
+
+      return { recentlyChanged, lowConfidence, unresolvedConflicts };
+    } catch (err) {
+      logger.error({ error: err instanceof Error ? err.message : String(err) }, "Failed to query truth health");
+      return reply.status(503).send({ error: "Graph DB unavailable" });
+    }
+  });
+
+  // ─────────────────────────────────────────────────────────────────
+  // Timeline — subject-centric memory evolution
+  // ─────────────────────────────────────────────────────────────────
+
+  /** GET /graph/timeline — memory evolution for a subject. */
+  server.get("/graph/timeline", async (req, reply) => {
+    if (!isLocalRequest(req)) return reply.status(403).send({ error: "Forbidden" });
+    const graphDbPath = config.relations?.graphDbPath;
+    if (!graphDbPath) return reply.status(404).send({ error: "Relations not configured" });
+
+    const { subject, from, to, kind, limit: limitStr } = req.query as {
+      subject?: string; from?: string; to?: string; kind?: string; limit?: string;
+    };
+    const limit = clampInt(limitStr, 50, 1, 200);
+
+    try {
+      const db = getGraphDb(graphDbPath);
+
+      const conditions = ["1=1"];
+      const params: unknown[] = [];
+
+      if (subject) {
+        const subjectNorm = subject.toLowerCase().trim();
+        // Primary: exact match on structured subject field (fast)
+        conditions.push("(LOWER(json_extract(structured_json, '$.subject')) = ? OR content LIKE ?)");
+        params.push(subjectNorm, `%${subjectNorm}%`);
+      }
+      if (from) { conditions.push("created_at >= ?"); params.push(from); }
+      if (to) { conditions.push("created_at <= ?"); params.push(to); }
+      if (kind) { conditions.push("kind = ?"); params.push(kind); }
+
+      params.push(limit);
+      const events = db.prepare(`
+        SELECT id, composite_id, kind, content, confidence, status,
+               canonical_key, created_at, updated_at, last_observed_at,
+               json_extract(structured_json, '$.subject') as subject
+        FROM memory_objects
+        WHERE ${conditions.join(" AND ")}
+        ORDER BY updated_at DESC, created_at DESC LIMIT ?
+      `).all(...params);
+
+      // Fetch supersession chains for the returned events
+      const compositeIds = (events as any[]).map((e) => e.composite_id).filter(Boolean);
+      let supersessions: unknown[] = [];
+      if (compositeIds.length > 0) {
+        const placeholders = compositeIds.map(() => "?").join(",");
+        supersessions = db.prepare(`
+          SELECT subject_id, object_id, created_at
+          FROM provenance_links
+          WHERE predicate = 'supersedes'
+            AND (subject_id IN (${placeholders}) OR object_id IN (${placeholders}))
+        `).all(...compositeIds, ...compositeIds);
+      }
+
+      return { events, supersessions, subjectNormalized: subject?.toLowerCase().trim() ?? null };
+    } catch (err) {
+      logger.error({ error: err instanceof Error ? err.message : String(err) }, "Failed to query timeline");
+      return reply.status(503).send({ error: "Graph DB unavailable" });
+    }
+  });
 }
 
 /* ── Helpers ──────────────────────────────────────────────────────── */

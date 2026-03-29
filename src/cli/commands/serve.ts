@@ -80,42 +80,48 @@ export const serveCommand = new Command("serve")
     // TODO: Could be replaced with a port-available poll loop for faster startup.
     await new Promise((r) => setTimeout(r, 2000));
 
-    console.log(`${prefix.sys} Starting model server...`);
-    console.log(`${prefix.sys} Script: ${serverScript}`);
-    console.log("");
+    // Check if Python server is needed (external endpoints skip it)
+    const { isPythonNeeded } = await import("../../utils/python-manager.js");
+    let modelsProcess: ReturnType<typeof spawn> | null = null;
 
-    // Start Models
-    const modelsProcess = spawn(pythonCmd, [serverScript], {
-      cwd: dirname(serverScript),
-      stdio: ["ignore", "pipe", "pipe"],
-    });
+    if (isPythonNeeded()) {
+      console.log(`${prefix.sys} Starting model server...`);
+      console.log(`${prefix.sys} Script: ${serverScript}`);
+      console.log("");
 
-    modelsProcess.stdout?.on("data", (data: Buffer) => {
-      for (const line of data.toString().split("\n").filter((l: string) => l.trim())) {
-        console.log(`${prefix.models} ${line}`);
+      modelsProcess = spawn(pythonCmd, [serverScript], {
+        cwd: dirname(serverScript),
+        stdio: ["ignore", "pipe", "pipe"],
+      });
+
+      modelsProcess.stdout?.on("data", (data: Buffer) => {
+        for (const line of data.toString().split("\n").filter((l: string) => l.trim())) {
+          console.log(`${prefix.models} ${line}`);
+        }
+      });
+
+      modelsProcess.stderr?.on("data", (data: Buffer) => {
+        for (const line of data.toString().split("\n").filter((l: string) => l.trim())) {
+          console.log(`${prefix.models} ${t.dim(line)}`);
+        }
+      });
+
+      console.log(`${prefix.sys} Waiting for models to load...`);
+      try {
+        await waitForPort(getModelPort(), 120000);
+      } catch {
+        console.error(`${prefix.sys} ${t.err("✗")} Model server failed to start within 120s`);
+        console.error(`${prefix.sys}   Check logs above for errors. Common causes:`);
+        console.error(`${prefix.sys}   - Model not downloaded yet (first run takes longer)`);
+        console.error(`${prefix.sys}   - Insufficient VRAM/RAM for the selected model`);
+        console.error(`${prefix.sys}   - Another process is using port ${getModelPort()}`);
+        modelsProcess.kill();
+        process.exit(1);
       }
-    });
-
-    modelsProcess.stderr?.on("data", (data: Buffer) => {
-      for (const line of data.toString().split("\n").filter((l: string) => l.trim())) {
-        console.log(`${prefix.models} ${t.dim(line)}`);
-      }
-    });
-
-    // Wait for models to be ready
-    console.log(`${prefix.sys} Waiting for models to load...`);
-    try {
-      await waitForPort(getModelPort(), 120000);
-    } catch {
-      console.error(`${prefix.sys} ${t.err("✗")} Model server failed to start within 120s`);
-      console.error(`${prefix.sys}   Check logs above for errors. Common causes:`);
-      console.error(`${prefix.sys}   - Model not downloaded yet (first run takes longer)`);
-      console.error(`${prefix.sys}   - Insufficient VRAM/RAM for the selected model`);
-      console.error(`${prefix.sys}   - Another process is using port ${getModelPort()}`);
-      modelsProcess.kill();
-      process.exit(1);
+      console.log(`${prefix.sys} ${t.ok("●")} Model server ready on port ${getModelPort()}`);
+    } else {
+      console.log(`${prefix.sys} ${t.ok("●")} Using external embedding/reranking endpoints — skipping Python server`);
     }
-    console.log(`${prefix.sys} ${t.ok("●")} Model server ready on port ${getModelPort()}`);
     console.log("");
 
     // Start ThreadClaw
@@ -150,7 +156,7 @@ export const serveCommand = new Command("serve")
       console.error(`${prefix.sys} ${t.err("✗")} ThreadClaw API failed to start within 30s`);
       console.error(`${prefix.sys}   Check logs above for errors.`);
       talProcess.kill();
-      modelsProcess.kill();
+      modelsProcess?.kill();
       process.exit(1);
     }
     console.log(`${prefix.sys} ${t.ok("●")} ThreadClaw RAG API ready on port ${getApiPort()}`);
@@ -191,12 +197,12 @@ export const serveCommand = new Command("serve")
       ]).finally(() => {
         // After HTTP attempt, also send kill signals as fallback
         try { talProcess.kill("SIGTERM"); } catch {}
-        try { modelsProcess.kill("SIGTERM"); } catch {}
+        try { modelsProcess?.kill("SIGTERM"); } catch {}
 
         // Force-kill after timeout if children haven't exited
         setTimeout(() => {
           try { talProcess.kill("SIGKILL"); } catch {}
-          try { modelsProcess.kill("SIGKILL"); } catch {}
+          try { modelsProcess?.kill("SIGKILL"); } catch {}
           // If children still haven't exited after force-kill, exit anyway
           setTimeout(() => process.exit(0), 1000);
         }, 5000);

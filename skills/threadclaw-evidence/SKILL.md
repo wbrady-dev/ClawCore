@@ -86,6 +86,7 @@ cc_state { "subject": "staging" }
 | `cc_attempts { "tool_name": "..." }` | Tool outcome history with success rates |
 | `cc_procedures { "type": "failure" }` | Learned success and failure patterns (type: "success", "failure", or "all") |
 | `cc_branch { "action": "create" }` | Branch management: create, list, view, discard, or promote speculative branches |
+| `cc_timeline { "subject": "..." }` | How knowledge about a subject evolved over time |
 | `cc_grep { "pattern": "..." }` | Exact text/regex search in conversation history |
 | `cc_describe { "id": "sum_xxx" }` | Inspect a specific summary or file (cheap, no sub-agent) |
 | `cc_recall { "query": "...", "prompt": "..." }` | Deep semantic recall with DAG expansion (slow, ~2 min, spawns sub-agent). Cannot be called from within delegated sessions. |
@@ -108,6 +109,7 @@ User asks something?
   |     +-- Need open tasks/blockers? --> cc_loops
   |     +-- Need to close/update a task? --> cc_manage_loop
   |     +-- Need to resolve a contradiction? --> cc_conflicts
+  |     +-- Need to see how facts changed over time? --> cc_timeline
   |     +-- Need to inspect a summary? --> cc_describe
   |     +-- Need to recover compacted detail? --> cc_expand
   |     +-- Need deep multi-step recall with synthesis? --> cc_recall (slow, ~2 min)
@@ -132,6 +134,7 @@ User asks something?
 | cc_attempts | ~100 tokens | Tool outcome history |
 | cc_procedures | ~100 tokens | Success and failure patterns |
 | cc_branch | ~50 tokens | Branch management (create, list, view, discard, promote) |
+| cc_timeline | ~100-300 tokens | Subject evolution over time |
 | cc_grep | ~50-200 tokens | Exact text search |
 | cc_describe | ~50 tokens | Cheap summary inspection |
 | cc_expand | ~200 tokens | Summary expansion |
