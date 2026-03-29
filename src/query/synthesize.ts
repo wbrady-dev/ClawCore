@@ -59,7 +59,12 @@ export async function synthesizeAnswer(input: SynthesisInput): Promise<Synthesis
     throw new Error(`Synthesis LLM returned ${response.status}: ${await response.text().catch(() => "")}`);
   }
 
-  const data = await response.json() as any;
+  let data: any;
+  try {
+    data = await response.json();
+  } catch {
+    throw new Error("Synthesis LLM returned invalid JSON");
+  }
   const answer = data.choices?.[0]?.message?.content ?? "";
 
   // Extract citation references from answer

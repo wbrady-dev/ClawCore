@@ -167,7 +167,7 @@ export const serveCommand = new Command("serve")
 
     // Track child exit count for clean shutdown
     let exitCount = 0;
-    const totalChildren = 2;
+    const totalChildren = modelsProcess ? 2 : 1;
 
     function onChildExit() {
       exitCount++;
@@ -212,7 +212,7 @@ export const serveCommand = new Command("serve")
     process.on("SIGINT", cleanup);
     process.on("SIGTERM", cleanup);
 
-    modelsProcess.on("exit", (code) => {
+    modelsProcess?.on("exit", (code) => {
       console.log(`${prefix.models} ${t.err("Process exited")} (code ${code})`);
       onChildExit();
     });

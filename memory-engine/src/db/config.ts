@@ -292,7 +292,7 @@ export function resolveLcmConfig(
     relationsGraphDbPath:
       e("RELATIONS_GRAPH_DB_PATH")?.trim()
       ?? toStr(pc.relationsGraphDbPath)
-      ?? join(homedir(), ".threadclaw", "data", "graph.db"),
+      ?? join(homedir(), ".threadclaw", "data", "threadclaw.db"),
     relationsMinMentions: clampInt(
       (e("RELATIONS_MIN_MENTIONS") !== undefined ? parseInt(e("RELATIONS_MIN_MENTIONS")!, 10) : undefined)
         ?? toNumber(pc.relationsMinMentions),

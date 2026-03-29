@@ -269,13 +269,12 @@ export class WebAdapter extends PollingAdapterBase {
     const hash = hashContent(trimmed);
     const prevHash = this.contentHashes.get(item.id);
     if (prevHash === hash) {
-      // Content hasn't actually changed despite header hints
-      // Return empty to signal no real change — but we still need a file
-      // The manifest in the base class tracks lastModified, so we update it
-      logger.debug({ url }, "Web content unchanged (hash match)");
+      // Content hasn't changed despite header hints — skip re-ingestion
+      logger.debug({ url }, "Web content unchanged (hash match), skipping");
+      throw new Error("SKIP: content unchanged");
     }
 
-    // Always save — the base class sync loop handles manifest updates
+    // Save hash for future comparisons
     this.contentHashes.set(item.id, hash);
     saveContentHashes(this.contentHashes);
 

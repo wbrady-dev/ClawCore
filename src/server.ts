@@ -135,12 +135,24 @@ export async function startServer() {
   const db = getDb(dbPath);
   runMigrations(db);
 
-  // Run graph/evidence migrations against the same DB (consolidated from graph.db)
+  // Run graph/evidence migrations against the same DB (consolidated from graph.db).
+  // Try .js first (works under tsx ESM loader), then .ts (direct tsx import).
   try {
-    const schemaPath = resolve(config.rootDir, "memory-engine", "src", "relations", "schema.js");
-    const { runGraphMigrations } = await import(schemaPath);
-    runGraphMigrations(db);
-    logger.info("Graph migrations applied to main database");
+    let runGraphMigrations: ((db: any, path?: string) => void) | undefined;
+    for (const ext of [".js", ".ts"]) {
+      try {
+        const schemaPath = resolve(config.rootDir, "memory-engine", "src", "relations", "schema" + ext);
+        const mod = await import(schemaPath);
+        runGraphMigrations = mod.runGraphMigrations;
+        break;
+      } catch { /* try next extension */ }
+    }
+    if (runGraphMigrations) {
+      runGraphMigrations(db);
+      logger.info("Graph migrations applied to main database");
+    } else {
+      logger.warn("Graph migrations skipped — could not import schema module");
+    }
   } catch (err) {
     logger.warn({ err: err instanceof Error ? err.message : String(err) }, "Graph migrations skipped — memory-engine not available");
   }

@@ -19,8 +19,9 @@ let idleTimer: NodeJS.Timeout | null = null;
 let spawnPromise: Promise<void> | null = null;
 
 /**
- * Returns true if external endpoints are configured for both embeddings
- * and reranking, meaning the Python server is not needed.
+ * Returns true if the Python server is needed — i.e., either the embedding
+ * or reranking URL points to a local service (127.0.0.1, localhost, ::1)
+ * or is empty (meaning no external service configured).
  */
 export function isPythonNeeded(): boolean {
   if (process.env.PYTHON_SERVER_REQUIRED === "true") return true;

@@ -136,7 +136,7 @@ async function postUpgradeSmoke(): Promise<{ ok: boolean; checks: string[] }> {
   const dbPaths = [
     resolve(THREADCLAW_DATA_DIR, "threadclaw.db"),
     resolve(THREADCLAW_DATA_DIR, "memory.db"),
-    resolve(THREADCLAW_DATA_DIR, "graph.db"),
+    resolve(THREADCLAW_DATA_DIR, "threadclaw.db"),
   ];
   for (const dbPath of dbPaths) {
     if (existsSync(dbPath)) {
@@ -174,7 +174,7 @@ async function postUpgradeSmoke(): Promise<{ ok: boolean; checks: string[] }> {
   }
 
   // End-to-end query path: open graph DB, read entities, confirm schema works
-  const graphPath = resolve(THREADCLAW_DATA_DIR, "graph.db");
+  const graphPath = resolve(THREADCLAW_DATA_DIR, "threadclaw.db");
   if (existsSync(graphPath)) {
     try {
       const { DatabaseSync } = await import(/* @vite-ignore */ "node:" + "sqlite");
@@ -434,9 +434,12 @@ export const upgradeCommand = new Command("upgrade")
         }
       }
 
-      const graphDbPath = existsSync(resolve(THREADCLAW_DATA_DIR, "graph.db"))
-        ? resolve(THREADCLAW_DATA_DIR, "graph.db")
-        : legacyGraph?.exists ? legacyGraph.legacyPath : null;
+      // After consolidation, graph tables live in threadclaw.db. Check both for migration compat.
+      const graphDbPath = existsSync(resolve(THREADCLAW_DATA_DIR, "threadclaw.db"))
+        ? resolve(THREADCLAW_DATA_DIR, "threadclaw.db")
+        : existsSync(resolve(THREADCLAW_DATA_DIR, "graph.db"))
+          ? resolve(THREADCLAW_DATA_DIR, "graph.db")
+          : legacyGraph?.exists ? legacyGraph.legacyPath : null;
 
       let evidenceSchemaV = manifest.evidenceSchemaVersion;
       if (graphDbPath && existsSync(graphDbPath)) {

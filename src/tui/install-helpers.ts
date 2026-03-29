@@ -601,7 +601,7 @@ export async function performInstallPlan(plan: InstallPlan): Promise<void> {
     // Evidence OS graph database initialization
     if (evidenceConfig.relationsEnabled) {
       try {
-        const graphDbPath = resolve(THREADCLAW_DATA_DIR, "graph.db");
+        const graphDbPath = resolve(THREADCLAW_DATA_DIR, "threadclaw.db");
         mkdirSync(dirname(graphDbPath), { recursive: true });
         const { getGraphDb, closeGraphDb } = await import("../../storage/graph-sqlite.js");
         const graphDb = getGraphDb(graphDbPath);

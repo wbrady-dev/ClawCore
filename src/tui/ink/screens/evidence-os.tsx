@@ -193,11 +193,15 @@ export function EvidenceOsScreen({ onBack }: { onBack: () => void }) {
   const [timelineInput, setTimelineInput] = useState("");
   const [timelineLoading, setTimelineLoading] = useState(false);
 
-  // Escape key cancels "Add Term" input
+  // Escape key cancels "Add Term" input or Timeline input
   useInput((_input, key) => {
     if (key.escape && addingTerm) {
       setAddingTerm(false);
       setNewTermText("");
+    }
+    if (key.escape && level === "timeline") {
+      setTimelineInput("");
+      setLevel("overview");
     }
   });
 

@@ -78,7 +78,7 @@ export const doctorCommand = new Command("doctor")
     const dbChecks = [
       { name: "RAG DB", path: resolve(THREADCLAW_DATA_DIR, "threadclaw.db") },
       { name: "Memory DB", path: resolve(THREADCLAW_DATA_DIR, "memory.db") },
-      { name: "Graph DB", path: resolve(THREADCLAW_DATA_DIR, "graph.db") },
+      { name: "Graph DB (consolidated)", path: resolve(THREADCLAW_DATA_DIR, "threadclaw.db") },
     ];
     for (const db of dbChecks) {
       if (existsSync(db.path)) {

@@ -1392,9 +1392,11 @@ export function createCcTimelineTool(): AnyAgentTool {
 
   return {
     name: "cc_timeline",
+    label: "ThreadClaw Timeline",
     description: "Show how knowledge about a subject evolved over time — supersessions, corrections, confidence changes.",
-    inputSchema: CcTimelineSchema,
-    async execute(input: { subject: string; from?: string; to?: string; kind?: string }) {
+    parameters: CcTimelineSchema,
+    async execute(_toolCallId, rawParams) {
+      const input = rawParams as { subject: string; from?: string; to?: string; kind?: string };
       try {
         const params = new URLSearchParams({ subject: input.subject, limit: "30" });
         if (input.from) params.set("from", input.from);

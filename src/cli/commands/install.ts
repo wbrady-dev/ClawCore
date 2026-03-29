@@ -27,9 +27,10 @@ export const installCommand = new Command("install")
         return;
       }
 
-      // Plain installer — dynamic import to avoid loading when Ink path is taken
-      const { runInstall } = await import("../../tui/screens/install.js");
-      await runInstall();
+      // Plain fallback — use Ink installer even without rich terminal detection
+      const { runInkInstall } = await import("../../tui/ink/install-actions.js");
+      const completed = await runInkInstall();
+      if (!completed) process.exit(1);
     } catch (err) {
       console.error(`Install failed: ${err instanceof Error ? err.message : String(err)}`);
       process.exit(1);
