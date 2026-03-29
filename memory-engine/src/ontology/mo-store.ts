@@ -330,8 +330,8 @@ export function deleteMemoryObjectsBySource(
     const ids = rows.map((r) => r.composite_id);
     try {
       db.prepare(
-        `DELETE FROM provenance_links WHERE subject_id IN (${placeholders})`,
-      ).run(...ids);
+        `DELETE FROM provenance_links WHERE subject_id IN (${placeholders}) OR object_id IN (${placeholders})`,
+      ).run(...ids, ...ids);
     } catch { /* non-fatal — provenance_links table may not exist yet */ }
   }
 }

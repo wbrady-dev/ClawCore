@@ -40,11 +40,11 @@ export function registerGraphObjectRoutes(server: FastifyInstance) {
       const params: unknown[] = [];
 
       if (scope_id) {
-        conditions.push("json_extract(structured_json, '$.scope_id') = ?");
+        conditions.push("scope_id = ?");
         params.push(scope_id);
       }
       if (status) {
-        conditions.push("json_extract(structured_json, '$.status') = ?");
+        conditions.push("status = ?");
         params.push(status);
       }
 
@@ -59,10 +59,10 @@ export function registerGraphObjectRoutes(server: FastifyInstance) {
         SELECT id, composite_id,
           json_extract(structured_json, '$.subject') as subject,
           json_extract(structured_json, '$.predicate') as predicate,
-          json_extract(structured_json, '$.object') as object,
-          json_extract(structured_json, '$.confidence') as confidence,
-          json_extract(structured_json, '$.status') as status,
-          json_extract(structured_json, '$.scope_id') as scope_id,
+          json_extract(structured_json, '$.objectText') as object,
+          confidence,
+          status,
+          scope_id,
           created_at, last_observed_at
         FROM memory_objects
         WHERE ${where}
@@ -100,7 +100,7 @@ export function registerGraphObjectRoutes(server: FastifyInstance) {
       const params: unknown[] = [];
 
       if (scope_id) {
-        conditions.push("json_extract(structured_json, '$.scope_id') = ?");
+        conditions.push("scope_id = ?");
         params.push(scope_id);
       }
 
@@ -113,10 +113,11 @@ export function registerGraphObjectRoutes(server: FastifyInstance) {
       params.push(limit, offset);
       const decisions = db.prepare(`
         SELECT id, composite_id,
-          json_extract(structured_json, '$.title') as title,
-          json_extract(structured_json, '$.outcome') as outcome,
-          json_extract(structured_json, '$.rationale') as rationale,
-          json_extract(structured_json, '$.scope_id') as scope_id,
+          json_extract(structured_json, '$.topic') as topic,
+          json_extract(structured_json, '$.decisionText') as decision_text,
+          content,
+          scope_id,
+          confidence, status,
           created_at, last_observed_at
         FROM memory_objects
         WHERE ${where}
@@ -154,7 +155,7 @@ export function registerGraphObjectRoutes(server: FastifyInstance) {
       const params: unknown[] = [];
 
       if (status) {
-        conditions.push("json_extract(structured_json, '$.status') = ?");
+        conditions.push("status = ?");
         params.push(status);
       }
 
@@ -167,10 +168,13 @@ export function registerGraphObjectRoutes(server: FastifyInstance) {
       params.push(limit, offset);
       const loops = db.prepare(`
         SELECT id, composite_id,
-          json_extract(structured_json, '$.question') as question,
-          json_extract(structured_json, '$.status') as status,
-          json_extract(structured_json, '$.opened_by') as opened_by,
-          json_extract(structured_json, '$.resolution') as resolution,
+          json_extract(structured_json, '$.loopType') as loop_type,
+          json_extract(structured_json, '$.text') as text,
+          json_extract(structured_json, '$.priority') as priority,
+          json_extract(structured_json, '$.owner') as owner,
+          json_extract(structured_json, '$.waitingOn') as waiting_on,
+          json_extract(structured_json, '$.dueAt') as due_at,
+          status, confidence,
           created_at, last_observed_at
         FROM memory_objects
         WHERE ${where}
@@ -212,10 +216,11 @@ export function registerGraphObjectRoutes(server: FastifyInstance) {
 
       const conflicts = db.prepare(`
         SELECT id, composite_id,
-          json_extract(structured_json, '$.description') as description,
-          json_extract(structured_json, '$.claim_ids') as claim_ids,
-          json_extract(structured_json, '$.resolution') as resolution,
-          json_extract(structured_json, '$.resolved') as resolved,
+          json_extract(structured_json, '$.objectIdA') as object_id_a,
+          json_extract(structured_json, '$.objectIdB') as object_id_b,
+          json_extract(structured_json, '$.canonicalKey') as canonical_key,
+          content,
+          status, confidence,
           created_at, last_observed_at
         FROM memory_objects
         WHERE ${where}
@@ -249,16 +254,14 @@ export function registerGraphObjectRoutes(server: FastifyInstance) {
     try {
       const db = getGraphDb(graphDbPath);
 
-      // Procedures include runbook and anti_runbook kinds
-      const validTypes = ["runbook", "anti_runbook"];
-      const conditions: string[] = [];
+      // Procedures are kind='procedure'; isNegative in structured_json distinguishes runbooks from anti-runbooks
+      const conditions = ["kind = 'procedure'"];
       const params: unknown[] = [];
 
-      if (type && validTypes.includes(type)) {
-        conditions.push("kind = ?");
-        params.push(type);
-      } else {
-        conditions.push("kind IN ('runbook', 'anti_runbook')");
+      if (type === "runbook") {
+        conditions.push("(json_extract(structured_json, '$.isNegative') IS NULL OR json_extract(structured_json, '$.isNegative') = 0)");
+      } else if (type === "anti_runbook") {
+        conditions.push("json_extract(structured_json, '$.isNegative') = 1");
       }
 
       const where = conditions.join(" AND ");
@@ -269,11 +272,12 @@ export function registerGraphObjectRoutes(server: FastifyInstance) {
 
       params.push(limit, offset);
       const procedures = db.prepare(`
-        SELECT id, composite_id, kind,
-          json_extract(structured_json, '$.title') as title,
-          json_extract(structured_json, '$.description') as description,
-          json_extract(structured_json, '$.steps') as steps,
-          json_extract(structured_json, '$.trigger') as trigger_condition,
+        SELECT id, composite_id,
+          json_extract(structured_json, '$.toolName') as tool_name,
+          json_extract(structured_json, '$.key') as key,
+          json_extract(structured_json, '$.isNegative') as is_negative,
+          content,
+          status, confidence,
           created_at, last_observed_at
         FROM memory_objects
         WHERE ${where}
@@ -302,11 +306,10 @@ export function registerGraphObjectRoutes(server: FastifyInstance) {
         SELECT id, composite_id,
           json_extract(structured_json, '$.subject') as subject,
           json_extract(structured_json, '$.predicate') as predicate,
-          json_extract(structured_json, '$.object') as object,
-          json_extract(structured_json, '$.confidence') as confidence,
-          json_extract(structured_json, '$.status') as status,
-          json_extract(structured_json, '$.scope_id') as scope_id,
-          created_at, last_observed_at
+          json_extract(structured_json, '$.objectText') as object,
+          json_extract(structured_json, '$.topic') as topic,
+          confidence, status, scope_id,
+          content, created_at, last_observed_at
         FROM memory_objects WHERE kind = 'claim' AND id = ?
       `).get(idNum);
       if (!claim) return reply.status(404).send({ error: "Claim not found" });
@@ -334,10 +337,10 @@ export function registerGraphObjectRoutes(server: FastifyInstance) {
       const db = getGraphDb(graphDbPath);
       const decision = db.prepare(`
         SELECT id, composite_id,
-          json_extract(structured_json, '$.title') as title,
-          json_extract(structured_json, '$.outcome') as outcome,
-          json_extract(structured_json, '$.rationale') as rationale,
-          json_extract(structured_json, '$.scope_id') as scope_id,
+          json_extract(structured_json, '$.topic') as topic,
+          json_extract(structured_json, '$.decisionText') as decision_text,
+          content, scope_id,
+          confidence, status,
           created_at, last_observed_at
         FROM memory_objects WHERE kind = 'decision' AND id = ?
       `).get(idNum);
@@ -366,10 +369,13 @@ export function registerGraphObjectRoutes(server: FastifyInstance) {
       const db = getGraphDb(graphDbPath);
       const loop = db.prepare(`
         SELECT id, composite_id,
-          json_extract(structured_json, '$.question') as question,
-          json_extract(structured_json, '$.status') as status,
-          json_extract(structured_json, '$.opened_by') as opened_by,
-          json_extract(structured_json, '$.resolution') as resolution,
+          json_extract(structured_json, '$.loopType') as loop_type,
+          json_extract(structured_json, '$.text') as text,
+          json_extract(structured_json, '$.priority') as priority,
+          json_extract(structured_json, '$.owner') as owner,
+          json_extract(structured_json, '$.waitingOn') as waiting_on,
+          json_extract(structured_json, '$.dueAt') as due_at,
+          status, confidence, content,
           created_at, last_observed_at
         FROM memory_objects WHERE kind = 'loop' AND id = ?
       `).get(idNum);
@@ -414,7 +420,7 @@ export function registerGraphObjectRoutes(server: FastifyInstance) {
         SELECT id, composite_id,
                json_extract(structured_json, '$.subject') as subject,
                json_extract(structured_json, '$.predicate') as predicate,
-               json_extract(structured_json, '$.object') as object,
+               json_extract(structured_json, '$.objectText') as object,
                content, confidence, status, created_at
         FROM memory_objects
         WHERE confidence < 0.5 AND status = 'active' AND kind = 'claim'

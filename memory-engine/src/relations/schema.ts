@@ -590,7 +590,7 @@ CREATE INDEX IF NOT EXISTS idx_mo_canonical_dedup ON memory_objects(canonical_ke
 CREATE TABLE IF NOT EXISTS provenance_links (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     subject_id TEXT NOT NULL,
-    predicate TEXT NOT NULL CHECK(predicate IN ('derived_from', 'supports', 'contradicts', 'supersedes', 'mentioned_in', 'relates_to', 'resolved_by')),
+    predicate TEXT NOT NULL CHECK(predicate IN ('derived_from', 'supports', 'contradicts', 'supersedes', 'mentioned_in', 'relates_to', 'resolved_by', 'about')),
     object_id TEXT NOT NULL,
     confidence REAL NOT NULL DEFAULT 1.0 CHECK(confidence >= 0.0 AND confidence <= 1.0),
     detail TEXT,
@@ -667,6 +667,21 @@ CREATE TABLE IF NOT EXISTS capabilities (
     UNIQUE(scope_id, capability_type, capability_key)
 );
 CREATE INDEX IF NOT EXISTS idx_capabilities_scope ON capabilities(scope_id, capability_type, status);
+
+-- FTS5 full-text index on memory_objects content
+CREATE VIRTUAL TABLE IF NOT EXISTS memory_objects_fts USING fts5(content, content='memory_objects', content_rowid='id');
+
+-- FTS5 sync triggers
+CREATE TRIGGER IF NOT EXISTS memory_objects_fts_ai AFTER INSERT ON memory_objects BEGIN
+  INSERT INTO memory_objects_fts(rowid, content) VALUES (new.id, new.content);
+END;
+CREATE TRIGGER IF NOT EXISTS memory_objects_fts_ad AFTER DELETE ON memory_objects BEGIN
+  INSERT INTO memory_objects_fts(memory_objects_fts, rowid, content) VALUES('delete', old.id, old.content);
+END;
+CREATE TRIGGER IF NOT EXISTS memory_objects_fts_au AFTER UPDATE OF content ON memory_objects BEGIN
+  INSERT INTO memory_objects_fts(memory_objects_fts, rowid, content) VALUES('delete', old.id, old.content);
+  INSERT INTO memory_objects_fts(rowid, content) VALUES (new.id, new.content);
+END;
 `;
 
 /**
@@ -693,7 +708,7 @@ export function runGraphMigrations(db: GraphDb, dbPath?: string): void {
   if (anyApplied.cnt === 0) {
     db.exec(FRESH_INSTALL_SQL);
     // Mark all migration versions as applied so the legacy chain never runs
-    for (let v = 1; v <= 29; v++) {
+    for (let v = 1; v <= 30; v++) {
       markMigrationApplied(db, v);
     }
     // File permissions
@@ -770,7 +785,7 @@ export function runGraphMigrations(db: GraphDb, dbPath?: string): void {
       CREATE TABLE IF NOT EXISTS provenance_links (
           id INTEGER PRIMARY KEY AUTOINCREMENT,
           subject_id TEXT NOT NULL,
-          predicate TEXT NOT NULL CHECK(predicate IN ('derived_from', 'supports', 'contradicts', 'supersedes', 'mentioned_in', 'relates_to', 'resolved_by')),
+          predicate TEXT NOT NULL CHECK(predicate IN ('derived_from', 'supports', 'contradicts', 'supersedes', 'mentioned_in', 'relates_to', 'resolved_by', 'about')),
           object_id TEXT NOT NULL,
           confidence REAL NOT NULL DEFAULT 1.0 CHECK(confidence >= 0.0 AND confidence <= 1.0),
           detail TEXT,
@@ -1772,6 +1787,54 @@ export function runGraphMigrations(db: GraphDb, dbPath?: string): void {
       markMigrationApplied(db, 29);
     } catch (migErr) {
       console.warn("[rsma] migration v29 (evidence_log index) failed:", migErr);
+    }
+  }
+
+  // v30: Fix provenance_links CHECK constraint to include 'about' predicate,
+  // and ensure memory_objects_fts exists for existing databases.
+  if (!isMigrationApplied(db, 30)) {
+    try {
+      // Recreate provenance_links with updated CHECK constraint (add 'about' predicate)
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS provenance_links_new (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            subject_id TEXT NOT NULL,
+            predicate TEXT NOT NULL CHECK(predicate IN ('derived_from', 'supports', 'contradicts', 'supersedes', 'mentioned_in', 'relates_to', 'resolved_by', 'about')),
+            object_id TEXT NOT NULL,
+            confidence REAL NOT NULL DEFAULT 1.0 CHECK(confidence >= 0.0 AND confidence <= 1.0),
+            detail TEXT,
+            scope_id INTEGER DEFAULT 1,
+            metadata TEXT,
+            created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%f', 'now')),
+            UNIQUE(subject_id, predicate, object_id)
+        );
+        INSERT OR IGNORE INTO provenance_links_new(id, subject_id, predicate, object_id, confidence, detail, scope_id, metadata, created_at)
+          SELECT id, subject_id, predicate, object_id, confidence, detail, scope_id, metadata, created_at FROM provenance_links;
+        DROP TABLE IF EXISTS provenance_links;
+        ALTER TABLE provenance_links_new RENAME TO provenance_links;
+        CREATE INDEX IF NOT EXISTS idx_prov_subject ON provenance_links(subject_id);
+        CREATE INDEX IF NOT EXISTS idx_prov_object ON provenance_links(object_id);
+        CREATE INDEX IF NOT EXISTS idx_prov_predicate ON provenance_links(predicate);
+      `);
+      // Ensure FTS5 table and triggers exist (may have been missed on earlier installs)
+      db.exec(`
+        CREATE VIRTUAL TABLE IF NOT EXISTS memory_objects_fts USING fts5(content, content='memory_objects', content_rowid='id');
+        CREATE TRIGGER IF NOT EXISTS memory_objects_fts_ai AFTER INSERT ON memory_objects BEGIN
+          INSERT INTO memory_objects_fts(rowid, content) VALUES (new.id, new.content);
+        END;
+        CREATE TRIGGER IF NOT EXISTS memory_objects_fts_ad AFTER DELETE ON memory_objects BEGIN
+          INSERT INTO memory_objects_fts(memory_objects_fts, rowid, content) VALUES('delete', old.id, old.content);
+        END;
+        CREATE TRIGGER IF NOT EXISTS memory_objects_fts_au AFTER UPDATE OF content ON memory_objects BEGIN
+          INSERT INTO memory_objects_fts(memory_objects_fts, rowid, content) VALUES('delete', old.id, old.content);
+          INSERT INTO memory_objects_fts(rowid, content) VALUES (new.id, new.content);
+        END;
+      `);
+      // Backfill FTS5 from existing data
+      db.exec(`INSERT OR IGNORE INTO memory_objects_fts(rowid, content) SELECT id, content FROM memory_objects`);
+      markMigrationApplied(db, 30);
+    } catch (migErr) {
+      console.warn("[rsma] migration v30 (about predicate + FTS5) failed:", migErr);
     }
   }
 

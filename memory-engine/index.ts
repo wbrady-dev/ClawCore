@@ -13,7 +13,14 @@ if (process.env.DEBUG || process.env.THREADCLAW_DEBUG) {
 // a failure should degrade gracefully, not kill Copper's session.
 if (!process.listenerCount("unhandledRejection")) {
   process.on("unhandledRejection", (reason) => {
-    console.warn("[cc-mem] unhandled promise rejection (swallowed):", reason instanceof Error ? reason.message : String(reason));
+    const stack = reason instanceof Error ? reason.stack ?? "" : "";
+    const isCcMem = stack.includes("cc-mem") || stack.includes("memory-engine");
+    if (isCcMem) {
+      console.warn("[cc-mem] unhandled promise rejection (swallowed):", reason instanceof Error ? reason.message : String(reason));
+    } else {
+      // Re-throw non-cc-mem rejections so the host process can handle them
+      throw reason;
+    }
   });
 }
 if (!process.listenerCount("uncaughtException")) {
@@ -38,6 +45,14 @@ import type { OpenClawPluginApi } from "openclaw/plugin-sdk";
 import { resolveLcmConfig } from "./src/db/config.js";
 import { LcmContextEngine } from "./src/engine.js";
 import { createLcmDescribeTool } from "./src/tools/lcm-describe-tool.js";
+import { closeLcmConnection } from "./src/db/connection.js";
+import { closeGraphConnection } from "./src/relations/graph-connection.js";
+
+// Ensure DB connections are cleanly closed on shutdown to checkpoint WAL
+process.on("beforeExit", () => {
+  try { closeLcmConnection(); } catch { /* non-fatal */ }
+  try { closeGraphConnection(); } catch { /* non-fatal */ }
+});
 import { createLcmExpandQueryTool } from "./src/tools/lcm-expand-query-tool.js";
 import { createLcmExpandTool } from "./src/tools/lcm-expand-tool.js";
 import { createLcmGrepTool } from "./src/tools/lcm-grep-tool.js";

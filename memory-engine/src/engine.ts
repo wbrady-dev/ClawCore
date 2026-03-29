@@ -2372,8 +2372,11 @@ export class LcmContextEngine implements ContextEngine {
 
   async assemble(params: {
     sessionId: string;
+    sessionKey?: string;
     messages: AgentMessage[];
     tokenBudget?: number;
+    model?: string;
+    prompt?: string;
   }): Promise<AssembleResult> {
     try {
       this.ensureMigrated();
@@ -2407,7 +2410,7 @@ export class LcmContextEngine implements ContextEngine {
         };
       }
 
-      const tokenBudget = this.resolveTokenBudget({ tokenBudget: params.tokenBudget }) ?? 128_000;
+      const tokenBudget = this.resolveTokenBudget({ tokenBudget: params.tokenBudget }) ?? 100_000;
 
       const assembled = await this.assembler.assemble({
         conversationId: conversation.conversationId,

@@ -756,7 +756,7 @@ export class ConversationStore {
        FROM messages_fts
        JOIN messages m ON m.message_id = messages_fts.rowid
        WHERE ${where.join(" AND ")}
-       ORDER BY m.created_at DESC
+       ORDER BY rank
        LIMIT ?`;
     const rows = this.db.prepare(sql).all(...args) as unknown as MessageSearchRow[];
     return rows.map(toSearchResult);
