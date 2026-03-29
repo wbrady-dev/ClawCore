@@ -14,6 +14,8 @@ export interface SourceInfo {
   chunkCount: number;
   avgScore: number;
   collection?: string;
+  /** Preview text from the top-scoring chunk for this source (≤300 chars) */
+  snippet?: string;
 }
 
 export interface PackedResult {
@@ -89,6 +91,7 @@ export function packContext(
       collection: collName ?? undefined,
       chunkCount: 0,
       scores: [] as number[],
+      snippet: "",
     };
 
     for (const chunk of sourceChunks) {
@@ -108,6 +111,7 @@ export function packContext(
       lines.push(chunkText);
       tokensUsed += chunkTokens;
       chunksUsed++;
+      if (stat.chunkCount === 0) stat.snippet = chunk.text.slice(0, 300);
       stat.chunkCount++;
       stat.scores.push(chunk.score);
     }
@@ -122,6 +126,7 @@ export function packContext(
     chunkCount: s.chunkCount,
     avgScore: s.scores.reduce((a, b) => a + b, 0) / s.scores.length,
     collection: s.collection,
+    snippet: s.snippet || undefined,
   }));
 
   const contextText = lines.join("\n").trim();

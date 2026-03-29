@@ -495,14 +495,14 @@ export async function query(
     tokensUsed = briefResult.tokenCount;
     chunksReturned = topChunks.length;
     // Group topChunks by source to compute per-source stats
-    const sourceChunkMap = new Map<string, { scores: number[]; collection?: string }>();
+    const sourceChunkMap = new Map<string, { scores: number[]; collection?: string; snippet: string }>();
     for (const c of topChunks) {
       const src = c.sourcePath ?? "unknown";
       const entry = sourceChunkMap.get(src);
       if (entry) {
         entry.scores.push(c.score);
       } else {
-        sourceChunkMap.set(src, { scores: [c.score], collection: c.collectionName });
+        sourceChunkMap.set(src, { scores: [c.score], collection: c.collectionName, snippet: c.text.slice(0, 300) });
       }
     }
     sources = briefResult.sources.map((s) => {
@@ -513,6 +513,7 @@ export async function query(
         chunkCount: scores.length,
         avgScore: scores.reduce((a, b) => a + b, 0) / scores.length,
         collection: entry?.collection ?? collectionName,
+        snippet: entry?.snippet,
       };
     });
     strategy += "+brief";

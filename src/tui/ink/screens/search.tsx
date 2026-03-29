@@ -12,6 +12,7 @@ interface SearchResult {
   score: number;
   collection: string;
   highlighted?: string;
+  snippet?: string;
 }
 
 interface SearchScreenProps {
@@ -93,12 +94,13 @@ function SearchScreen({ onBack }: SearchScreenProps) {
       };
 
       const sources = payload.sources ?? [];
-      const mapped: SearchResult[] = sources.map((s) => ({
+      const mapped: SearchResult[] = sources.map((s: any) => ({
         source: s.source,
         content: payload.context ?? "",
         score: s.avgScore ?? 0,
         collection: s.collection ?? "default",
         highlighted: payload.highlighted,
+        snippet: s.snippet,
       }));
 
       setResults(mapped);
@@ -193,7 +195,7 @@ function SearchScreen({ onBack }: SearchScreenProps) {
         <Text> </Text>
         <Separator width={60} />
         <Box marginLeft={2} flexDirection="column">
-          <Text wrap="wrap">{selectedResult.highlighted ?? selectedResult.content}</Text>
+          <Text wrap="wrap">{selectedResult.snippet ?? selectedResult.highlighted ?? selectedResult.content}</Text>
         </Box>
         <Separator width={60} />
         <Text> </Text>
@@ -210,7 +212,7 @@ function SearchScreen({ onBack }: SearchScreenProps) {
     const pageResults = results.slice(start, start + RESULTS_PER_PAGE);
 
     const menuItems: MenuItem[] = pageResults.map((r, i) => ({
-      label: `${basename(r.source)}  ${t.dim(formatScore(r.score))}  ${t.dim(truncate(r.content, 80))}`,
+      label: `${basename(r.source)}  ${t.dim(formatScore(r.score))}  ${t.dim(truncate(r.snippet ?? r.content, 80))}`,
       value: `result:${start + i}`,
       description: r.collection,
     }));
