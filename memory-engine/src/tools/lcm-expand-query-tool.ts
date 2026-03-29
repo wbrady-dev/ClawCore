@@ -344,7 +344,7 @@ async function tryEvidenceFallback(
       ORDER BY json_extract(structured_json, '$.decidedAt') DESC LIMIT 3
     `).all(...decLikeArgs) as Array<{
       id: number; topic: string; decision_text: string; status: string;
-      decided_at: string; superseded_by: number | null;
+      decided_at: string; superseded_by: string | null;
     }>;
 
     if (decisions.length > 0) {
