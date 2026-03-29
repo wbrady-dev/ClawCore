@@ -269,7 +269,7 @@ export class WebAdapter extends PollingAdapterBase {
     return items;
   }
 
-  async downloadItem(item: RemoteItem): Promise<string> {
+  async downloadItem(item: RemoteItem): Promise<string | null> {
     // Find the matching URL entry
     const entry = this.urls.find((u) => urlToFilename(u.url) === item.id);
     const url = entry?.url ?? item.name;

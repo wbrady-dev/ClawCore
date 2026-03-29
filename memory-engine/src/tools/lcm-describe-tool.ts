@@ -76,7 +76,10 @@ export function createLcmDescribeTool(input: {
       const retrieval = input.lcm.getRetrieval();
       const timezone = input.lcm.timezone;
       const p = params as Record<string, unknown>;
-      const id = (p.id as string).trim();
+      if (typeof p.id !== "string" || !p.id.trim()) {
+        return jsonResult({ error: "id parameter is required and must be a non-empty string." });
+      }
+      const id = p.id.trim();
       const conversationScope = await resolveLcmConversationScope({
         lcm: input.lcm,
         deps: input.deps,

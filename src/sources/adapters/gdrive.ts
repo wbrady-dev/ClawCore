@@ -325,7 +325,7 @@ function streamToFile(stream: NodeJS.ReadableStream, path: string): Promise<void
     const timer = setTimeout(() => {
       if (!done) {
         done = true;
-        stream.destroy?.();
+        (stream as any).destroy?.();
         ws.destroy();
         reject(new Error(`Stream timeout after ${STREAM_TIMEOUT_MS}ms writing to ${path}`));
       }

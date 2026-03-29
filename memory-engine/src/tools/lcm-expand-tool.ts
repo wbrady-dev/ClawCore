@@ -17,7 +17,6 @@ import { jsonResult } from "./common.js";
 import { resolveLcmConversationScope } from "./lcm-conversation-scope.js";
 import {
   normalizeSummaryIds,
-  runDelegatedExpansionLoop,
   type DelegatedExpansionLoopResult,
 } from "./lcm-expand-tool.delegation.js";
 
@@ -146,6 +145,7 @@ export function createLcmExpandTool(input: {
       "with cited IDs for follow-up.",
     parameters: LcmExpandSchema,
     async execute(_toolCallId, params) {
+      try {
       const retrieval = input.lcm.getRetrieval();
       const orchestrator = new ExpansionOrchestrator(retrieval);
       const runtimeAuthManager = getRuntimeExpansionAuthManager();
@@ -168,16 +168,14 @@ export function createLcmExpandTool(input: {
             "cc_expand is only available in sub-agent sessions. Use cc_recall to ask a focused question against expanded summaries, or cc_describe/cc_grep for lighter lookups.",
         });
       }
-      const isDelegatedSession = input.deps.isSubagentSessionKey(sessionKey);
-      const delegatedGrantId = isDelegatedSession
-        ? (resolveDelegatedExpansionGrantId(sessionKey) ?? undefined)
-        : undefined;
+      // sessionKey is confirmed subagent at this point (early return above)
+      const delegatedGrantId = resolveDelegatedExpansionGrantId(sessionKey) ?? undefined;
       const delegatedGrant =
         delegatedGrantId !== undefined ? runtimeAuthManager.getGrant(delegatedGrantId) : null;
       const authorizedOrchestrator =
         delegatedGrantId !== undefined ? wrapWithAuth(orchestrator, runtimeAuthManager) : null;
 
-      if (isDelegatedSession && !delegatedGrantId) {
+      if (!delegatedGrantId) {
         return jsonResult({
           error:
             "Delegated expansion requires a valid grant. This sub-agent session has no propagated expansion grant.",
@@ -262,45 +260,7 @@ export function createLcmExpandTool(input: {
             tokenCap: tokenCap ?? Number.MAX_SAFE_INTEGER,
             includeMessages: false,
           });
-          const canDelegate =
-            matchedSummaryIds.length > 0 &&
-            policy.action === "delegate_traversal" &&
-            !isDelegatedSession &&
-            !!sessionKey;
-          const delegated =
-            canDelegate && resolvedConversationId != null
-              ? await runDelegatedExpansionLoop({
-                  deps: input.deps,
-                  requesterSessionKey: sessionKey,
-                  conversationId: resolvedConversationId,
-                  summaryIds: matchedSummaryIds,
-                  maxDepth,
-                  tokenCap,
-                  includeMessages: false,
-                  query,
-                })
-              : undefined;
-          if (delegated && delegated.status === "ok") {
-            return {
-              content: [{ type: "text", text: delegated.text }],
-              details: {
-                expansionCount: delegated.citedIds.length,
-                citedIds: delegated.citedIds,
-                totalTokens: delegated.totalTokens,
-                truncated: delegated.truncated,
-                policy,
-                executionPath: "delegated",
-                delegated,
-                observability: buildOrchestrationObservability({
-                  policy,
-                  executionPath: "delegated",
-                  delegated,
-                }),
-              },
-            };
-          }
-
-          const executionPath = delegated ? "direct_fallback" : "direct";
+          // cc_expand runs in subagent context only (early return above) — no recursive delegation
           const result =
             matchedSummaryIds.length === 0
               ? makeEmptyExpansionResult()
@@ -320,19 +280,10 @@ export function createLcmExpandTool(input: {
               totalTokens: result.totalTokens,
               truncated: result.truncated,
               policy,
-              executionPath,
-              delegated:
-                delegated && delegated.status !== "ok"
-                  ? {
-                      status: delegated.status,
-                      error: delegated.error,
-                      passes: delegated.passes,
-                    }
-                  : undefined,
+              executionPath: "direct" as const,
               observability: buildOrchestrationObservability({
                 policy,
-                executionPath,
-                delegated,
+                executionPath: "direct",
               }),
             },
           };
@@ -373,49 +324,18 @@ export function createLcmExpandTool(input: {
             includeMessages,
           });
           const normalizedSummaryIds = normalizeSummaryIds(summaryIds);
-          const canDelegate =
-            normalizedSummaryIds.length > 0 &&
-            policy.action === "delegate_traversal" &&
-            !isDelegatedSession &&
-            !!sessionKey &&
-            resolvedConversationId != null;
-          const delegated = canDelegate
-            ? await runDelegatedExpansionLoop({
-                deps: input.deps,
-                requesterSessionKey: sessionKey,
-                conversationId: resolvedConversationId,
-                summaryIds: normalizedSummaryIds,
-                maxDepth,
-                tokenCap,
-                includeMessages,
-              })
-            : undefined;
-          if (delegated && delegated.status === "ok") {
-            return {
-              content: [{ type: "text", text: delegated.text }],
-              details: {
-                expansionCount: delegated.citedIds.length,
-                citedIds: delegated.citedIds,
-                totalTokens: delegated.totalTokens,
-                truncated: delegated.truncated,
-                policy,
-                executionPath: "delegated",
-                delegated,
-                observability: buildOrchestrationObservability({
-                  policy,
-                  executionPath: "delegated",
-                  delegated,
-                }),
-              },
-            };
+          // cc_expand runs in subagent context only — no recursive delegation
+          if (resolvedConversationId == null) {
+            return jsonResult({
+              error: "Unable to resolve conversation scope for expansion. Provide conversationId explicitly.",
+            });
           }
-          const executionPath = delegated ? "direct_fallback" : "direct";
           const result = await runExpand({
             summaryIds: normalizedSummaryIds,
             maxDepth,
             tokenCap,
             includeMessages,
-            conversationId: resolvedConversationId ?? 0,
+            conversationId: resolvedConversationId,
           });
           const text = distillForSubagent(result);
           return {
@@ -426,19 +346,10 @@ export function createLcmExpandTool(input: {
               totalTokens: result.totalTokens,
               truncated: result.truncated,
               policy,
-              executionPath,
-              delegated:
-                delegated && delegated.status !== "ok"
-                  ? {
-                      status: delegated.status,
-                      error: delegated.error,
-                      passes: delegated.passes,
-                    }
-                  : undefined,
+              executionPath: "direct" as const,
               observability: buildOrchestrationObservability({
                 policy,
-                executionPath,
-                delegated,
+                executionPath: "direct",
               }),
             },
           };
@@ -451,6 +362,10 @@ export function createLcmExpandTool(input: {
       return jsonResult({
         error: "Either summaryIds or query must be provided.",
       });
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        return jsonResult({ error: `cc_expand failed: ${message}` });
+      }
     },
   };
 }

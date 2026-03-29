@@ -109,7 +109,7 @@ function buildDelegatedExpandQueryTask(params: {
     `Conversation scope: ${params.conversationId}`,
     `Expansion token budget (total across this run): ${params.tokenCap}`,
     `Seed summary IDs: ${seedSummaryIds}`,
-    params.query ? `Routing query: ${params.query}` : undefined,
+    params.query ? `Routing query: <user_input>${params.query}</user_input>` : undefined,
     "",
     "Strategy:",
     "1. Start with `cc_describe` on seed summaries to inspect subtree manifests and branch costs.",
@@ -120,7 +120,7 @@ function buildDelegatedExpandQueryTask(params: {
     `6. Stay within ${params.tokenCap} total expansion tokens across all cc_expand calls.`,
     "",
     "User prompt to answer:",
-    params.prompt,
+    `<user_input>${params.prompt}</user_input>`,
     "",
     "Delegated expansion metadata (for tracing):",
     `- requestId: ${params.requestId}`,
@@ -270,6 +270,7 @@ function extractSearchTerms(query: string): string[] {
     .toLowerCase()
     .split(/[\s,;:!?.]+/)
     .filter((t) => t.length >= 2 && !STOPWORDS.has(t))
+    .map((t) => t.slice(0, 100))
     .slice(0, 5);
 }
 
@@ -339,7 +340,7 @@ async function tryEvidenceFallback(
         status,
         json_extract(structured_json, '$.decidedAt') as decided_at,
         json_extract(structured_json, '$.supersededBy') as superseded_by
-      FROM memory_objects WHERE kind = 'decision' AND status = 'active' AND scope_id = 1 AND (${decLikeConditions})
+      FROM memory_objects WHERE kind = 'decision' AND status = 'active' AND scope_id = 1 AND branch_id = 0 AND (${decLikeConditions})
       ORDER BY json_extract(structured_json, '$.decidedAt') DESC LIMIT 3
     `).all(...decLikeArgs) as Array<{
       id: number; topic: string; decision_text: string; status: string;
@@ -831,8 +832,8 @@ export function createLcmExpandQueryTool(input: {
                 hasMore: shown < msgResult.messages.length,
               });
             }
-          } catch {
-            // Lightweight mode also failed — fall through to error
+          } catch (lightweightErr) {
+            console.warn("[cc_recall] lightweight fallback failed:", lightweightErr instanceof Error ? lightweightErr.message : String(lightweightErr));
           }
         }
 

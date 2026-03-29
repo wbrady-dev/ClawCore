@@ -189,7 +189,7 @@ function buildDelegatedExpansionTask(params: {
   }
   return [
     "Run ThreadClaw memory expansion and report distilled findings.",
-    params.query ? `Original query: ${params.query}` : undefined,
+    params.query ? `Original query: <user_input>${params.query}</user_input>` : undefined,
     `Pass ${params.pass}`,
     "",
     "Call `cc_expand` using exactly this JSON payload:",

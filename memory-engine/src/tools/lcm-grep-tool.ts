@@ -94,8 +94,20 @@ export function createLcmGrepTool(input: {
       const timezone = input.lcm.timezone;
 
       const p = params as Record<string, unknown>;
-      const pattern = (p.pattern as string).trim();
+      if (typeof p.pattern !== "string" || !p.pattern.trim()) {
+        return jsonResult({ error: "pattern parameter is required and must be a non-empty string." });
+      }
+      const pattern = p.pattern.trim();
       const mode = (p.mode as "regex" | "full_text") ?? "regex";
+      if (mode === "regex") {
+        try {
+          new RegExp(pattern);
+        } catch (regexErr) {
+          return jsonResult({
+            error: `Invalid regex pattern: ${regexErr instanceof Error ? regexErr.message : String(regexErr)}`,
+          });
+        }
+      }
       const scope = (p.scope as "messages" | "summaries" | "both") ?? "both";
       const limit = typeof p.limit === "number" ? Math.max(1, Math.min(200, Math.trunc(p.limit))) : 50;
       let since: Date | undefined;

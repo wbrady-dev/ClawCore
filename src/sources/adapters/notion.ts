@@ -142,8 +142,9 @@ async function queryDatabase(client: Client, databaseId: string): Promise<any[]>
       `databases.query(${databaseId})`,
     );
 
-    pages.push(...(res.results ?? []));
-    cursor = res.has_more ? (res.next_cursor ?? undefined) : undefined;
+    const data = res as { results?: any[]; has_more?: boolean; next_cursor?: string | null };
+    pages.push(...(data.results ?? []));
+    cursor = data.has_more ? (data.next_cursor ?? undefined) : undefined;
 
     // Rate limit: ~3 req/s for Notion API
     await sleep(350);
