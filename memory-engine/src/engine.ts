@@ -2135,6 +2135,15 @@ export class LcmContextEngine implements ContextEngine {
 
                   for (const action of reconciledDeep.actions) {
                     if (action.type === "insert") {
+                      // Invariant enforcement (same as primary loop)
+                      if (action.object.kind !== "invariant" && action.object.kind !== "conflict") {
+                        try {
+                          const violations = checkStrictInvariants(graphDb, action.object.scope_id ?? 1, action.object.content, action.object.structured as Record<string, unknown> | null);
+                          if (violations.length > 0) {
+                            action.object.status = "needs_confirmation";
+                          }
+                        } catch {}
+                      }
                       upsertDeep(graphDb, action.object);
                       projDeep(graphDb, action.object);
                     } else if (action.type === "supersede") {

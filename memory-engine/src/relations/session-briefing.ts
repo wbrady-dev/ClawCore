@@ -26,16 +26,19 @@ export function buildSessionBriefing(
 
   // Parse counts
   let newDecisions = 0, supersededDecisions = 0, newConflicts = 0;
-  let newClaims = 0, supersededClaims = 0;
+  let newClaims = 0, supersededClaims = 0, flaggedClaims = 0;
+  let newInvariants = 0;
   for (const r of rows) {
     if (r.kind === "decision" && r.status === "active") newDecisions = Number(r.cnt);
     if (r.kind === "decision" && r.status === "superseded") supersededDecisions = Number(r.cnt);
     if (r.kind === "conflict") newConflicts += Number(r.cnt);
     if (r.kind === "claim" && r.status === "active") newClaims = Number(r.cnt);
     if (r.kind === "claim" && r.status === "superseded") supersededClaims = Number(r.cnt);
+    if (r.kind === "claim" && r.status === "needs_confirmation") flaggedClaims = Number(r.cnt);
+    if (r.kind === "invariant" && r.status === "active") newInvariants = Number(r.cnt);
   }
 
-  const total = newDecisions + supersededDecisions + newConflicts + newClaims + supersededClaims;
+  const total = newDecisions + supersededDecisions + newConflicts + newClaims + supersededClaims + flaggedClaims + newInvariants;
   if (total === 0) return null;
 
   // Format time since
@@ -51,7 +54,9 @@ export function buildSessionBriefing(
   if (supersededDecisions) parts.push(`${supersededDecisions} superseded`);
   if (newClaims) parts.push(`${newClaims} new claim${newClaims > 1 ? "s" : ""}`);
   if (supersededClaims) parts.push(`${supersededClaims} claim${supersededClaims > 1 ? "s" : ""} superseded`);
+  if (flaggedClaims) parts.push(`${flaggedClaims} flagged for review`);
   if (newConflicts) parts.push(`${newConflicts} conflict${newConflicts > 1 ? "s" : ""}`);
+  if (newInvariants) parts.push(`${newInvariants} new invariant${newInvariants > 1 ? "s" : ""}`);
 
   return `[Session Briefing] Since last session (${timeSince}): ${parts.join(", ")}.`;
 }
