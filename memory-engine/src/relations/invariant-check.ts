@@ -64,7 +64,11 @@ export function checkStrictInvariants(
     if (typeof structured.decisionText === 'string') parts.push(structured.decisionText);
     if (typeof structured.object === 'string') parts.push(structured.object);
   }
-  const searchText = parts.join(' ').toLowerCase();
+  // Normalize: NFKD decomposition, strip zero-width/control chars, lowercase
+  const searchText = parts.join(' ')
+    .normalize("NFKD")
+    .replace(/[\u200B-\u200F\u2028-\u202F\uFEFF\u00AD]/g, "")
+    .toLowerCase();
 
   const violations: InvariantViolation[] = [];
   for (const inv of _cache) {
