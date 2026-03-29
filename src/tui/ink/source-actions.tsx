@@ -1,7 +1,6 @@
-import { existsSync } from "fs";
 import { detectObsidianVaults } from "../../sources/adapters/obsidian.js";
 import { hasGDriveCredentials, listDriveFolders, removeGDriveCredentials, runGDriveOAuth } from "../../sources/adapters/gdrive.js";
-import { detectOneDriveFolder, hasOneDriveCredentials, removeOneDriveCredentials, runOneDriveOAuth } from "../../sources/adapters/onedrive.js";
+
 import { hasNotionApiKey, listNotionDatabases } from "../../sources/adapters/notion.js";
 import { listNotesFolders } from "../../sources/adapters/apple-notes.js";
 import { ensureEnvFile, readEnvMap, updateEnvValues } from "../env.js";
@@ -12,9 +11,10 @@ import { promptMenu, promptText } from "./prompts.js";
 export async function runInkSourceAction(action: string): Promise<void> {
   if (action === "sources-obsidian") await configureObsidian();
   else if (action === "sources-gdrive") await configureGDrive();
-  else if (action === "sources-onedrive") await configureOneDrive();
+
   else if (action === "sources-notion") await configureNotion();
   else if (action === "sources-apple-notes") await configureAppleNotes();
+  else if (action === "sources-web") await configureWeb();
 }
 
 async function configureObsidian(): Promise<void> {
@@ -217,120 +217,6 @@ async function configureGDrive(): Promise<void> {
     removeGDriveCredentials();
     updateEnvValues(root, { GDRIVE_ENABLED: "false" });
     await showNotice("Google Drive", "Google account disconnected.");
-  }
-}
-
-async function configureOneDrive(): Promise<void> {
-  const root = getRootDir();
-  ensureEnvFile(root);
-  const env = readEnvMap(root);
-  const currentEnabled = env.ONEDRIVE_ENABLED === "true";
-  const localPath = env.ONEDRIVE_LOCAL_PATH ?? "";
-  const detectedFolder = detectOneDriveFolder();
-  const clientId = env.ONEDRIVE_CLIENT_ID ?? "";
-  const clientSecret = env.ONEDRIVE_CLIENT_SECRET ?? "";
-  const cloudConnected = hasOneDriveCredentials();
-
-  const action = await promptMenu({
-    title: "Microsoft OneDrive",
-    message: localPath
-      ? `Local path: ${localPath} | ${currentEnabled ? "enabled" : "disabled"}`
-      : cloudConnected
-        ? "Cloud API connected."
-        : "Use a local synced folder or connect the cloud API.",
-    items: [
-      ...(detectedFolder ? [{ label: `Use local folder: ${detectedFolder}`, value: "local-auto" }] : []),
-      { label: "Set custom local folder", value: "local-custom" },
-      { label: "Connect via cloud API", value: "cloud" },
-      ...(currentEnabled ? [{ label: "Disable OneDrive", value: "disable" }] : []),
-      ...(cloudConnected ? [{ label: "Disconnect cloud API", value: "disconnect" }] : []),
-      { label: "Back", value: "__back__", color: t.dim },
-    ],
-  });
-
-  if (!action || action === "__back__") return;
-
-  if (action === "local-auto" && detectedFolder) {
-    updateEnvValues(root, {
-      ONEDRIVE_ENABLED: "true",
-      ONEDRIVE_LOCAL_PATH: detectedFolder,
-    });
-    appendWatchPath(root, detectedFolder, "onedrive");
-    await triggerSourcesReload();
-    await showNotice("OneDrive", "OneDrive enabled with the detected local folder.");
-    return;
-  }
-
-  if (action === "local-custom") {
-    const customPath = await promptText({
-      title: "OneDrive Folder",
-      message: "Path to your local OneDrive-synced folder.",
-      label: "Directory",
-      initial: detectedFolder ?? localPath,
-    });
-    if (!customPath) return;
-    if (!existsSync(customPath)) {
-      await showNotice("OneDrive", "That path was not found.");
-      return;
-    }
-    updateEnvValues(root, {
-      ONEDRIVE_ENABLED: "true",
-      ONEDRIVE_LOCAL_PATH: customPath,
-    });
-    appendWatchPath(root, customPath, "onedrive");
-    await triggerSourcesReload();
-    await showNotice("OneDrive", "OneDrive enabled with the custom local folder.");
-    return;
-  }
-
-  if (action === "cloud") {
-    let effectiveClientId = clientId;
-    let effectiveClientSecret = clientSecret;
-
-    if (!effectiveClientId || !effectiveClientSecret) {
-      effectiveClientId = await promptText({
-        title: "Azure App Client ID",
-        message: "Create an Azure app with redirect URI http://localhost:18802/oauth2callback.",
-        label: "Client ID",
-      }) ?? "";
-      if (!effectiveClientId) return;
-
-      effectiveClientSecret = await promptText({
-        title: "Azure App Client Secret",
-        message: "Store the secret locally for OneDrive API auth.",
-        label: "Client Secret",
-        mask: "*",
-      }) ?? "";
-      if (!effectiveClientSecret) return;
-
-      updateEnvValues(root, {
-        ONEDRIVE_CLIENT_ID: effectiveClientId,
-        ONEDRIVE_CLIENT_SECRET: effectiveClientSecret,
-      });
-    }
-
-    const success = await runOneDriveOAuth(effectiveClientId, effectiveClientSecret);
-    if (success) {
-      updateEnvValues(root, { ONEDRIVE_ENABLED: "true" });
-      await triggerSourcesReload();
-      await showNotice("OneDrive", "OneDrive cloud connection enabled.");
-    } else {
-      await showNotice("OneDrive", "OneDrive authorization failed or timed out.");
-    }
-    return;
-  }
-
-  if (action === "disable") {
-    updateEnvValues(root, { ONEDRIVE_ENABLED: "false" });
-    await triggerSourcesReload();
-    await showNotice("OneDrive", "OneDrive disabled.");
-    return;
-  }
-
-  if (action === "disconnect") {
-    removeOneDriveCredentials();
-    updateEnvValues(root, { ONEDRIVE_ENABLED: "false" });
-    await showNotice("OneDrive", "OneDrive cloud connection removed.");
   }
 }
 
@@ -654,6 +540,118 @@ async function promptAppleNotesFolder(): Promise<string | null> {
   });
   if (!collection) return null;
   return `${folderName}|${collection}`;
+}
+
+async function configureWeb(): Promise<void> {
+  const root = getRootDir();
+  ensureEnvFile(root);
+  const env = readEnvMap(root);
+  const currentUrls = parseRemoteEntries(env.WEB_URLS);
+  const currentInterval = env.WEB_POLL_INTERVAL ?? "3600";
+  const enabled = (env.WEB_ENABLED === "true") || currentUrls.length > 0;
+
+  const action = await promptMenu({
+    title: "Web URLs",
+    message: currentUrls.length > 0
+      ? `${currentUrls.length} URL(s) configured, poll every ${currentInterval}s.`
+      : "Monitor web pages for changes. Add URLs to start ingesting.",
+    items: [
+      { label: "Add URL", value: "add" },
+      ...(currentUrls.length > 0 ? [{ label: "Remove URL", value: "remove" }] : []),
+      ...(currentUrls.length > 0 ? [{ label: "Change poll interval", value: "interval" }] : []),
+      ...(currentUrls.length > 0 && enabled ? [{ label: "Disable ingestion", value: "disable" }] : []),
+      ...(currentUrls.length > 0 && !enabled ? [{ label: "Enable ingestion", value: "enable" }] : []),
+      { label: "Back", value: "__back__", color: t.dim },
+    ],
+  });
+
+  if (!action || action === "__back__") return;
+
+  if (action === "add") {
+    const url = await promptText({
+      title: "Web URL",
+      message: "Enter the full URL (must start with http:// or https://).",
+      label: "URL",
+    });
+    if (!url) return;
+
+    // Validate URL
+    try {
+      const parsed = new URL(url);
+      if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+        await showNotice("Web URLs", "Only http:// and https:// URLs are allowed.");
+        return;
+      }
+    } catch {
+      await showNotice("Web URLs", "Invalid URL format.");
+      return;
+    }
+
+    const defaultCollection = new URL(url).hostname.replace(/^www\./, "");
+    const collection = await promptText({
+      title: "Collection Name",
+      message: "Collection name for this web source.",
+      label: "Collection",
+      initial: `web-${slugify(defaultCollection)}`,
+    });
+    if (!collection) return;
+
+    const newEntry = `${url}|${collection}`;
+    updateEnvValues(root, {
+      WEB_URLS: [...currentUrls, newEntry].join(","),
+      WEB_ENABLED: "true",
+    });
+    await triggerSourcesReload();
+    await showNotice("Web URLs", "Web URL added.");
+    return;
+  }
+
+  if (action === "remove") {
+    const selected = await promptMenu({
+      title: "Remove Web URL",
+      items: [
+        ...currentUrls.map((entry) => ({ label: entry, value: entry })),
+        { label: "Cancel", value: "__back__", color: t.dim },
+      ],
+    });
+    if (!selected || selected === "__back__") return;
+
+    const remaining = currentUrls.filter((entry) => entry !== selected);
+    updateEnvValues(root, {
+      WEB_URLS: remaining.join(","),
+      ...(remaining.length === 0 ? { WEB_ENABLED: "false" } : {}),
+    });
+    await triggerSourcesReload();
+    await showNotice("Web URLs", "Web URL removed.");
+    return;
+  }
+
+  if (action === "interval") {
+    const interval = await promptText({
+      title: "Poll Interval",
+      message: "How often to check web URLs for changes, in seconds.",
+      label: "Seconds",
+      initial: currentInterval,
+    });
+    if (!interval) return;
+    updateEnvValues(root, { WEB_POLL_INTERVAL: interval });
+    await triggerSourcesReload();
+    await showNotice("Web URLs", `Poll interval set to ${interval}s.`);
+    return;
+  }
+
+  if (action === "enable") {
+    updateEnvValues(root, { WEB_ENABLED: "true" });
+    await triggerSourcesReload();
+    await showNotice("Web URLs", "Web URL ingestion enabled.");
+    return;
+  }
+
+  if (action === "disable") {
+    updateEnvValues(root, { WEB_ENABLED: "false" });
+    await triggerSourcesReload();
+    await showNotice("Web URLs", "Web URL ingestion disabled.");
+  }
 }
 
 function parseRemoteEntries(raw: string | undefined): string[] {

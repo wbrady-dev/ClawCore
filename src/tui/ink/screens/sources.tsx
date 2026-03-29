@@ -108,11 +108,12 @@ export function SourcesScreen({ onBack, onLegacy }: { onBack: () => void; onLega
   const menuItems: MenuItem[] = [
     { label: "Configure Obsidian", value: "obsidian", description: "Add or change Obsidian vault" },
     { label: "Configure Google Drive", value: "gdrive", description: "Add or change Drive folders" },
-    { label: "Configure OneDrive", value: "onedrive", description: "Local folder or cloud sync" },
+
     { label: "Configure Notion", value: "notion", description: "Add or change Notion databases" },
     ...(process.platform === "darwin"
       ? [{ label: "Configure Apple Notes", value: "apple-notes", description: "Add or change Notes folders" }]
       : []),
+    { label: "Configure Web URLs", value: "web", description: "Monitor web pages for changes" },
     { label: "Back", value: "__back__", color: t.dim },
   ];
 

@@ -14,7 +14,8 @@ import { ObsidianAdapter } from "./adapters/obsidian.js";
 import { GDriveAdapter } from "./adapters/gdrive.js";
 import { NotionAdapter } from "./adapters/notion.js";
 import { AppleNotesAdapter } from "./adapters/apple-notes.js";
-import { OneDriveAdapter } from "./adapters/onedrive.js";
+import { WebAdapter } from "./adapters/web.js";
+
 
 export interface SourceEntry {
   adapter: SourceAdapter;
@@ -86,32 +87,6 @@ function loadSourceConfigs(): Map<string, SourceConfig> {
     });
   }
 
-  // --- OneDrive adapter ---
-  const onedriveEnabled = (env.ONEDRIVE_ENABLED ?? "") === "true";
-  const onedriveLocalPath = env.ONEDRIVE_LOCAL_PATH ?? "";
-  const onedriveFolders = env.ONEDRIVE_FOLDERS ?? "";
-  if (onedriveEnabled) {
-    const collections: { path: string; collection: string }[] = [];
-    if (onedriveLocalPath) {
-      collections.push({ path: onedriveLocalPath, collection: "onedrive" });
-    }
-    if (onedriveFolders) {
-      for (const entry of onedriveFolders.split(",").map((e) => e.trim()).filter(Boolean)) {
-        const pipe = entry.lastIndexOf("|");
-        collections.push({
-          path: pipe > 0 ? entry.slice(0, pipe).trim() : entry.trim(),
-          collection: pipe > 0 ? entry.slice(pipe + 1).trim() : "onedrive",
-        });
-      }
-    }
-    configs.set("onedrive", {
-      enabled: onedriveEnabled,
-      syncInterval: parseInt(env.ONEDRIVE_SYNC_INTERVAL || "300", 10),
-      collections,
-      maxFileSize: parseInt(env.ONEDRIVE_MAX_FILE_SIZE || "52428800", 10),
-    });
-  }
-
   // --- Notion adapter ---
   const notionEnabled = (env.NOTION_ENABLED ?? "") === "true";
   const notionDbs = env.NOTION_DATABASES ?? "";
@@ -156,6 +131,31 @@ function loadSourceConfigs(): Map<string, SourceConfig> {
     });
   }
 
+  // --- Web URL adapter ---
+  const webEnabled = (env.WEB_ENABLED ?? "") === "true" || !!(env.WEB_URLS ?? "");
+  const webUrls = env.WEB_URLS ?? "";
+  if (webUrls) {
+    const collections = webUrls
+      .split(",")
+      .map((e) => e.trim())
+      .filter(Boolean)
+      .map((entry) => {
+        const pipe = entry.lastIndexOf("|");
+        const url = pipe > 0 ? entry.slice(0, pipe).trim() : entry.trim();
+        let hostname = "web";
+        try { hostname = new URL(url).hostname.replace(/^www\./, ""); } catch {}
+        return {
+          path: url,
+          collection: pipe > 0 ? entry.slice(pipe + 1).trim() : hostname,
+        };
+      });
+    configs.set("web", {
+      enabled: webEnabled,
+      syncInterval: parseInt(env.WEB_POLL_INTERVAL || "3600", 10),
+      collections,
+    });
+  }
+
   return configs;
 }
 
@@ -167,9 +167,10 @@ const adapters: SourceAdapter[] = [
   new LocalAdapter(),
   new ObsidianAdapter(),
   new GDriveAdapter(),
-  new OneDriveAdapter(),
+
   new NotionAdapter(),
   new AppleNotesAdapter(),
+  new WebAdapter(),
 ];
 
 /**

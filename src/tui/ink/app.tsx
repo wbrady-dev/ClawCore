@@ -588,11 +588,12 @@ function HomeScreen({ onAction }: { onAction: (action: string) => void }) {
     const isEnabled = (key: string) => ec.includes(`${key}=true`) || ec.includes(`${key}="true"`);
     if (isEnabled("OBSIDIAN_ENABLED")) sourceIcons.push(`${t.ok("●")} Obsidian`);
     if (isEnabled("GDRIVE_ENABLED")) sourceIcons.push(`${t.ok("●")} Google Drive`);
-    if (isEnabled("ONEDRIVE_ENABLED")) sourceIcons.push(`${t.ok("●")} OneDrive`);
+
     if (isEnabled("NOTION_ENABLED")) sourceIcons.push(`${t.ok("●")} Notion`);
     if (isEnabled("APPLE_NOTES_ENABLED")) sourceIcons.push(`${t.ok("●")} Apple Notes`);
     // Helper to extract env value, stripping optional quotes: KEY="value" or KEY=value
     const envVal = (key: string): string => ec.match(new RegExp(`${key}="?([^"\\n]+)"?`))?.[1] ?? "";
+    if (isEnabled("WEB_ENABLED") || envVal("WEB_URLS")) sourceIcons.push(`${t.ok("●")} Web URLs`);
     store.set("parsedEnv", {
       deepEnabled: envVal("THREADCLAW_MEMORY_RELATIONS_DEEP_EXTRACTION_ENABLED") === "true",
       relationsEnabled: envVal("THREADCLAW_RELATIONS_ENABLED") === "true" || envVal("THREADCLAW_MEMORY_RELATIONS_ENABLED") === "true",
