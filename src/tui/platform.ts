@@ -303,7 +303,24 @@ function ensureWindowsTasks(root: string): { success: boolean; error?: string } 
     writeFileSync(path, Buffer.concat([bom, body]));
   };
 
-  // Wrap both servers in cmd /c start /b to suppress console windows on Windows
+  // Generate VBScript wrappers that launch processes completely hidden.
+  // Task Scheduler + cmd /c start /b still creates visible windows on modern
+  // Windows Terminal. WScript.Shell.Run with vbHide (0) is the only reliable
+  // way to suppress console windows for node.exe/python.exe.
+  const modelsVbs = resolve(binDir, "run-models.vbs");
+  writeFileSync(modelsVbs,
+    `Set ws = CreateObject("WScript.Shell")\r\n` +
+    `ws.Run """${pythonCmd.replace(/"/g, '""')}"" ""${modelsScript.replace(/"/g, '""')}""", 0, False\r\n`,
+  );
+
+  const ragVbs = resolve(binDir, "run-rag.vbs");
+  const ragArgsStr = entryArgs.map(a => `""${a.replace(/"/g, '""')}""`).join(" ");
+  writeFileSync(ragVbs,
+    `Set ws = CreateObject("WScript.Shell")\r\n` +
+    `ws.CurrentDirectory = "${root.replace(/"/g, '""')}"\r\n` +
+    `ws.Run """${nodeCmd.replace(/"/g, '""')}"" ${ragArgsStr}", 0, False\r\n`,
+  );
+
   const modelsXml = resolve(binDir, `${TASK_MODELS}.xml`);
   writeXml(modelsXml, `<?xml version="1.0" encoding="UTF-16"?>
 <Task version="1.2" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
@@ -321,15 +338,14 @@ function ensureWindowsTasks(root: string): { success: boolean; error?: string } 
   </Settings>
   <Actions>
     <Exec>
-      <Command>cmd.exe</Command>
-      <Arguments>/c start /b "" "${escXml(pythonCmd)}" "${escXml(modelsScript)}"</Arguments>
+      <Command>wscript.exe</Command>
+      <Arguments>"${escXml(modelsVbs)}"</Arguments>
       <WorkingDirectory>${escXml(dirname(modelsScript))}</WorkingDirectory>
     </Exec>
   </Actions>
 </Task>
 `);
 
-  // Wrap node in cmd /c to suppress console window on Task Scheduler launch
   const ragXml = resolve(binDir, `${TASK_RAG}.xml`);
   const ragArgs = entryArgs.map(a => `"${escXml(a)}"`).join(" ");
   writeXml(ragXml, `<?xml version="1.0" encoding="UTF-16"?>
@@ -348,8 +364,8 @@ function ensureWindowsTasks(root: string): { success: boolean; error?: string } 
   </Settings>
   <Actions>
     <Exec>
-      <Command>cmd.exe</Command>
-      <Arguments>/c start /b "" "${escXml(nodeCmd)}" ${ragArgs}</Arguments>
+      <Command>wscript.exe</Command>
+      <Arguments>"${escXml(ragVbs)}"</Arguments>
       <WorkingDirectory>${escXml(root)}</WorkingDirectory>
     </Exec>
   </Actions>
