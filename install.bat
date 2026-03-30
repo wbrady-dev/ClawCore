@@ -100,7 +100,8 @@ if "%PYTHON_MINOR%"=="" (
     pause
     exit /b 1
 )
-if "%PYTHON_MINOR%" LSS "10" (
+set /a "PYTHON_MINOR_NUM=%PYTHON_MINOR%"
+if %PYTHON_MINOR_NUM% LSS 10 (
     echo [ERROR] Python 3.%PYTHON_MINOR% detected. ThreadClaw requires Python 3.10+.
     pause
     exit /b 1

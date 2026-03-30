@@ -102,7 +102,7 @@ if exist "%ROOT%\memory-engine\package.json" (
     echo [update] Updating memory-engine dependencies...
     pushd "%ROOT%\memory-engine"
     call npm install --no-audit --no-fund >nul 2>&1
-    if %errorlevel% neq 0 (
+    if !errorlevel! neq 0 (
         echo [WARN] memory-engine npm install failed.
     )
     popd

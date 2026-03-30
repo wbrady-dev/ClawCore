@@ -35,9 +35,9 @@ export const updateCommand = new Command("update")
       // Note: on macOS with old system bash (3.x), the update.sh script should use
       // #!/usr/bin/env bash to pick up a newer bash from Homebrew if available.
       if (isWindows) {
-        execFileSync("cmd", ["/c", script], { stdio: "inherit", cwd: root, timeout: 300000 });
+        execFileSync("cmd", ["/c", script], { stdio: "inherit", cwd: root, timeout: 900000 });
       } else {
-        execFileSync("bash", [script], { stdio: "inherit", cwd: root, timeout: 300000 });
+        execFileSync("bash", [script], { stdio: "inherit", cwd: root, timeout: 900000 });
       }
     } catch (error) {
       console.error("Update failed: " + (error instanceof Error ? error.message : String(error)));

@@ -68,6 +68,10 @@ if exist "!THREADCLAW_DB!" (
     REM NOTE: VACUUM INTO requires single-quoted path per SQLite syntax.
     REM This means paths with single quotes will fail — not typical on Windows.
     sqlite3 "!THREADCLAW_DB!" "VACUUM INTO '%BACKUP_DIR%\threadclaw.db'"
+    if !errorlevel! neq 0 (
+        echo   [ERROR] threadclaw.db backup failed
+        exit /b 1
+    )
     echo   Done
 ) else (
     echo   threadclaw.db not found
@@ -77,6 +81,10 @@ REM Backup Memory DB
 if exist "!MEMORY_DB!" (
     echo   Backing up memory.db...
     sqlite3 "!MEMORY_DB!" "VACUUM INTO '%BACKUP_DIR%\memory.db'"
+    if !errorlevel! neq 0 (
+        echo   [ERROR] memory.db backup failed
+        exit /b 1
+    )
     echo   Done
 ) else (
     echo   memory.db not found
@@ -86,6 +94,10 @@ REM Backup Graph DB
 if exist "!GRAPH_DB!" (
     echo   Backing up graph.db...
     sqlite3 "!GRAPH_DB!" "VACUUM INTO '%BACKUP_DIR%\graph.db'"
+    if !errorlevel! neq 0 (
+        echo   [ERROR] graph.db backup failed
+        exit /b 1
+    )
     echo   Done
 ) else (
     echo   graph.db not found
