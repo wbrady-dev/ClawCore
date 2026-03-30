@@ -4,7 +4,13 @@
 
 ```bash
 git clone https://github.com/wbrady-dev/ThreadClaw.git
-cd threadclaw && npm install
+cd threadclaw
+
+# Windows:
+install.bat
+
+# macOS / Linux:
+./install.sh
 ```
 
 ## 2. Start the Service

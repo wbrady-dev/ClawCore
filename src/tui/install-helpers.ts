@@ -621,12 +621,32 @@ export async function performInstallPlan(plan: InstallPlan): Promise<void> {
       console.error(t.warn(`  Database init failed (non-fatal): ${String(ragErr).slice(0, 200)}`));
     }
 
+    // Read actual schema versions from migration tracking tables
+    let schemaVersion = 0;
+    let evidenceSchemaVersion = 0;
+    try {
+      // @ts-expect-error — paths resolve at runtime from dist/ bundle
+      const { getDb: getDbForVersion, closeDb: closeDbForVersion } = await import("../../storage/sqlite.js");
+      const versionDb = getDbForVersion(ragDbPath);
+      try {
+        const row = versionDb.prepare("SELECT MAX(version) AS v FROM _migrations").get() as { v: number } | undefined;
+        if (row?.v) schemaVersion = row.v;
+      } catch { /* table may not exist */ }
+      try {
+        const row = versionDb.prepare("SELECT MAX(version) AS v FROM _evidence_migrations").get() as { v: number } | undefined;
+        if (row?.v) evidenceSchemaVersion = row.v;
+      } catch { /* table may not exist */ }
+      closeDbForVersion();
+    } catch { /* non-fatal */ }
+
     // Write initial manifest so upgrade detection works on next launch
     const manifest = readManifest();
     if (!manifest.appVersion) {
       writeManifest({
         ...manifest,
         appVersion: getAppVersion(),
+        schemaVersion,
+        evidenceSchemaVersion,
         lastUpgradeAt: new Date().toISOString(),
         features: { ...manifest.features, managedIntegration: true, consolidatedData: true, noAutoMigrate: true },
       });

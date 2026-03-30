@@ -19,6 +19,7 @@ import {
 import { checkOpenClawCompat, checkNodeCompat, getOpenClawVersion } from "../../compatibility.js";
 import { checkOpenClawIntegration } from "../../integration.js";
 import { sha256 } from "../../version.js";
+import { readEnvMap } from "../../tui/env.js";
 
 const ok = (msg: string) => console.log(`  ${t.ok("✓")} ${msg}`);
 const warn = (msg: string) => console.log(`  ${t.warn("⚠")} ${msg}`);
@@ -162,6 +163,8 @@ export const doctorCommand = new Command("doctor")
 
     // ── Services ──
     console.log(t.dim("── Services ──"));
+    let modelServerReachable = false;
+    let ragApiReachable = false;
     for (const [name, port] of [["Model server", getModelPort()], ["RAG API", getApiPort()]] as const) {
       try {
         const res = await fetch(`http://127.0.0.1:${port}/health`, {
@@ -169,11 +172,85 @@ export const doctorCommand = new Command("doctor")
         });
         if (res.ok) {
           pass(`${name} (port ${port}): running`);
+          if (name === "Model server") modelServerReachable = true;
+          if (name === "RAG API") ragApiReachable = true;
         } else {
           warning(`${name} (port ${port}): responded but unhealthy (status ${res.status})`);
         }
       } catch {
         warning(`${name} (port ${port}): not running`);
+      }
+    }
+
+    // (a) Individual model health (embed + rerank readiness)
+    if (modelServerReachable) {
+      try {
+        const res = await fetch(`http://127.0.0.1:${getModelPort()}/health`, {
+          signal: AbortSignal.timeout(3000),
+        });
+        if (res.ok) {
+          const body = await res.json() as { models?: { embed?: { ready?: boolean }; rerank?: { ready?: boolean } } };
+          const embed = body?.models?.embed;
+          const rerank = body?.models?.rerank;
+          if (embed !== undefined) {
+            embed.ready ? pass("Embed model: ready") : fail("Embed model: not ready");
+          }
+          if (rerank !== undefined) {
+            rerank.ready ? pass("Rerank model: ready") : fail("Rerank model: not ready");
+          }
+        }
+      } catch {
+        // Model health detail unavailable — already reported above
+      }
+    }
+
+    // (b) Embedding dimension consistency check
+    const ragDbPath = resolve(THREADCLAW_DATA_DIR, "threadclaw.db");
+    if (existsSync(ragDbPath)) {
+      try {
+        const { DatabaseSync } = await import(/* @vite-ignore */ "node:" + "sqlite");
+        const conn = new DatabaseSync(ragDbPath);
+        const vecSchema = conn.prepare(
+          "SELECT sql FROM sqlite_master WHERE type='table' AND name='chunk_vectors'"
+        ).get() as { sql: string } | undefined;
+        conn.close();
+        if (vecSchema?.sql) {
+          const dimMatch = vecSchema.sql.match(/float\[(\d+)\]/);
+          if (dimMatch) {
+            const dbDim = parseInt(dimMatch[1], 10);
+            const envMap = readEnvMap(rootDir);
+            const configuredDim = envMap.EMBEDDING_DIMENSIONS ? parseInt(envMap.EMBEDDING_DIMENSIONS, 10) : 1024;
+            if (dbDim === configuredDim) {
+              pass(`Embedding dimensions: ${dbDim} (matches config)`);
+            } else {
+              fail(`Embedding dimension mismatch: DB has ${dbDim}, .env has ${configuredDim}. Change EMBEDDING_DIMENSIONS or re-ingest.`);
+            }
+          }
+        }
+      } catch {
+        // vec0 or sqlite not available — skip
+      }
+    }
+
+    // (c) Source adapter error check
+    if (ragApiReachable) {
+      try {
+        const res = await fetch(`http://127.0.0.1:${getApiPort()}/sources`, {
+          signal: AbortSignal.timeout(3000),
+        });
+        if (res.ok) {
+          const sources = await res.json() as Array<{ name?: string; status?: { state?: string; error?: string } }>;
+          const errorSources = (sources ?? []).filter((s) => s?.status?.state === "error");
+          if (errorSources.length > 0) {
+            for (const s of errorSources) {
+              fail(`Source adapter "${s.name ?? "unknown"}": error — ${s.status?.error ?? "unknown"}`);
+            }
+          } else if (Array.isArray(sources) && sources.length > 0) {
+            pass(`Source adapters: ${sources.length} active, none in error`);
+          }
+        }
+      } catch {
+        // Sources endpoint unavailable — skip
       }
     }
 

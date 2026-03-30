@@ -294,7 +294,16 @@ export async function startServer() {
   // Bind to localhost only — ThreadClaw serves local processes (OpenClaw, TUI)
   // Set THREADCLAW_HOST=0.0.0.0 in .env to expose to the network if needed
   warnIfNoApiKey();
-  await server.listen({ port: config.port, host: config.host });
+  try {
+    await server.listen({ port: config.port, host: config.host });
+  } catch (listenErr: any) {
+    if (listenErr?.code === "EADDRINUSE") {
+      logger.error(`Port ${config.port} is already in use. Stop the other process or set THREADCLAW_PORT in .env.`);
+      closeDb();
+      process.exit(1);
+    }
+    throw listenErr;
+  }
   logger.info({ port: config.port }, "ThreadClaw HTTP server running");
 
   return server;
