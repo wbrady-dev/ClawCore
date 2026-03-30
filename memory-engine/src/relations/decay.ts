@@ -415,6 +415,149 @@ export function decayAttempts(db: GraphDb, scopeId: number, maxAgeDays = 30, max
 }
 
 /**
+ * Decay decisions with low confidence that haven't been observed recently.
+ * Mark as 'stale' if confidence < 0.5 AND last_observed_at older than staleDays.
+ */
+export function decayDecisions(db: GraphDb, scopeId: number, staleDays = 120): number {
+  const staled = db.prepare(`
+    UPDATE memory_objects
+    SET status = 'stale',
+        updated_at = strftime('%Y-%m-%dT%H:%M:%f', 'now')
+    WHERE scope_id = ?
+      AND kind = 'decision'
+      AND branch_id = 0
+      AND status = 'active'
+      AND confidence < 0.5
+      AND COALESCE(last_observed_at, updated_at) < datetime('now', '-' || ? || ' days')
+  `).run(scopeId, staleDays);
+
+  if (Number(staled.changes) > 0) {
+    logEvidence(db, {
+      scopeId,
+      objectType: "decision",
+      objectId: 0,
+      eventType: "decay",
+      payload: { markedStale: Number(staled.changes), staleDays },
+    });
+  }
+
+  return Number(staled.changes);
+}
+
+/**
+ * Decay resolved conflicts — mark as 'stale' if status is not 'active'
+ * and not 'needs_confirmation', and updated_at older than staleDays.
+ */
+export function decayConflicts(db: GraphDb, scopeId: number, staleDays = 30): number {
+  const staled = db.prepare(`
+    UPDATE memory_objects
+    SET status = 'stale',
+        updated_at = strftime('%Y-%m-%dT%H:%M:%f', 'now')
+    WHERE scope_id = ?
+      AND kind = 'conflict'
+      AND branch_id = 0
+      AND status NOT IN ('active', 'needs_confirmation', 'stale')
+      AND COALESCE(updated_at, created_at) < datetime('now', '-' || ? || ' days')
+  `).run(scopeId, staleDays);
+
+  if (Number(staled.changes) > 0) {
+    logEvidence(db, {
+      scopeId,
+      objectType: "conflict",
+      objectId: 0,
+      eventType: "decay",
+      payload: { markedStale: Number(staled.changes), staleDays },
+    });
+  }
+
+  return Number(staled.changes);
+}
+
+/**
+ * Decay capabilities — mark as 'stale' if status='unavailable' AND
+ * last_observed_at older than staleDays.
+ */
+export function decayCapabilities(db: GraphDb, scopeId: number, staleDays = 90): number {
+  const staled = db.prepare(`
+    UPDATE memory_objects
+    SET status = 'stale',
+        updated_at = strftime('%Y-%m-%dT%H:%M:%f', 'now')
+    WHERE scope_id = ?
+      AND kind = 'capability'
+      AND branch_id = 0
+      AND status = 'unavailable'
+      AND COALESCE(last_observed_at, updated_at) < datetime('now', '-' || ? || ' days')
+  `).run(scopeId, staleDays);
+
+  if (Number(staled.changes) > 0) {
+    logEvidence(db, {
+      scopeId,
+      objectType: "capability",
+      objectId: 0,
+      eventType: "decay",
+      payload: { markedStale: Number(staled.changes), staleDays },
+    });
+  }
+
+  return Number(staled.changes);
+}
+
+/**
+ * Hard-delete state_deltas older than maxAgeDays.
+ * Deltas are high-volume ephemeral records — no archival, just purge.
+ */
+export function decayDeltas(db: GraphDb, scopeId: number, maxAgeDays = 14): number {
+  const deleted = db.prepare(`
+    DELETE FROM memory_objects
+    WHERE scope_id = ?
+      AND kind = 'state_delta'
+      AND branch_id = 0
+      AND created_at < datetime('now', '-' || ? || ' days')
+  `).run(scopeId, maxAgeDays);
+
+  if (Number(deleted.changes) > 0) {
+    logEvidence(db, {
+      scopeId,
+      objectType: "state_delta",
+      objectId: 0,
+      eventType: "decay",
+      payload: { deleted: Number(deleted.changes), maxAgeDays },
+    });
+  }
+
+  return Number(deleted.changes);
+}
+
+/**
+ * Decay invariants — very conservative. Mark as 'stale' only if
+ * last_observed_at older than staleDays (default 180). Invariants should persist long.
+ */
+export function decayInvariants(db: GraphDb, scopeId: number, staleDays = 180): number {
+  const staled = db.prepare(`
+    UPDATE memory_objects
+    SET status = 'stale',
+        updated_at = strftime('%Y-%m-%dT%H:%M:%f', 'now')
+    WHERE scope_id = ?
+      AND kind = 'invariant'
+      AND branch_id = 0
+      AND status = 'active'
+      AND COALESCE(last_observed_at, updated_at) < datetime('now', '-' || ? || ' days')
+  `).run(scopeId, staleDays);
+
+  if (Number(staled.changes) > 0) {
+    logEvidence(db, {
+      scopeId,
+      objectType: "invariant",
+      objectId: 0,
+      eventType: "decay",
+      payload: { markedStale: Number(staled.changes), staleDays },
+    });
+  }
+
+  return Number(staled.changes);
+}
+
+/**
  * Apply all decay rules for a scope. Call lazily before queries.
  */
 export function applyDecay(
@@ -432,6 +575,11 @@ export function applyDecay(
     decayClaims(db, scopeId);
     decayEntities(db, scopeId);
     decayAttempts(db, scopeId);
+    decayDecisions(db, scopeId);
+    decayConflicts(db, scopeId);
+    decayCapabilities(db, scopeId);
+    decayDeltas(db, scopeId);
+    decayInvariants(db, scopeId);
     deduplicateActiveObjects(db, scopeId);
   } catch {
     // Non-fatal: decay failure should not block queries

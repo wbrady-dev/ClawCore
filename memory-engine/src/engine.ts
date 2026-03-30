@@ -1301,6 +1301,23 @@ export class LcmContextEngine implements ContextEngine {
             runDecay(_decayDb, _scopeId);
           } catch {}
         })();
+
+        // Abandoned conversation cleanup — throttled to once per 24 hours
+        const CLEANUP_INTERVAL_MS = 24 * 60 * 60 * 1000;
+        if (Date.now() - this._lastConversationCleanup >= CLEANUP_INTERVAL_MS) {
+          this._lastConversationCleanup = Date.now();
+          try {
+            const deleted = this.conversationStore.cleanupAbandonedConversations(90);
+            if (deleted > 0) {
+              console.log(`[cc-mem] Cleaned up ${deleted} abandoned conversation(s)`);
+            }
+          } catch (err) {
+            console.error(
+              `[cc-mem] Abandoned conversation cleanup failed:`,
+              err instanceof Error ? err.message : String(err),
+            );
+          }
+        }
       }, 5 * 60 * 1000);
       if (this._decayTimer.unref) this._decayTimer.unref(); // don't keep process alive
     }
@@ -1317,6 +1334,8 @@ export class LcmContextEngine implements ContextEngine {
   }
 
   private _decayTimer?: ReturnType<typeof setInterval>;
+  /** Timestamp of last abandoned-conversation cleanup (throttled to once per 24h) */
+  private _lastConversationCleanup = 0;
 
   private async ingestSingle(params: {
     sessionId: string;

@@ -14,6 +14,21 @@ import { toClientError } from "../utils/errors.js";
 const DEFAULT_BATCH_LIMIT = 500;
 const COLLECTION_RE = /^[\w\s\-_.]{1,100}$/;
 
+/** Per-document timeout (60s) and total operation timeout (10 minutes) */
+const PER_DOC_TIMEOUT_MS = 60_000;
+const TOTAL_TIMEOUT_MS = 10 * 60 * 1000;
+
+/** Race a promise against a timeout. Rejects with a descriptive error on timeout. */
+function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error(`Timeout after ${ms}ms: ${label}`)), ms);
+    promise.then(
+      (v) => { clearTimeout(timer); resolve(v); },
+      (e) => { clearTimeout(timer); reject(e); },
+    );
+  });
+}
+
 /**
  * Re-indexing routes.
  * Re-ingest documents from their original source paths with current settings.
@@ -94,18 +109,33 @@ export function registerReindexRoutes(server: FastifyInstance) {
     let reindexed = 0;
     let skipped = 0;
     let failed = 0;
+    let processed = 0;
+    let timedOut = false;
 
     for (const doc of batch) {
+      // Check total operation timeout
+      if (Date.now() - start >= TOTAL_TIMEOUT_MS) {
+        timedOut = true;
+        logger.warn({ processed, total: batch.length }, "Reindex hit total timeout, returning partial results");
+        break;
+      }
+
+      processed++;
+
       if (!doc.source_path || !existsSync(doc.source_path)) {
         skipped++;
         continue;
       }
 
       try {
-        await ingestFile(doc.source_path, {
-          collection: doc.collection_name,
-          force: true, // force re-ingest even if hash matches
-        });
+        await withTimeout(
+          ingestFile(doc.source_path, {
+            collection: doc.collection_name,
+            force: true, // force re-ingest even if hash matches
+          }),
+          PER_DOC_TIMEOUT_MS,
+          basename(doc.source_path),
+        );
         reindexed++;
       } catch (err) {
         logger.error({ path: doc.source_path, error: String(err) }, "Reindex failed for document");
@@ -114,16 +144,17 @@ export function registerReindexRoutes(server: FastifyInstance) {
     }
 
     // Clear query cache since results may have changed
-    clearCache();
+    if (reindexed > 0) clearCache();
 
     return {
       reindexed,
       skipped,
       failed,
       total: totalDocs,
-      processed: batch.length,
-      hasMore,
+      processed,
+      hasMore: hasMore || timedOut,
       elapsed_ms: Date.now() - start,
+      ...(timedOut ? { warning: "Total operation timeout reached; results are partial" } : {}),
     };
   });
 
@@ -174,8 +205,19 @@ export function registerReindexRoutes(server: FastifyInstance) {
     let upToDate = 0;
     let skipped = 0;
     let failed = 0;
+    let processed = 0;
+    let timedOut = false;
 
     for (const doc of batch) {
+      // Check total operation timeout
+      if (Date.now() - start >= TOTAL_TIMEOUT_MS) {
+        timedOut = true;
+        logger.warn({ processed, total: batch.length }, "Stale reindex hit total timeout, returning partial results");
+        break;
+      }
+
+      processed++;
+
       if (!doc.source_path || !existsSync(doc.source_path)) {
         skipped++;
         continue;
@@ -194,10 +236,14 @@ export function registerReindexRoutes(server: FastifyInstance) {
           }
         }
 
-        await ingestFile(doc.source_path, {
-          collection: doc.collection_name,
-          force: true,
-        });
+        await withTimeout(
+          ingestFile(doc.source_path, {
+            collection: doc.collection_name,
+            force: true,
+          }),
+          PER_DOC_TIMEOUT_MS,
+          basename(doc.source_path),
+        );
         reindexed++;
       } catch (err) {
         logger.error({ path: doc.source_path, error: String(err) }, "Stale reindex failed");
@@ -213,9 +259,10 @@ export function registerReindexRoutes(server: FastifyInstance) {
       skipped,
       failed,
       total: totalDocs,
-      processed: batch.length,
-      hasMore,
+      processed,
+      hasMore: hasMore || timedOut,
       elapsed_ms: Date.now() - start,
+      ...(timedOut ? { warning: "Total operation timeout reached; results are partial" } : {}),
     };
   });
 }

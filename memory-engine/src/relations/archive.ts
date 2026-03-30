@@ -143,6 +143,12 @@ export interface ArchiveResult {
   attemptsCandidates: number;
   proceduresArchived: number;
   proceduresCandidates: number;
+  entitiesArchived: number;
+  entitiesCandidates: number;
+  conflictsArchived: number;
+  conflictsCandidates: number;
+  capabilitiesArchived: number;
+  capabilitiesCandidates: number;
   errors: string[];
   durationMs: number;
 }
@@ -365,6 +371,10 @@ export function runArchive(
     eventBatchSize?: number;
     attemptStaleDays?: number;
     procedureStaleDays?: number;
+    entityStaleDays?: number;
+    entityConfidenceThreshold?: number;
+    conflictStaleDays?: number;
+    capabilityStaleDays?: number;
   },
 ): ArchiveResult {
   if (_archiveRunning) {
@@ -376,6 +386,9 @@ export function runArchive(
       relationsArchived: 0, relationsCandidates: 0,
       attemptsArchived: 0, attemptsCandidates: 0,
       proceduresArchived: 0, proceduresCandidates: 0,
+      entitiesArchived: 0, entitiesCandidates: 0,
+      conflictsArchived: 0, conflictsCandidates: 0,
+      capabilitiesArchived: 0, capabilitiesCandidates: 0,
       errors: ["skipped: concurrent archive already running"],
       durationMs: 0,
     };
@@ -400,6 +413,10 @@ function _runArchiveInner(
     eventBatchSize?: number;
     attemptStaleDays?: number;
     procedureStaleDays?: number;
+    entityStaleDays?: number;
+    entityConfidenceThreshold?: number;
+    conflictStaleDays?: number;
+    capabilityStaleDays?: number;
   },
 ): ArchiveResult {
   const start = Date.now();
@@ -639,8 +656,149 @@ function _runArchiveInner(
     }
   } catch (e: any) { errors.push(`procedures: ${e.message}`); }
 
+  // Archive stale entities with low confidence older than 90 days
+  let entitiesResult = { archived: 0, candidates: 0 };
+  try {
+    entitiesResult = archiveStaleObjects(hotDb, archiveDb, runId, "entity",
+      opts?.entityConfidenceThreshold ?? 0.1, opts?.entityStaleDays ?? 90);
+  } catch (e: any) { errors.push(`entities: ${e.message}`); }
+
+  // Archive stale conflicts older than 30 days
+  let conflictsResult = { archived: 0, candidates: 0 };
+  try {
+    const conflictDays = opts?.conflictStaleDays ?? 30;
+    const cutoff = new Date(Date.now() - conflictDays * 86_400_000).toISOString();
+    const old = hotDb.prepare(`
+      SELECT * FROM memory_objects
+      WHERE kind = 'conflict' AND status = 'stale' AND updated_at < ?
+    `).all(cutoff) as any[];
+
+    if (old.length > 0) {
+      const insert = archiveDb.prepare(`
+        INSERT OR IGNORE INTO archived_memory_objects
+          (id, composite_id, kind, canonical_key, content, structured_json,
+           scope_id, branch_id, status, confidence, trust_score,
+           influence_weight, superseded_by, extraction_method, provisional,
+           source_kind, source_id, source_detail, source_authority,
+           first_observed_at, last_observed_at, observed_at,
+           original_created_at, original_updated_at,
+           archive_reason, archive_run_id)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `);
+
+      archiveDb.exec("BEGIN");
+      try {
+        for (const row of old) {
+          insert.run(
+            row.id, row.composite_id, row.kind, row.canonical_key,
+            row.content, row.structured_json,
+            row.scope_id, row.branch_id, row.status, row.confidence,
+            row.trust_score, row.influence_weight, row.superseded_by,
+            row.extraction_method ?? null, row.provisional ?? 0,
+            row.source_kind, row.source_id, row.source_detail, row.source_authority,
+            row.first_observed_at, row.last_observed_at, row.observed_at,
+            row.created_at, row.updated_at,
+            `conflict:stale:${conflictDays}d`, runId,
+          );
+        }
+        archiveDb.exec("COMMIT");
+      } catch (err) {
+        archiveDb.exec("ROLLBACK");
+        throw err;
+      }
+
+      const conflictIds = old.map((r: any) => r.composite_id).filter(Boolean);
+      hotDb.exec("BEGIN IMMEDIATE");
+      try {
+        const delStmt = hotDb.prepare("DELETE FROM memory_objects WHERE id = ?");
+        for (const row of old) {
+          delStmt.run(row.id);
+        }
+        if (conflictIds.length > 0) {
+          const ph = conflictIds.map(() => "?").join(",");
+          try {
+            hotDb.prepare(`DELETE FROM provenance_links WHERE subject_id IN (${ph}) OR object_id IN (${ph})`).run(...conflictIds, ...conflictIds);
+          } catch { /* non-fatal */ }
+        }
+        hotDb.exec("COMMIT");
+      } catch (err) {
+        hotDb.exec("ROLLBACK");
+        throw err;
+      }
+
+      conflictsResult = { archived: old.length, candidates: old.length };
+    }
+  } catch (e: any) { errors.push(`conflicts: ${e.message}`); }
+
+  // Archive stale capabilities older than 90 days
+  let capabilitiesResult = { archived: 0, candidates: 0 };
+  try {
+    const capDays = opts?.capabilityStaleDays ?? 90;
+    const cutoff = new Date(Date.now() - capDays * 86_400_000).toISOString();
+    const old = hotDb.prepare(`
+      SELECT * FROM memory_objects
+      WHERE kind = 'capability' AND status = 'stale' AND updated_at < ?
+    `).all(cutoff) as any[];
+
+    if (old.length > 0) {
+      const insert = archiveDb.prepare(`
+        INSERT OR IGNORE INTO archived_memory_objects
+          (id, composite_id, kind, canonical_key, content, structured_json,
+           scope_id, branch_id, status, confidence, trust_score,
+           influence_weight, superseded_by, extraction_method, provisional,
+           source_kind, source_id, source_detail, source_authority,
+           first_observed_at, last_observed_at, observed_at,
+           original_created_at, original_updated_at,
+           archive_reason, archive_run_id)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `);
+
+      archiveDb.exec("BEGIN");
+      try {
+        for (const row of old) {
+          insert.run(
+            row.id, row.composite_id, row.kind, row.canonical_key,
+            row.content, row.structured_json,
+            row.scope_id, row.branch_id, row.status, row.confidence,
+            row.trust_score, row.influence_weight, row.superseded_by,
+            row.extraction_method ?? null, row.provisional ?? 0,
+            row.source_kind, row.source_id, row.source_detail, row.source_authority,
+            row.first_observed_at, row.last_observed_at, row.observed_at,
+            row.created_at, row.updated_at,
+            `capability:stale:${capDays}d`, runId,
+          );
+        }
+        archiveDb.exec("COMMIT");
+      } catch (err) {
+        archiveDb.exec("ROLLBACK");
+        throw err;
+      }
+
+      const capIds = old.map((r: any) => r.composite_id).filter(Boolean);
+      hotDb.exec("BEGIN IMMEDIATE");
+      try {
+        const delStmt = hotDb.prepare("DELETE FROM memory_objects WHERE id = ?");
+        for (const row of old) {
+          delStmt.run(row.id);
+        }
+        if (capIds.length > 0) {
+          const ph = capIds.map(() => "?").join(",");
+          try {
+            hotDb.prepare(`DELETE FROM provenance_links WHERE subject_id IN (${ph}) OR object_id IN (${ph})`).run(...capIds, ...capIds);
+          } catch { /* non-fatal */ }
+        }
+        hotDb.exec("COMMIT");
+      } catch (err) {
+        hotDb.exec("ROLLBACK");
+        throw err;
+      }
+
+      capabilitiesResult = { archived: old.length, candidates: old.length };
+    }
+  } catch (e: any) { errors.push(`capabilities: ${e.message}`); }
+
   const durationMs = Date.now() - start;
-  const totalArchived = claimsResult.archived + decisionsResult.archived + eventsResult.archived + loopsResult.archived + relationsResult.archived + attemptsResult.archived + proceduresResult.archived;
+  const totalArchived = claimsResult.archived + decisionsResult.archived + eventsResult.archived + loopsResult.archived + relationsResult.archived + attemptsResult.archived + proceduresResult.archived + entitiesResult.archived + conflictsResult.archived + capabilitiesResult.archived;
 
   // Record run completion
   archiveDb.prepare(`
@@ -650,7 +808,7 @@ function _runArchiveInner(
     WHERE run_id = ?
   `).run(
     new Date().toISOString(),
-    claimsResult.archived + decisionsResult.archived + loopsResult.archived + attemptsResult.archived + proceduresResult.archived,
+    claimsResult.archived + decisionsResult.archived + loopsResult.archived + attemptsResult.archived + proceduresResult.archived + entitiesResult.archived + conflictsResult.archived + capabilitiesResult.archived,
     eventsResult.archived,
     errors.length > 0 ? "partial" : "complete",
     runId,
@@ -685,6 +843,12 @@ function _runArchiveInner(
     attemptsCandidates: attemptsResult.candidates,
     proceduresArchived: proceduresResult.archived,
     proceduresCandidates: proceduresResult.candidates,
+    entitiesArchived: entitiesResult.archived,
+    entitiesCandidates: entitiesResult.candidates,
+    conflictsArchived: conflictsResult.archived,
+    conflictsCandidates: conflictsResult.candidates,
+    capabilitiesArchived: capabilitiesResult.archived,
+    capabilitiesCandidates: capabilitiesResult.candidates,
     errors,
     durationMs,
   };

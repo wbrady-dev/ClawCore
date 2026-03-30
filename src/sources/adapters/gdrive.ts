@@ -14,6 +14,7 @@
  */
 import { google, type drive_v3 } from "googleapis";
 import { existsSync, readFileSync, writeFileSync, mkdirSync, unlinkSync, createWriteStream, chmodSync, renameSync } from "fs";
+import { randomBytes } from "crypto";
 import { resolve, join, extname } from "path";
 import { homedir } from "os";
 import { createServer } from "http";
@@ -382,11 +383,13 @@ async function retryOnTransient<T>(
  */
 export async function runGDriveOAuth(clientId: string, clientSecret: string): Promise<boolean> {
   const oauth2 = new google.auth.OAuth2(clientId, clientSecret, REDIRECT_URI);
+  const state = randomBytes(16).toString("hex");
 
   const authUrl = oauth2.generateAuthUrl({
     access_type: "offline",
     scope: SCOPES,
     prompt: "consent", // Force refresh token
+    state,
   });
 
   console.log(`\n  Opening browser for Google sign-in...`);
@@ -404,8 +407,8 @@ export async function runGDriveOAuth(clientId: string, clientSecret: string): Pr
     execFile("xdg-open", [authUrl]);
   }
 
-  // Wait for OAuth callback
-  const code = await waitForOAuthCallback();
+  // Wait for OAuth callback (with CSRF state validation)
+  const code = await waitForOAuthCallback(state);
   if (!code) return false;
 
   // Exchange code for tokens
@@ -433,16 +436,26 @@ export async function runGDriveOAuth(clientId: string, clientSecret: string): Pr
 }
 
 /** Start a temporary HTTP server to receive the OAuth callback */
-function waitForOAuthCallback(): Promise<string | null> {
+function waitForOAuthCallback(expectedState: string): Promise<string | null> {
   return new Promise((resolve) => {
     const server = createServer((req, res) => {
       const url = new URL(req.url ?? "/", `http://localhost:${REDIRECT_PORT}`);
       const code = url.searchParams.get("code");
       const error = url.searchParams.get("error");
+      const returnedState = url.searchParams.get("state");
 
       if (error) {
         res.writeHead(200, { "Content-Type": "text/html" });
         res.end("<h1>Authentication cancelled</h1><p>You can close this window.</p>");
+        server.close();
+        resolve(null);
+        return;
+      }
+
+      // CSRF protection: verify the state parameter matches what we sent
+      if (returnedState !== expectedState) {
+        res.writeHead(403, { "Content-Type": "text/html" });
+        res.end("<h1>Invalid state parameter</h1><p>This request may be forged. Please try again.</p>");
         server.close();
         resolve(null);
         return;

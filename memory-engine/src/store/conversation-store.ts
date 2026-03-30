@@ -625,6 +625,66 @@ export class ConversationStore {
     return deleted;
   }
 
+  // ── Cleanup ─────────────────────────────────────────────────────────────
+
+  /**
+   * Delete truly abandoned conversations: older than `maxAgeDays` with zero
+   * context_items. Messages, message_parts, FTS entries, and summaries
+   * cascade-delete via foreign keys.
+   *
+   * Returns the number of deleted conversations.
+   */
+  cleanupAbandonedConversations(maxAgeDays = 90): number {
+    // Find conversations with no context_items that are older than the cutoff.
+    // We use a NOT EXISTS subquery so conversations with any context_items are preserved.
+    const rows = this.db
+      .prepare(
+        `SELECT c.conversation_id
+         FROM conversations c
+         WHERE julianday('now') - julianday(c.updated_at) > ?
+           AND NOT EXISTS (
+             SELECT 1 FROM context_items ci
+             JOIN messages m ON m.message_id = ci.message_id
+             WHERE m.conversation_id = c.conversation_id
+           )`,
+      )
+      .all(maxAgeDays) as unknown as Array<{ conversation_id: number }>;
+
+    if (rows.length === 0) return 0;
+
+    let deleted = 0;
+    this.db.exec("BEGIN IMMEDIATE");
+    try {
+      const deleteMessages = this.db.prepare(
+        `DELETE FROM messages WHERE conversation_id = ?`,
+      );
+      const deleteConversation = this.db.prepare(
+        `DELETE FROM conversations WHERE conversation_id = ?`,
+      );
+
+      for (const row of rows) {
+        // Clean up FTS entries for messages in this conversation
+        const msgIds = this.db
+          .prepare(`SELECT message_id FROM messages WHERE conversation_id = ?`)
+          .all(row.conversation_id) as unknown as Array<{ message_id: number }>;
+
+        for (const msg of msgIds) {
+          this.deleteMessageFromFullText(msg.message_id);
+        }
+
+        deleteMessages.run(row.conversation_id);
+        deleteConversation.run(row.conversation_id);
+        deleted++;
+      }
+      this.db.exec("COMMIT");
+    } catch (err) {
+      this.db.exec("ROLLBACK");
+      throw err;
+    }
+
+    return deleted;
+  }
+
   // ── Search ────────────────────────────────────────────────────────────────
 
   async searchMessages(input: MessageSearchInput): Promise<MessageSearchResult[]> {

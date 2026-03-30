@@ -255,6 +255,8 @@ import { registerIngestRoutes } from "../../src/api/ingest.routes.js";
 import { registerAnalyticsRoutes } from "../../src/api/analytics.routes.js";
 import { registerSourceRoutes } from "../../src/api/sources.routes.js";
 import { registerRateLimit } from "../../src/api/ratelimit.js";
+import { registerGraphObjectRoutes } from "../../src/api/graph-objects.routes.js";
+import { getGraphDb } from "../../src/storage/graph-sqlite.js";
 
 // ---------------------------------------------------------------------------
 // Test setup
@@ -277,6 +279,7 @@ beforeAll(async () => {
   registerIngestRoutes(app);
   registerAnalyticsRoutes(app);
   registerSourceRoutes(app);
+  registerGraphObjectRoutes(app);
 
   await app.ready();
 });

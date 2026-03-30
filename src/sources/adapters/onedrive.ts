@@ -480,6 +480,7 @@ function generateCodeChallenge(verifier: string): string {
 export async function runOneDriveOAuth(clientId: string): Promise<boolean> {
   const codeVerifier = generateCodeVerifier();
   const codeChallenge = generateCodeChallenge(codeVerifier);
+  const state = randomBytes(16).toString("hex");
 
   const params = new URLSearchParams({
     client_id: clientId,
@@ -488,6 +489,7 @@ export async function runOneDriveOAuth(clientId: string): Promise<boolean> {
     scope: SCOPES,
     code_challenge: codeChallenge,
     code_challenge_method: "S256",
+    state,
   });
 
   const authUrl = `${AUTH_BASE}/authorize?${params.toString()}`;
@@ -507,8 +509,8 @@ export async function runOneDriveOAuth(clientId: string): Promise<boolean> {
     execFile("xdg-open", [authUrl]);
   }
 
-  // Wait for OAuth callback
-  const code = await waitForOAuthCallback();
+  // Wait for OAuth callback (with CSRF state validation)
+  const code = await waitForOAuthCallback(state);
   if (!code) return false;
 
   // Exchange code for tokens using PKCE
@@ -558,16 +560,26 @@ export async function runOneDriveOAuth(clientId: string): Promise<boolean> {
 }
 
 /** Start a temporary HTTP server to receive the OAuth callback */
-function waitForOAuthCallback(): Promise<string | null> {
+function waitForOAuthCallback(expectedState: string): Promise<string | null> {
   return new Promise((resolve) => {
     const server = createServer((req, res) => {
       const url = new URL(req.url ?? "/", `http://localhost:${REDIRECT_PORT}`);
       const code = url.searchParams.get("code");
       const error = url.searchParams.get("error");
+      const returnedState = url.searchParams.get("state");
 
       if (error) {
         res.writeHead(200, { "Content-Type": "text/html" });
         res.end("<h1>Authentication cancelled</h1><p>You can close this window.</p>");
+        server.close();
+        resolve(null);
+        return;
+      }
+
+      // CSRF protection: verify the state parameter matches what we sent
+      if (returnedState !== expectedState) {
+        res.writeHead(403, { "Content-Type": "text/html" });
+        res.end("<h1>Invalid state parameter</h1><p>This request may be forged. Please try again.</p>");
         server.close();
         resolve(null);
         return;

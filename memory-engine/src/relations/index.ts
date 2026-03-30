@@ -95,7 +95,7 @@ export { SOURCE_TRUST } from "./types.js";
 export { recordAttempt, getAttemptHistory, getToolSuccessRate } from "./attempt-store.js";
 export { upsertRunbook, demoteRunbook, getRunbooks, getRunbooksForTool } from "./runbook-store.js";
 export { upsertAntiRunbook, getAntiRunbooks, getAntiRunbooksForTool, addAntiRunbookEvidence, getAntiRunbookEvidence } from "./anti-runbook-store.js";
-export { applyDecay, decayAntiRunbooks, decayRunbooks, deduplicateActiveObjects } from "./decay.js";
+export { applyDecay, decayAntiRunbooks, decayRunbooks, decayDecisions, decayConflicts, decayCapabilities, decayDeltas, decayInvariants, deduplicateActiveObjects } from "./decay.js";
 export { runArchive, getArchiveStats, restoreFromArchive } from "./archive.js";
 
 // Horizon 3: Types
