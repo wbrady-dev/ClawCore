@@ -151,6 +151,9 @@ Output: {"events":[{"type":"uncertainty","content":"Port is 8080","subject":"ser
 Input: "I prefer short replies, and never suggest cloud hosting"
 Output: {"events":[{"type":"preference","content":"Prefer short replies","subject":"replies","predicate":"style","value":"short","topic":"style","confidence":0.95},{"type":"preference","content":"Never suggest cloud hosting","subject":"hosting","predicate":"constraint","value":"no cloud","topic":"policy","confidence":0.95}]}
 
+Input: "I decided to get a haircut this Friday"
+Output: {"events":[{"type":"decision","content":"Get a haircut this Friday","subject":"haircut","predicate":"scheduled","value":"this Friday","topic":"appointment","confidence":0.9,"temporal":"this Friday"}]}
+
 Input: "Need to rotate the API key before Friday"
 Output: {"events":[{"type":"task","content":"Rotate the API key","subject":"API key","predicate":"action","value":"rotate","topic":"rotation","confidence":0.9,"temporal":"before Friday"}]}
 
@@ -169,6 +172,7 @@ Output: {"events":[{"type":"invariant","content":"Always verify inputs before pr
 Rules:
 - Extract ALL events, not just the first one
 - Be thorough — capture decisions, facts, tasks, preferences, corrections, and uncertainties
+- When the user says "I decided", "I chose", "I'm going with" — that is a DECISION, not a task. Decisions record a choice that was made. Tasks record work that needs to be done.
 - ALWAYS use standardized predicates from the list above — do NOT invent synonyms
 - ALWAYS normalize subjects to a single canonical form — do NOT create variants
 - If the speaker changes their mind or says "not X anymore" or "X does not Y", mark as "correction" with is_correction_of

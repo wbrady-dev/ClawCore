@@ -298,7 +298,7 @@ export function extractClaimsFromFrontmatter(
 // Strategy 5: Decision extraction from conversation text
 // ---------------------------------------------------------------------------
 
-const DECISION_RE = /(?:^|\n)\s*(?:we(?:'ve)?\s+decided|decision|decided|we\s+chose|we(?:'re)?\s+going\s+(?:to|with)|we\s+agreed|agreed\s+(?:to|upon|that)|choosing|going\s+with)\s*(?:to|that|:)?\s*(.+)/gim;
+const DECISION_RE = /(?:^|\n)\s*(?:I(?:'ve)?\s+decided|we(?:'ve)?\s+decided|decision|decided|I\s+chose|we\s+chose|I(?:'m)?\s+going\s+(?:to|with)|we(?:'re)?\s+going\s+(?:to|with)|I\s+agreed|we\s+agreed|agreed\s+(?:to|upon|that)|choosing|going\s+with)\s*(?:to|that|:)?\s*(.+)/gim;
 
 export interface DecisionExtractionResult {
   topic: string;
