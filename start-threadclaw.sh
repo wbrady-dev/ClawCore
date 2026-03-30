@@ -67,8 +67,9 @@ else
   node "$SCRIPT_DIR/bin/threadclaw.mjs" serve &
   THREADCLAW_PID=$!
 
-  log "Waiting for model server (this may take 30-60s on first load)..."
-  wait_for_port 8012 "Model server" 120
+  MODEL_TIMEOUT="${THREADCLAW_MODEL_TIMEOUT:-600}"
+  log "Waiting for model server (this may take a few minutes on first load)..."
+  wait_for_port 8012 "Model server" "$MODEL_TIMEOUT"
 
   log "Waiting for ThreadClaw API..."
   wait_for_port 18800 "ThreadClaw API" 30

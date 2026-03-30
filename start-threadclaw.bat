@@ -32,10 +32,12 @@ if not exist "%SCRIPT_DIR%\node_modules" if not exist "%SCRIPT_DIR%\dist\cli\thr
 echo [threadclaw] Starting ThreadClaw services...
 start /min "ThreadClaw" node "%SCRIPT_DIR%\bin\threadclaw.mjs" serve
 
-echo [threadclaw] Waiting for model server ^(may take 30-60s on first load^)...
-call :wait_for_port 8012 120
+set "MODEL_TIMEOUT=600"
+if defined THREADCLAW_MODEL_TIMEOUT set "MODEL_TIMEOUT=%THREADCLAW_MODEL_TIMEOUT%"
+echo [threadclaw] Waiting for model server ^(may take a few minutes on first load^)...
+call :wait_for_port 8012 %MODEL_TIMEOUT%
 if errorlevel 1 (
-  echo [threadclaw] ERROR: Model server failed to start within 120s
+  echo [threadclaw] ERROR: Model server failed to start within %MODEL_TIMEOUT%s
   exit /b 1
 )
 echo [threadclaw] Model server ready.
