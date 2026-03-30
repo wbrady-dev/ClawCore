@@ -3,7 +3,7 @@
 ## 1. Install
 
 ```bash
-git clone https://github.com/wbrady-dev/ThreadClaw.git
+git clone https://github.com/LostBySea/ThreadClaw.git
 cd threadclaw
 
 # Windows:

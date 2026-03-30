@@ -12,7 +12,7 @@
 ### Windows
 
 ```bash
-git clone https://github.com/wbrady-dev/ThreadClaw.git
+git clone https://github.com/LostBySea/ThreadClaw.git
 cd ThreadClaw
 install.bat
 ```
@@ -20,7 +20,7 @@ install.bat
 ### Linux / macOS
 
 ```bash
-git clone https://github.com/wbrady-dev/ThreadClaw.git
+git clone https://github.com/LostBySea/ThreadClaw.git
 cd ThreadClaw
 chmod +x install.sh
 ./install.sh

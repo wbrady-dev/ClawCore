@@ -1,6 +1,6 @@
 # ThreadClaw Memory Engine
 
-DAG-based lossless conversation memory for [OpenClaw](https://openclaw.ai), part of the [ThreadClaw](https://github.com/wbrady-dev/ThreadClaw) RSMA system. Replaces OpenClaw's built-in sliding-window compaction with a DAG-based summarization system that preserves every message while keeping active context within model token limits.
+DAG-based lossless conversation memory for [OpenClaw](https://openclaw.ai), part of the [ThreadClaw](https://github.com/LostBySea/ThreadClaw) RSMA system. Replaces OpenClaw's built-in sliding-window compaction with a DAG-based summarization system that preserves every message while keeping active context within model token limits.
 
 Based on the [LCM paper](https://papers.voltropy.com/LCM) from [Voltropy](https://x.com/Voltropy).
 

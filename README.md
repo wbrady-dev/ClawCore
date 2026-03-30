@@ -3,7 +3,7 @@
 **The memory layer your AI agent is missing.**
 
 ![tests](https://img.shields.io/badge/tests-979%20passing-brightgreen)
-![build](https://img.shields.io/github/actions/workflow/status/wbrady-dev/ThreadClaw/ci.yml?branch=main&label=build)
+![build](https://img.shields.io/github/actions/workflow/status/LostBySea/ThreadClaw/ci.yml?branch=main&label=build)
 ![license](https://img.shields.io/badge/license-MIT-blue)
 ![node](https://img.shields.io/badge/node-22%2B-green)
 ![platform](https://img.shields.io/badge/platform-windows%20%7C%20linux%20%7C%20macos-lightgrey)
@@ -270,7 +270,7 @@ No manual configuration needed. The agent fetches, parses, chunks, embeds, and i
 ### Install
 
 ```bash
-git clone https://github.com/wbrady-dev/ThreadClaw.git
+git clone https://github.com/LostBySea/ThreadClaw.git
 cd ThreadClaw
 # Windows
 install.bat

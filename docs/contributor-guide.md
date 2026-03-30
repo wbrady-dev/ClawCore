@@ -19,7 +19,7 @@ threadclaw/
 ## Development Setup
 
 ```bash
-git clone https://github.com/wbrady-dev/ThreadClaw.git
+git clone https://github.com/LostBySea/ThreadClaw.git
 cd threadclaw && npm install
 cd memory-engine && npm install
 ```
