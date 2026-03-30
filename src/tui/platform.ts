@@ -303,6 +303,10 @@ function ensureWindowsTasks(root: string): { success: boolean; error?: string } 
     writeFileSync(path, Buffer.concat([bom, body]));
   };
 
+  // Use pythonw.exe (windowless) for models if available, else python.exe
+  const pythonwCmd = pythonCmd.replace(/python\.exe$/i, "pythonw.exe");
+  const usePythonw = existsSync(pythonwCmd) ? pythonwCmd : pythonCmd;
+
   const modelsXml = resolve(binDir, `${TASK_MODELS}.xml`);
   writeXml(modelsXml, `<?xml version="1.0" encoding="UTF-16"?>
 <Task version="1.2" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
@@ -320,7 +324,7 @@ function ensureWindowsTasks(root: string): { success: boolean; error?: string } 
   </Settings>
   <Actions>
     <Exec>
-      <Command>${escXml(pythonCmd)}</Command>
+      <Command>${escXml(usePythonw)}</Command>
       <Arguments>"${escXml(modelsScript)}"</Arguments>
       <WorkingDirectory>${escXml(dirname(modelsScript))}</WorkingDirectory>
     </Exec>
@@ -328,6 +332,7 @@ function ensureWindowsTasks(root: string): { success: boolean; error?: string } 
 </Task>
 `);
 
+  // Wrap node in cmd /c to suppress console window on Task Scheduler launch
   const ragXml = resolve(binDir, `${TASK_RAG}.xml`);
   const ragArgs = entryArgs.map(a => `"${escXml(a)}"`).join(" ");
   writeXml(ragXml, `<?xml version="1.0" encoding="UTF-16"?>
@@ -346,8 +351,8 @@ function ensureWindowsTasks(root: string): { success: boolean; error?: string } 
   </Settings>
   <Actions>
     <Exec>
-      <Command>${escXml(nodeCmd)}</Command>
-      <Arguments>${ragArgs}</Arguments>
+      <Command>cmd.exe</Command>
+      <Arguments>/c start /b "" "${escXml(nodeCmd)}" ${ragArgs}</Arguments>
       <WorkingDirectory>${escXml(root)}</WorkingDirectory>
     </Exec>
   </Actions>
