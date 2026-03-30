@@ -41,7 +41,7 @@ ThreadClaw runs as two local processes that work together:
 │  │    Node.js Server    │     │      Python Model Server     │  │
 │  │    (port 18800)      │     │      (port 8012)             │  │
 │  │                      │     │                              │  │
-│  │  RAG Query Pipeline  │───▶   Embedding (mxbai-embed)     │  │
+│  │  RAG Query Pipeline  │───▶   Embedding (mxbai-embed)      
 │  │  Document Ingestion  │     │  Reranking (bge-reranker)    │  │
 │  │  File Watcher        │     │  Document Parsing (Docling)  │  │
 │  │  Knowledge Graph     │     │  NER (spaCy)                 │  │
