@@ -43,7 +43,11 @@ export function getGraphDb(dbPath?: string): Database.Database {
 
   _separateGraphDb = new BetterSqlite3(graphPath, { readonly: false });
   _separateGraphDb.pragma("journal_mode = WAL");
+  _separateGraphDb.pragma("foreign_keys = ON");
   _separateGraphDb.pragma("busy_timeout = 5000");
+  _separateGraphDb.pragma("synchronous = NORMAL");
+  _separateGraphDb.pragma("cache_size = -8000");
+  _separateGraphDb.pragma("temp_store = MEMORY");
   return _separateGraphDb;
 }
 
