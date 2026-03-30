@@ -303,27 +303,11 @@ function ensureWindowsTasks(root: string): { success: boolean; error?: string } 
     writeFileSync(path, Buffer.concat([bom, body]));
   };
 
-  // Generate .bat wrappers so the Task Scheduler console window shows live output.
-  const modelsLog = resolve(logsDir, "models.log");
-  const ragLog = resolve(logsDir, "threadclaw.log");
-
-  // Generate .bat wrappers that show output in the console AND write to log files.
-  // Task Scheduler runs these .bat files, so the console window shows live output.
-  const modelsBat = resolve(binDir, "run-models.bat");
-  writeFileSync(modelsBat,
-    `@echo off\r\ntitle ThreadClaw Model Server\r\n` +
-    `echo [ThreadClaw] Model Server starting...\r\n` +
-    `"${pythonCmd}" "${modelsScript}" 2>&1\r\n`,
-  );
-
-  const ragBat = resolve(binDir, "run-rag.bat");
-  const ragEntryStr = entryArgs.map(a => `"${a}"`).join(" ");
-  writeFileSync(ragBat,
-    `@echo off\r\ntitle ThreadClaw RAG Server\r\n` +
-    `echo [ThreadClaw] RAG Server starting...\r\n` +
-    `"${nodeCmd}" ${ragEntryStr} 2>&1\r\n`,
-  );
-
+  // Run executables directly via Task Scheduler (not through .bat wrappers).
+  // Direct execution means closing the console window does NOT kill the process —
+  // Task Scheduler owns the process lifecycle. The console window will be blank
+  // (stdout goes to Task Scheduler's internal capture), but logs go to files via
+  // the startDirectProcess fallback and the server's own logging.
   const modelsXml = resolve(binDir, `${TASK_MODELS}.xml`);
   writeXml(modelsXml, `<?xml version="1.0" encoding="UTF-16"?>
 <Task version="1.2" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
@@ -341,7 +325,8 @@ function ensureWindowsTasks(root: string): { success: boolean; error?: string } 
   </Settings>
   <Actions>
     <Exec>
-      <Command>${escXml(modelsBat)}</Command>
+      <Command>${escXml(pythonCmd)}</Command>
+      <Arguments>"${escXml(modelsScript)}"</Arguments>
       <WorkingDirectory>${escXml(dirname(modelsScript))}</WorkingDirectory>
     </Exec>
   </Actions>
@@ -366,7 +351,8 @@ function ensureWindowsTasks(root: string): { success: boolean; error?: string } 
   </Settings>
   <Actions>
     <Exec>
-      <Command>${escXml(ragBat)}</Command>
+      <Command>${escXml(nodeCmd)}</Command>
+      <Arguments>${ragArgs}</Arguments>
       <WorkingDirectory>${escXml(root)}</WorkingDirectory>
     </Exec>
   </Actions>
