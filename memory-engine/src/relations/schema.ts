@@ -1815,6 +1815,10 @@ export function runGraphMigrations(db: GraphDb, dbPath?: string): void {
         CREATE INDEX IF NOT EXISTS idx_prov_subject ON provenance_links(subject_id);
         CREATE INDEX IF NOT EXISTS idx_prov_object ON provenance_links(object_id);
         CREATE INDEX IF NOT EXISTS idx_prov_predicate ON provenance_links(predicate);
+        CREATE INDEX IF NOT EXISTS idx_prov_created_at ON provenance_links(created_at);
+        CREATE INDEX IF NOT EXISTS idx_prov_scope ON provenance_links(scope_id);
+        CREATE INDEX IF NOT EXISTS idx_prov_pred_subj ON provenance_links(predicate, subject_id);
+        CREATE INDEX IF NOT EXISTS idx_prov_pred_obj ON provenance_links(predicate, object_id);
       `);
       // Ensure FTS5 table and triggers exist (may have been missed on earlier installs)
       db.exec(`

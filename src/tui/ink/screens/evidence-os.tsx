@@ -59,10 +59,12 @@ interface ClaimRow {
 interface DecisionRow {
   id: number;
   composite_id: string;
-  title: string;
-  outcome: string;
-  rationale: string | null;
+  topic: string;
+  decision_text: string;
+  content: string;
   scope_id: string | null;
+  confidence: number;
+  status: string;
   created_at: string;
   last_observed_at: string;
 }
@@ -70,10 +72,14 @@ interface DecisionRow {
 interface LoopRow {
   id: number;
   composite_id: string;
-  question: string;
+  loop_type: string;
+  text: string;
+  priority: number | null;
+  owner: string | null;
+  waiting_on: string | null;
+  due_at: string | null;
   status: string;
-  opened_by: string | null;
-  resolution: string | null;
+  confidence: number;
   created_at: string;
   last_observed_at: string;
 }
@@ -492,7 +498,7 @@ export function EvidenceOsScreen({ onBack }: { onBack: () => void }) {
         <Box flexDirection="column">
           <Section title="Evidence OS" />
           <Text>{"  " + t.warn("Relations are not enabled.")}</Text>
-          <Text>{"  " + t.dim("Enable in Configure \u2192 Evidence OS, or set THREADCLAW_RELATIONS_ENABLED=true in .env")}</Text>
+          <Text>{"  " + t.dim("Enable in Configure \u2192 Evidence OS, or set THREADCLAW_MEMORY_RELATIONS_ENABLED=true in .env")}</Text>
           {error && <Text>{"  " + t.err(error)}</Text>}
           <Separator />
           <Menu items={[{ label: "Back", value: "__back__", color: t.dim }]} onSelect={onBack} />
@@ -749,9 +755,10 @@ export function EvidenceOsScreen({ onBack }: { onBack: () => void }) {
 
     const items: MenuItem[] = [];
     for (const decision of decisions) {
-      const preview = decision.outcome.length > 60 ? decision.outcome.slice(0, 57) + "..." : decision.outcome;
+      const text = decision.decision_text ?? decision.content ?? "";
+      const preview = text.length > 60 ? text.slice(0, 57) + "..." : text;
       items.push({
-        label: decision.title,
+        label: decision.topic ?? "(no topic)",
         value: `decision:${decision.id}`,
         description: preview,
       });
@@ -810,10 +817,11 @@ export function EvidenceOsScreen({ onBack }: { onBack: () => void }) {
           <Spinner label="Loading..." />
         ) : (
           <>
-            <KV label="Title" value={selectedDecision.title} />
-            <KV label="Outcome" value={selectedDecision.outcome} />
-            {selectedDecision.rationale && <KV label="Rationale" value={selectedDecision.rationale} />}
+            <KV label="Topic" value={selectedDecision.topic ?? "(no topic)"} />
+            <KV label="Decision" value={selectedDecision.decision_text ?? selectedDecision.content ?? ""} />
             {selectedDecision.scope_id && <KV label="Scope" value={selectedDecision.scope_id} />}
+            <KV label="Confidence" value={String(selectedDecision.confidence ?? "")} />
+            <KV label="Status" value={selectedDecision.status ?? ""} />
             <KV label="Created" value={selectedDecision.created_at} />
             <KV label="Last Observed" value={selectedDecision.last_observed_at} />
 
@@ -843,10 +851,12 @@ export function EvidenceOsScreen({ onBack }: { onBack: () => void }) {
 
     const items: MenuItem[] = [];
     for (const loop of loops) {
+      const label = loop.text ?? "(no text)";
+      const desc = [loop.loop_type, loop.status, loop.owner].filter(Boolean).join(" · ");
       items.push({
-        label: loop.question,
+        label: label.length > 60 ? label.slice(0, 57) + "..." : label,
         value: `loop:${loop.id}`,
-        description: loop.status,
+        description: desc,
       });
     }
 
@@ -903,10 +913,13 @@ export function EvidenceOsScreen({ onBack }: { onBack: () => void }) {
           <Spinner label="Loading..." />
         ) : (
           <>
-            <KV label="Question" value={selectedLoop.question} />
-            <KV label="Status" value={selectedLoop.status} />
-            {selectedLoop.opened_by && <KV label="Opened By" value={selectedLoop.opened_by} />}
-            {selectedLoop.resolution && <KV label="Resolution" value={selectedLoop.resolution} />}
+            <KV label="Type" value={selectedLoop.loop_type ?? ""} />
+            <KV label="Text" value={selectedLoop.text ?? ""} />
+            <KV label="Status" value={selectedLoop.status ?? ""} />
+            {selectedLoop.owner && <KV label="Owner" value={selectedLoop.owner} />}
+            {selectedLoop.priority != null && <KV label="Priority" value={String(selectedLoop.priority)} />}
+            {selectedLoop.waiting_on && <KV label="Waiting On" value={selectedLoop.waiting_on} />}
+            {selectedLoop.due_at && <KV label="Due" value={selectedLoop.due_at} />}
             <KV label="Created" value={selectedLoop.created_at} />
             <KV label="Last Observed" value={selectedLoop.last_observed_at} />
 

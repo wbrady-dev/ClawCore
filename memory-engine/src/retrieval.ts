@@ -234,8 +234,12 @@ export class RetrievalEngine {
       ]);
     }
 
-    messages.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
-    summaries.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+    // Only re-sort by recency for regex/LIKE modes (no relevance signal).
+    // FTS5 full_text results are already ordered by relevance — preserve that.
+    if (mode !== "full_text") {
+      messages.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+      summaries.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+    }
 
     return {
       messages,

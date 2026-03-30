@@ -40,7 +40,9 @@ CREATE TABLE IF NOT EXISTS archived_memory_objects (
     confidence REAL,
     trust_score REAL,
     influence_weight TEXT,
-    superseded_by INTEGER,
+    superseded_by TEXT,
+    extraction_method TEXT,
+    provisional INTEGER DEFAULT 0,
     source_kind TEXT,
     source_id TEXT,
     source_detail TEXT,
@@ -156,12 +158,12 @@ function archiveStaleObjects(
     INSERT OR IGNORE INTO archived_memory_objects
       (id, composite_id, kind, canonical_key, content, structured_json,
        scope_id, branch_id, status, confidence, trust_score,
-       influence_weight, superseded_by,
+       influence_weight, superseded_by, extraction_method, provisional,
        source_kind, source_id, source_detail, source_authority,
        first_observed_at, last_observed_at, observed_at,
        original_created_at, original_updated_at,
        archive_reason, archive_run_id)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
 
   // Wrap archive inserts in a transaction for atomicity — if any insert fails,
@@ -174,6 +176,7 @@ function archiveStaleObjects(
         row.content, row.structured_json,
         row.scope_id, row.branch_id, row.status, row.confidence,
         row.trust_score, row.influence_weight, row.superseded_by,
+        row.extraction_method ?? null, row.provisional ?? 0,
         row.source_kind, row.source_id, row.source_detail, row.source_authority,
         row.first_observed_at, row.last_observed_at, row.observed_at,
         row.created_at, row.updated_at,
@@ -186,10 +189,19 @@ function archiveStaleObjects(
     throw err;
   }
 
+  const compositeIds = stale.map((r: any) => r.composite_id).filter(Boolean);
   hotDb.exec("BEGIN IMMEDIATE");
   try {
+    const delStmt = hotDb.prepare("DELETE FROM memory_objects WHERE id = ?");
     for (const row of stale) {
-      hotDb.prepare("DELETE FROM memory_objects WHERE id = ?").run(row.id);
+      delStmt.run(row.id);
+    }
+    // Clean up orphaned provenance_links for archived objects
+    if (compositeIds.length > 0) {
+      const ph = compositeIds.map(() => "?").join(",");
+      try {
+        hotDb.prepare(`DELETE FROM provenance_links WHERE subject_id IN (${ph}) OR object_id IN (${ph})`).run(...compositeIds, ...compositeIds);
+      } catch { /* provenance_links may not exist */ }
     }
     hotDb.exec("COMMIT");
   } catch (err) {
@@ -216,12 +228,12 @@ function archiveSupersededObjects(
     INSERT OR IGNORE INTO archived_memory_objects
       (id, composite_id, kind, canonical_key, content, structured_json,
        scope_id, branch_id, status, confidence, trust_score,
-       influence_weight, superseded_by,
+       influence_weight, superseded_by, extraction_method, provisional,
        source_kind, source_id, source_detail, source_authority,
        first_observed_at, last_observed_at, observed_at,
        original_created_at, original_updated_at,
        archive_reason, archive_run_id)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
 
   // Wrap archive inserts in a transaction for atomicity
@@ -233,6 +245,7 @@ function archiveSupersededObjects(
         row.content, row.structured_json,
         row.scope_id, row.branch_id, row.status, row.confidence,
         row.trust_score, row.influence_weight, row.superseded_by,
+        row.extraction_method ?? null, row.provisional ?? 0,
         row.source_kind, row.source_id, row.source_detail, row.source_authority,
         row.first_observed_at, row.last_observed_at, row.observed_at,
         row.created_at, row.updated_at,
@@ -245,10 +258,18 @@ function archiveSupersededObjects(
     throw err;
   }
 
+  const compositeIds = old.map((r: any) => r.composite_id).filter(Boolean);
   hotDb.exec("BEGIN IMMEDIATE");
   try {
+    const delStmt = hotDb.prepare("DELETE FROM memory_objects WHERE id = ?");
     for (const row of old) {
-      hotDb.prepare("DELETE FROM memory_objects WHERE id = ?").run(row.id);
+      delStmt.run(row.id);
+    }
+    if (compositeIds.length > 0) {
+      const ph = compositeIds.map(() => "?").join(",");
+      try {
+        hotDb.prepare(`DELETE FROM provenance_links WHERE subject_id IN (${ph}) OR object_id IN (${ph})`).run(...compositeIds, ...compositeIds);
+      } catch { /* provenance_links may not exist */ }
     }
     hotDb.exec("COMMIT");
   } catch (err) {
@@ -380,12 +401,12 @@ export function runArchive(
         INSERT OR IGNORE INTO archived_memory_objects
           (id, composite_id, kind, canonical_key, content, structured_json,
            scope_id, branch_id, status, confidence, trust_score,
-           influence_weight, superseded_by,
+           influence_weight, superseded_by, extraction_method, provisional,
            source_kind, source_id, source_detail, source_authority,
            first_observed_at, last_observed_at, observed_at,
            original_created_at, original_updated_at,
            archive_reason, archive_run_id)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `);
 
       // Wrap archive inserts in a transaction for atomicity
@@ -397,6 +418,7 @@ export function runArchive(
             row.content, row.structured_json,
             row.scope_id, row.branch_id, row.status, row.confidence,
             row.trust_score, row.influence_weight, row.superseded_by,
+            row.extraction_method ?? null, row.provisional ?? 0,
             row.source_kind, row.source_id, row.source_detail, row.source_authority,
             row.first_observed_at, row.last_observed_at, row.observed_at,
             row.created_at, row.updated_at,
@@ -409,10 +431,18 @@ export function runArchive(
         throw err;
       }
 
+      const loopIds = old.map((r: any) => r.composite_id).filter(Boolean);
       hotDb.exec("BEGIN IMMEDIATE");
       try {
+        const delStmt = hotDb.prepare("DELETE FROM memory_objects WHERE id = ?");
         for (const row of old) {
-          hotDb.prepare("DELETE FROM memory_objects WHERE id = ?").run(row.id);
+          delStmt.run(row.id);
+        }
+        if (loopIds.length > 0) {
+          const ph = loopIds.map(() => "?").join(",");
+          try {
+            hotDb.prepare(`DELETE FROM provenance_links WHERE subject_id IN (${ph}) OR object_id IN (${ph})`).run(...loopIds, ...loopIds);
+          } catch { /* non-fatal */ }
         }
         hotDb.exec("COMMIT");
       } catch (err) {
