@@ -14,6 +14,10 @@ Your documents from Obsidian, OneDrive, Google Drive, Notion, Apple Notes, and l
 
 No cloud dependency. No token-per-query pricing. Your data stays yours.
 
+<p align="center">
+  <img src="docs/images/tui-home.png" alt="ThreadClaw TUI" width="680">
+</p>
+
 ---
 
 ## Why ThreadClaw Exists
