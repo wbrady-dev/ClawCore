@@ -1,4 +1,4 @@
-# ThreadClaw
+# 🦞 ThreadClaw 
 
 **The memory layer your AI agent is missing.**
 
@@ -41,7 +41,7 @@ ThreadClaw runs as two local processes that work together:
 │  │    Node.js Server    │     │      Python Model Server     │  │
 │  │    (port 18800)      │     │      (port 8012)             │  │
 │  │                      │     │                              │  │
-│  │  RAG Query Pipeline  │────▶│  Embedding (mxbai-embed)     │  │
+│  │  RAG Query Pipeline  │───▶   Embedding (mxbai-embed)     │  │
 │  │  Document Ingestion  │     │  Reranking (bge-reranker)    │  │
 │  │  File Watcher        │     │  Document Parsing (Docling)  │  │
 │  │  Knowledge Graph     │     │  NER (spaCy)                 │  │
@@ -51,7 +51,7 @@ ThreadClaw runs as two local processes that work together:
 │  └──────────┬───────────┘                                       │
 │             │                                                   │
 │  ┌──────────▼───────────┐     ┌──────────────────────────────┐  │
-│  │  Memory Engine       │     │     Source Adapters           │  │
+│  │  Memory Engine       │     │     Source Adapters          │  │
 │  │  (OpenClaw Plugin)   │     │                              │  │
 │  │                      │     │  Obsidian  ·  OneDrive       │  │
 │  │  Lossless DAG        │     │  Google Drive  ·  Notion     │  │
@@ -61,7 +61,7 @@ ThreadClaw runs as two local processes that work together:
 │  └──────────────────────┘     └──────────────────────────────┘  │
 │                                                                 │
 │  ┌──────────────────────────────────────────────────────────┐   │
-│  │                    SQLite (WAL mode)                      │   │
+│  │                    SQLite (WAL mode)                     │   │
 │  │  threadclaw.db — RAG chunks, vectors, knowledge graph    │   │
 │  │  memory.db — conversations, summaries, context DAG       │   │
 │  │  archive.db — cold storage for aged evidence             │   │
