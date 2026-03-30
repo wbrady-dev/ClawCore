@@ -331,20 +331,10 @@ export class SummaryStore {
       )
       .get(input.summaryId) as unknown as SummaryRow;
 
-    // Index in FTS5 as best-effort; compaction flow must continue even if
-    // FTS indexing fails for any reason.
-    if (!this.fts5Available) {
-      return toSummaryRecord(row);
-    }
-
-    try {
-      this.db
-        .prepare(`INSERT INTO summaries_fts(summary_id, content) VALUES (?, ?)`)
-        .run(input.summaryId, input.content);
-    } catch {
-      // FTS indexing failed — search won't find this summary but
-      // compaction and assembly will still work correctly.
-    }
+    // FTS5 indexing is handled by the summaries_fts_insert trigger
+    // (created in migration). No manual INSERT needed here — doing so
+    // would cause duplicate FTS entries since the trigger already fired
+    // on the INSERT INTO summaries above.
 
     return toSummaryRecord(row);
   }
