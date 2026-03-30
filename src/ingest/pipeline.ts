@@ -1,5 +1,6 @@
 import { readFile, stat } from "fs/promises";
 import { resolve, sep } from "path";
+import { homedir } from "os";
 import { v4 as uuidv4 } from "uuid";
 
 import { config } from "../config.js";
@@ -96,6 +97,7 @@ async function ingestFileInner(
   // Allow: service root, configured watch paths (not entire homedir), and ~/.threadclaw (staging).
   const allowedBases = [
     resolve(config.dataDir, ".."),                                    // service root
+    resolve(homedir(), ".threadclaw"),                                // legacy staging dir
   ];
   // Add configured watch paths (parsed from WATCH_PATHS=path1|col1,path2|col2)
   if (config.watch.paths) {
