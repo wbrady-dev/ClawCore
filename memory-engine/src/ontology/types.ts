@@ -191,7 +191,8 @@ export type LinkPredicate =
   | "supersedes"     // new belief replacing old
   | "mentioned_in"   // entity appearing in a source
   | "relates_to"     // entity-to-entity semantic relationship
-  | "resolved_by";   // conflict resolution link
+  | "resolved_by"    // conflict resolution link
+  | "about";         // claim → entity subject link
 
 /** A directional link between two MemoryObjects. */
 export interface ProvenanceLink {

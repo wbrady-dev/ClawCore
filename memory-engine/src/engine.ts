@@ -1832,7 +1832,7 @@ export class LcmContextEngine implements ContextEngine {
                   action.object.structured as Record<string, unknown> | null,
                 );
                 if (violations.length > 0) {
-                  action.object.status = 'needs_confirmation';
+                  action.object = { ...action.object, status: 'needs_confirmation' };
                   logEvidence(graphDb, {
                     scopeId: action.object.scope_id ?? 1,
                     objectType: action.object.kind,
@@ -2143,7 +2143,7 @@ export class LcmContextEngine implements ContextEngine {
                         try {
                           const violations = checkStrictInvariants(graphDb, action.object.scope_id ?? 1, action.object.content, action.object.structured as Record<string, unknown> | null);
                           if (violations.length > 0) {
-                            action.object.status = "needs_confirmation";
+                            action.object = { ...action.object, status: "needs_confirmation" };
                             logEvidence(graphDb, {
                               scopeId: action.object.scope_id ?? 1,
                               objectType: action.object.kind,

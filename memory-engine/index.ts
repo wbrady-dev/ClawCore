@@ -47,6 +47,7 @@ import { LcmContextEngine } from "./src/engine.js";
 import { createLcmDescribeTool } from "./src/tools/lcm-describe-tool.js";
 import { closeLcmConnection } from "./src/db/connection.js";
 import { closeGraphConnection } from "./src/relations/graph-connection.js";
+import { closeArchiveDb } from "./src/relations/archive.js";
 
 // Ensure DB connections are cleanly closed on shutdown to checkpoint WAL.
 // beforeExit is unreliable on Windows when the process is killed via Task Scheduler,
@@ -57,6 +58,7 @@ const shutdownCleanup = () => {
   _cleanupDone = true;
   try { closeLcmConnection(); } catch { /* non-fatal */ }
   try { closeGraphConnection(); } catch { /* non-fatal */ }
+  try { closeArchiveDb(); } catch { /* non-fatal */ }
 };
 process.on("beforeExit", shutdownCleanup);
 process.on("SIGINT", shutdownCleanup);

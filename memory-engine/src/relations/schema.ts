@@ -1795,6 +1795,8 @@ export function runGraphMigrations(db: GraphDb, dbPath?: string): void {
   if (!isMigrationApplied(db, 30)) {
     try {
       // Recreate provenance_links with updated CHECK constraint (add 'about' predicate)
+      // Wrapped in BEGIN/COMMIT so a crash mid-DDL doesn't leave the table missing
+      db.exec(`BEGIN`);
       db.exec(`
         CREATE TABLE IF NOT EXISTS provenance_links_new (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -1820,6 +1822,7 @@ export function runGraphMigrations(db: GraphDb, dbPath?: string): void {
         CREATE INDEX IF NOT EXISTS idx_prov_pred_subj ON provenance_links(predicate, subject_id);
         CREATE INDEX IF NOT EXISTS idx_prov_pred_obj ON provenance_links(predicate, object_id);
       `);
+      db.exec(`COMMIT`);
       // Ensure FTS5 table and triggers exist (may have been missed on earlier installs)
       db.exec(`
         CREATE VIRTUAL TABLE IF NOT EXISTS memory_objects_fts USING fts5(content, content='memory_objects', content_rowid='id');
