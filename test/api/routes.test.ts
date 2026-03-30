@@ -692,3 +692,435 @@ describe("Content-Type", () => {
     expect(res.headers["content-type"]).toContain("application/json");
   });
 });
+
+// ---------------------------------------------------------------------------
+// Graph Object Routes
+// ---------------------------------------------------------------------------
+
+describe("Graph Object Routes", () => {
+  let graphDb: Database.Database;
+
+  /**
+   * Create an in-memory SQLite DB with the memory_objects + provenance_links
+   * schema, and point the getGraphDb mock at it for all graph route tests.
+   */
+  beforeAll(() => {
+    graphDb = new Database(":memory:");
+    graphDb.pragma("journal_mode = WAL");
+    graphDb.pragma("foreign_keys = ON");
+
+    graphDb.exec(`
+      CREATE TABLE IF NOT EXISTS memory_objects (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        composite_id TEXT NOT NULL,
+        kind TEXT NOT NULL,
+        canonical_key TEXT,
+        content TEXT NOT NULL,
+        structured_json TEXT,
+        scope_id INTEGER NOT NULL DEFAULT 1,
+        branch_id INTEGER NOT NULL DEFAULT 0,
+        status TEXT NOT NULL DEFAULT 'active',
+        confidence REAL NOT NULL DEFAULT 0.5,
+        trust_score REAL NOT NULL DEFAULT 0.5,
+        influence_weight TEXT DEFAULT 'standard',
+        superseded_by TEXT,
+        source_kind TEXT,
+        source_id TEXT,
+        source_detail TEXT,
+        source_authority REAL DEFAULT 0.5,
+        first_observed_at TEXT,
+        last_observed_at TEXT,
+        observed_at TEXT,
+        extraction_method TEXT,
+        provisional INTEGER DEFAULT 0,
+        created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%f', 'now')),
+        updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%f', 'now'))
+      );
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_mo_composite ON memory_objects(composite_id);
+      CREATE INDEX IF NOT EXISTS idx_mo_kind_status ON memory_objects(kind, status, scope_id);
+    `);
+
+    graphDb.exec(`
+      CREATE TABLE IF NOT EXISTS provenance_links (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        subject_id TEXT NOT NULL,
+        predicate TEXT NOT NULL CHECK(predicate IN (
+          'derived_from', 'supports', 'contradicts', 'supersedes',
+          'mentioned_in', 'relates_to', 'resolved_by', 'about'
+        )),
+        object_id TEXT NOT NULL,
+        confidence REAL NOT NULL DEFAULT 1.0,
+        detail TEXT,
+        scope_id INTEGER DEFAULT 1,
+        metadata TEXT,
+        created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%f', 'now')),
+        UNIQUE(subject_id, predicate, object_id)
+      );
+    `);
+
+    // Point getGraphDb mock to the in-memory graph DB
+    vi.mocked(getGraphDb).mockReturnValue(graphDb);
+  });
+
+  afterAll(() => {
+    // Restore getGraphDb to its default (null)
+    vi.mocked(getGraphDb).mockReturnValue(null as any);
+    graphDb.close();
+  });
+
+  beforeEach(() => {
+    graphDb.exec("DELETE FROM provenance_links");
+    graphDb.exec("DELETE FROM memory_objects");
+  });
+
+  // Helper to insert a memory object
+  function insertObj(fields: {
+    composite_id: string;
+    kind: string;
+    content: string;
+    structured_json?: string;
+    status?: string;
+    confidence?: number;
+    last_observed_at?: string;
+    created_at?: string;
+    updated_at?: string;
+  }): number {
+    const stmt = graphDb.prepare(`
+      INSERT INTO memory_objects
+        (composite_id, kind, content, structured_json, status, confidence, last_observed_at, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+    const now = new Date().toISOString();
+    const info = stmt.run(
+      fields.composite_id,
+      fields.kind,
+      fields.content,
+      fields.structured_json ?? "{}",
+      fields.status ?? "active",
+      fields.confidence ?? 0.5,
+      fields.last_observed_at ?? now,
+      fields.created_at ?? now,
+      fields.updated_at ?? now,
+    );
+    return Number(info.lastInsertRowid);
+  }
+
+  // ── Claims ───────────────────────────────────────────────────────
+
+  it("GET /graph/claims returns claims with correct fields", async () => {
+    insertObj({
+      composite_id: "claim-1",
+      kind: "claim",
+      content: "TypeScript is typed",
+      structured_json: JSON.stringify({
+        subject: "TypeScript",
+        predicate: "is",
+        objectText: "typed",
+      }),
+      status: "active",
+      confidence: 0.9,
+    });
+
+    const res = await app.inject({ method: "GET", url: "/graph/claims" });
+    expect(res.statusCode).toBe(200);
+    const body = res.json();
+    expect(body).toHaveProperty("claims");
+    expect(body).toHaveProperty("total", 1);
+    expect(body).toHaveProperty("limit");
+    expect(body).toHaveProperty("offset");
+    expect(body.claims).toHaveLength(1);
+
+    const claim = body.claims[0];
+    expect(claim.subject).toBe("TypeScript");
+    expect(claim.predicate).toBe("is");
+    expect(claim.object).toBe("typed");
+    expect(claim.confidence).toBe(0.9);
+    expect(claim.status).toBe("active");
+    expect(claim).toHaveProperty("scope_id");
+    expect(claim).toHaveProperty("created_at");
+    expect(claim).toHaveProperty("last_observed_at");
+  });
+
+  it("GET /graph/claims respects limit/offset pagination", async () => {
+    for (let i = 0; i < 5; i++) {
+      insertObj({
+        composite_id: `claim-page-${i}`,
+        kind: "claim",
+        content: `Claim ${i}`,
+        structured_json: JSON.stringify({ subject: `S${i}`, predicate: "p", objectText: `O${i}` }),
+      });
+    }
+
+    const res = await app.inject({ method: "GET", url: "/graph/claims?limit=2&offset=1" });
+    expect(res.statusCode).toBe(200);
+    const body = res.json();
+    expect(body.total).toBe(5);
+    expect(body.limit).toBe(2);
+    expect(body.offset).toBe(1);
+    expect(body.claims).toHaveLength(2);
+  });
+
+  it("GET /graph/claims filters by status", async () => {
+    insertObj({
+      composite_id: "claim-active-1",
+      kind: "claim",
+      content: "Active claim",
+      status: "active",
+    });
+    insertObj({
+      composite_id: "claim-retired-1",
+      kind: "claim",
+      content: "Retired claim",
+      status: "retired",
+    });
+
+    const res = await app.inject({ method: "GET", url: "/graph/claims?status=retired" });
+    expect(res.statusCode).toBe(200);
+    const body = res.json();
+    expect(body.total).toBe(1);
+    expect(body.claims).toHaveLength(1);
+    expect(body.claims[0].status).toBe("retired");
+  });
+
+  // ── Decisions ────────────────────────────────────────────────────
+
+  it("GET /graph/decisions returns decisions with correct fields", async () => {
+    insertObj({
+      composite_id: "decision-1",
+      kind: "decision",
+      content: "Use Fastify over Express",
+      structured_json: JSON.stringify({
+        topic: "Web Framework",
+        decisionText: "Use Fastify over Express for performance",
+      }),
+      confidence: 0.85,
+    });
+
+    const res = await app.inject({ method: "GET", url: "/graph/decisions" });
+    expect(res.statusCode).toBe(200);
+    const body = res.json();
+    expect(body).toHaveProperty("decisions");
+    expect(body).toHaveProperty("total", 1);
+    expect(body.decisions).toHaveLength(1);
+
+    const decision = body.decisions[0];
+    expect(decision.topic).toBe("Web Framework");
+    expect(decision.decision_text).toBe("Use Fastify over Express for performance");
+    expect(decision).toHaveProperty("content");
+    expect(decision).toHaveProperty("scope_id");
+    expect(decision).toHaveProperty("confidence");
+    expect(decision).toHaveProperty("status");
+  });
+
+  // ── Loops ────────────────────────────────────────────────────────
+
+  it("GET /graph/loops returns loops with correct fields", async () => {
+    insertObj({
+      composite_id: "loop-1",
+      kind: "loop",
+      content: "Waiting for CI results",
+      structured_json: JSON.stringify({
+        loopType: "blocker",
+        text: "CI pipeline is running",
+        owner: "Wesley",
+        priority: "high",
+        waitingOn: "GitHub Actions",
+      }),
+      status: "active",
+    });
+
+    const res = await app.inject({ method: "GET", url: "/graph/loops" });
+    expect(res.statusCode).toBe(200);
+    const body = res.json();
+    expect(body).toHaveProperty("loops");
+    expect(body).toHaveProperty("total", 1);
+    expect(body.loops).toHaveLength(1);
+
+    const loop = body.loops[0];
+    expect(loop.loop_type).toBe("blocker");
+    expect(loop.text).toBe("CI pipeline is running");
+    expect(loop.owner).toBe("Wesley");
+    expect(loop).toHaveProperty("priority");
+    expect(loop).toHaveProperty("waiting_on");
+    expect(loop).toHaveProperty("status");
+    expect(loop).toHaveProperty("confidence");
+  });
+
+  // ── Conflicts ────────────────────────────────────────────────────
+
+  it("GET /graph/conflicts returns conflicts with correct fields", async () => {
+    insertObj({
+      composite_id: "conflict-1",
+      kind: "conflict",
+      content: "Contradicting claims about deployment target",
+      structured_json: JSON.stringify({
+        objectIdA: "claim-a",
+        objectIdB: "claim-b",
+        canonicalKey: "deployment_target",
+      }),
+      status: "active",
+    });
+
+    const res = await app.inject({ method: "GET", url: "/graph/conflicts" });
+    expect(res.statusCode).toBe(200);
+    const body = res.json();
+    expect(body).toHaveProperty("conflicts");
+    expect(body).toHaveProperty("total", 1);
+    expect(body.conflicts).toHaveLength(1);
+
+    const conflict = body.conflicts[0];
+    expect(conflict.object_id_a).toBe("claim-a");
+    expect(conflict.object_id_b).toBe("claim-b");
+    expect(conflict).toHaveProperty("canonical_key");
+    expect(conflict).toHaveProperty("content");
+    expect(conflict).toHaveProperty("status");
+    expect(conflict).toHaveProperty("confidence");
+  });
+
+  // ── Procedures ───────────────────────────────────────────────────
+
+  it("GET /graph/procedures returns procedures with kind='procedure'", async () => {
+    insertObj({
+      composite_id: "proc-runbook-1",
+      kind: "procedure",
+      content: "How to deploy",
+      structured_json: JSON.stringify({
+        toolName: "deploy-tool",
+        key: "deploy-steps",
+        isNegative: 0,
+      }),
+    });
+    insertObj({
+      composite_id: "proc-anti-1",
+      kind: "procedure",
+      content: "Never force push to main",
+      structured_json: JSON.stringify({
+        toolName: "git-tool",
+        key: "no-force-push",
+        isNegative: 1,
+      }),
+    });
+
+    const res = await app.inject({ method: "GET", url: "/graph/procedures" });
+    expect(res.statusCode).toBe(200);
+    const body = res.json();
+    expect(body).toHaveProperty("procedures");
+    expect(body).toHaveProperty("total", 2);
+    expect(body.procedures).toHaveLength(2);
+
+    const proc = body.procedures[0];
+    expect(proc).toHaveProperty("tool_name");
+    expect(proc).toHaveProperty("key");
+    expect(proc).toHaveProperty("is_negative");
+    expect(proc).toHaveProperty("content");
+    expect(proc).toHaveProperty("status");
+  });
+
+  it("GET /graph/procedures?type=anti_runbook filters by isNegative", async () => {
+    insertObj({
+      composite_id: "proc-rb-1",
+      kind: "procedure",
+      content: "How to deploy",
+      structured_json: JSON.stringify({ toolName: "deploy", key: "deploy", isNegative: 0 }),
+    });
+    insertObj({
+      composite_id: "proc-arb-1",
+      kind: "procedure",
+      content: "Never do this",
+      structured_json: JSON.stringify({ toolName: "git", key: "no-force", isNegative: 1 }),
+    });
+
+    const res = await app.inject({ method: "GET", url: "/graph/procedures?type=anti_runbook" });
+    expect(res.statusCode).toBe(200);
+    const body = res.json();
+    expect(body.total).toBe(1);
+    expect(body.procedures).toHaveLength(1);
+    expect(body.procedures[0].is_negative).toBe(1);
+  });
+
+  // ── Truth Health ─────────────────────────────────────────────────
+
+  it("GET /graph/truth-health returns recentlyChanged, lowConfidence, unresolvedConflicts", async () => {
+    // Low confidence claim
+    insertObj({
+      composite_id: "low-conf-1",
+      kind: "claim",
+      content: "Uncertain claim",
+      structured_json: JSON.stringify({ subject: "X", predicate: "might be", objectText: "Y" }),
+      confidence: 0.2,
+      status: "active",
+    });
+
+    // Unresolved conflict
+    insertObj({
+      composite_id: "conflict-health-1",
+      kind: "conflict",
+      content: "Unresolved conflict",
+      status: "active",
+    });
+
+    // Recently changed (updated_at != created_at)
+    const past = "2025-01-01T00:00:00.000";
+    const now = new Date().toISOString();
+    insertObj({
+      composite_id: "changed-1",
+      kind: "claim",
+      content: "Changed claim",
+      status: "active",
+      created_at: past,
+      updated_at: now,
+    });
+
+    const res = await app.inject({ method: "GET", url: "/graph/truth-health" });
+    expect(res.statusCode).toBe(200);
+    const body = res.json();
+    expect(body).toHaveProperty("recentlyChanged");
+    expect(body).toHaveProperty("lowConfidence");
+    expect(body).toHaveProperty("unresolvedConflicts");
+    expect(Array.isArray(body.recentlyChanged)).toBe(true);
+    expect(Array.isArray(body.lowConfidence)).toBe(true);
+    expect(Array.isArray(body.unresolvedConflicts)).toBe(true);
+    expect(body.lowConfidence.length).toBeGreaterThanOrEqual(1);
+    expect(body.unresolvedConflicts.length).toBeGreaterThanOrEqual(1);
+    expect(body.recentlyChanged.length).toBeGreaterThanOrEqual(1);
+  });
+
+  // ── Timeline ─────────────────────────────────────────────────────
+
+  it("GET /graph/timeline returns events with subject filter", async () => {
+    insertObj({
+      composite_id: "timeline-1",
+      kind: "claim",
+      content: "Fastify is fast",
+      structured_json: JSON.stringify({ subject: "Fastify" }),
+      status: "active",
+    });
+    insertObj({
+      composite_id: "timeline-2",
+      kind: "claim",
+      content: "Express is popular",
+      structured_json: JSON.stringify({ subject: "Express" }),
+      status: "active",
+    });
+
+    const res = await app.inject({ method: "GET", url: "/graph/timeline?subject=Fastify" });
+    expect(res.statusCode).toBe(200);
+    const body = res.json();
+    expect(body).toHaveProperty("events");
+    expect(body).toHaveProperty("supersessions");
+    expect(body).toHaveProperty("subjectNormalized", "fastify");
+    expect(Array.isArray(body.events)).toBe(true);
+    expect(body.events.length).toBeGreaterThanOrEqual(1);
+
+    // All returned events should relate to "Fastify"
+    for (const event of body.events) {
+      expect(event).toHaveProperty("id");
+      expect(event).toHaveProperty("composite_id");
+      expect(event).toHaveProperty("kind");
+      expect(event).toHaveProperty("content");
+      expect(event).toHaveProperty("confidence");
+      expect(event).toHaveProperty("status");
+      expect(event).toHaveProperty("created_at");
+    }
+  });
+});
