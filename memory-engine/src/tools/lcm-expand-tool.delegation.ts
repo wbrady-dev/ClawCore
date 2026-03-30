@@ -2,6 +2,8 @@ import crypto from "node:crypto";
 import type { LcmContextEngine } from "../engine.js";
 import {
   createDelegatedExpansionGrant,
+  getRuntimeExpansionAuthManager,
+  resolveDelegatedExpansionGrantId,
   revokeDelegatedExpansionGrantForSession,
 } from "../expansion-auth.js";
 import type { LcmDependencies } from "../types.js";
@@ -26,6 +28,8 @@ type DelegatedExpansionPassResult = {
   citedIds: string[];
   followUpSummaryIds: string[];
   totalTokens: number;
+  /** Authoritative tokens consumed as reported by the auth manager (if available). */
+  authoritativeTokensConsumed?: number;
   truncated: boolean;
   rawReply?: string;
   error?: string;
@@ -282,6 +286,7 @@ async function runDelegatedExpansionPass(params: {
   );
   const childSessionKey = `agent:${requesterAgentId}:subagent:${crypto.randomUUID()}`;
   let runId = "";
+  let passResult: DelegatedExpansionPassResult | undefined;
 
   createDelegatedExpansionGrant({
     delegatedSessionKey: childSessionKey,
@@ -339,7 +344,7 @@ async function runDelegatedExpansionPass(params: {
     })) as { status?: string; error?: string };
     const status = typeof wait?.status === "string" ? wait.status : "error";
     if (status === "timeout") {
-      return {
+      passResult = {
         pass: params.pass,
         status: "timeout",
         runId,
@@ -351,9 +356,10 @@ async function runDelegatedExpansionPass(params: {
         truncated: true,
         error: "delegated expansion pass timed out",
       };
+      return passResult;
     }
     if (status !== "ok") {
-      return {
+      passResult = {
         pass: params.pass,
         status: "error",
         runId,
@@ -365,6 +371,7 @@ async function runDelegatedExpansionPass(params: {
         truncated: true,
         error: typeof wait?.error === "string" ? wait.error : "delegated expansion pass failed",
       };
+      return passResult;
     }
 
     const replyPayload = (await params.deps.callGateway({
@@ -376,7 +383,7 @@ async function runDelegatedExpansionPass(params: {
       Array.isArray(replyPayload.messages) ? replyPayload.messages : [],
     );
     const parsed = parseDelegatedExpansionReply(reply);
-    return {
+    passResult = {
       pass: params.pass,
       status: "ok",
       runId,
@@ -388,8 +395,9 @@ async function runDelegatedExpansionPass(params: {
       truncated: parsed.truncated,
       rawReply: reply,
     };
+    return passResult;
   } catch (err) {
-    return {
+    passResult = {
       pass: params.pass,
       status: "error",
       runId: runId || crypto.randomUUID(),
@@ -401,7 +409,20 @@ async function runDelegatedExpansionPass(params: {
       truncated: true,
       error: err instanceof Error ? err.message : String(err),
     };
+    return passResult;
   } finally {
+    // Read authoritative consumed amount from auth manager before revoking the grant
+    try {
+      const grantId = resolveDelegatedExpansionGrantId(childSessionKey);
+      if (grantId && passResult) {
+        const remaining = getRuntimeExpansionAuthManager().getRemainingTokenBudget(grantId);
+        if (remaining != null && typeof params.tokenCap === "number" && isFinite(params.tokenCap)) {
+          passResult.authoritativeTokensConsumed = params.tokenCap - remaining;
+        }
+      }
+    } catch {
+      // Non-fatal — fall back to self-reported totalTokens in the loop.
+    }
     try {
       await params.deps.callGateway({
         method: "sessions.delete",
@@ -502,8 +523,9 @@ export async function runDelegatedExpansionLoop(params: {
     });
     passes.push(result);
 
-    // Decrement remaining token budget
-    remainingTokenCap -= result.totalTokens ?? 0;
+    // Decrement remaining token budget using authoritative auth manager value
+    const consumed = result.authoritativeTokensConsumed ?? result.totalTokens ?? 0;
+    remainingTokenCap -= consumed;
     if (remainingTokenCap <= 0) break;
 
     if (result.status !== "ok") {

@@ -95,6 +95,26 @@ interface CapsuleCandidate {
 const estimateTokens = canonicalEstimateTokens;
 
 // ---------------------------------------------------------------------------
+// Prompt-injection sanitizer for user-derived capsule fields
+// ---------------------------------------------------------------------------
+
+/**
+ * Sanitize user-controlled text before interpolating into capsule strings.
+ * Guards against prompt injection from malicious documents:
+ * - Strips newlines (could inject fake section breaks)
+ * - Strips bracket patterns that could mimic section headers or labels
+ * - Truncates to 200 chars to limit payload size
+ */
+function sanitizeCapsuleText(value: string | null | undefined): string {
+  if (value == null) return "";
+  let s = String(value);
+  s = s.replace(/[\n\r]/g, " ");
+  s = s.replace(/[\[\]]/g, "");
+  if (s.length > 200) s = s.slice(0, 200) + "…";
+  return s;
+}
+
+// ---------------------------------------------------------------------------
 // Capsule builders
 // ---------------------------------------------------------------------------
 
@@ -141,7 +161,7 @@ function claimCapsules(claims: ClaimRow[], compositeIds: string[], contestedIds:
     const daysSince = daysSinceIso(c.last_seen_at);
     const conf = effectiveConfidence(c.confidence, c.mention_count ?? 1, daysSince);
     const label = epistemicLabel(c.confidence, compositeIds[i], contestedIds);
-    const text = `[claim] ${c.subject} ${c.predicate}: ${c.object_text ?? "(no value)"}${label}`;
+    const text = `[claim] ${sanitizeCapsuleText(c.subject)} ${sanitizeCapsuleText(c.predicate)}: ${sanitizeCapsuleText(c.object_text) || "(no value)"}${label}`;
     const tokens = estimateTokens(text);
 
     const subjectLower = c.subject.toLowerCase().trim();
@@ -166,7 +186,7 @@ function decisionCapsules(decisions: DecisionRow[], compositeIds: string[], cont
   return decisions.map((d, i) => {
     const conf = confidences[i] ?? 0.7;
     const label = epistemicLabel(conf, compositeIds[i], contestedIds);
-    const text = `[decision] ${d.topic}: ${d.decision_text}${label}`;
+    const text = `[decision] ${sanitizeCapsuleText(d.topic)}: ${sanitizeCapsuleText(d.decision_text)}${label}`;
     const tokens = estimateTokens(text);
     // Decisions have high usefulness — they represent active choices
     const score = 0.9;
@@ -182,8 +202,8 @@ function decisionCapsules(decisions: DecisionRow[], compositeIds: string[], cont
 
 function loopCapsules(loops: LoopRow[]): CapsuleCandidate[] {
   return loops.map((l) => {
-    const detail = l.waiting_on ? ` (waiting on: ${l.waiting_on})` : "";
-    const text = `[loop] ${l.text}${detail}`;
+    const detail = l.waiting_on ? ` (waiting on: ${sanitizeCapsuleText(l.waiting_on)})` : "";
+    const text = `[loop] ${sanitizeCapsuleText(l.text)}${detail}`;
     const tokens = estimateTokens(text);
     // Priority-weighted score (0-10 → 0.3-1.0)
     const score = 0.3 + (Math.min(10, l.priority) / 10) * 0.7;
@@ -199,7 +219,7 @@ function loopCapsules(loops: LoopRow[]): CapsuleCandidate[] {
 
 function deltaCapsules(deltas: DeltaRow[]): CapsuleCandidate[] {
   return deltas.slice(0, 5).map((d) => {
-    const text = `[delta] ${d.entity_key}: ${d.old_value ?? "?"} → ${d.new_value ?? "?"}`;
+    const text = `[delta] ${sanitizeCapsuleText(d.entity_key)}: ${sanitizeCapsuleText(d.old_value) || "?"} → ${sanitizeCapsuleText(d.new_value) || "?"}`;
     const tokens = estimateTokens(text);
     return {
       type: "delta",
@@ -214,7 +234,7 @@ function deltaCapsules(deltas: DeltaRow[]): CapsuleCandidate[] {
 function invariantCapsules(invariants: InvariantRow[]): CapsuleCandidate[] {
   return invariants.map((inv) => {
     const modeLabel = inv.enforcement_mode === "strict" ? "STRICT" : "advisory";
-    const text = `[INVARIANT: ${modeLabel}/${inv.severity}] ${inv.description}`;
+    const text = `[INVARIANT: ${modeLabel}/${sanitizeCapsuleText(inv.severity)}] ${sanitizeCapsuleText(inv.description)}`;
     const tokens = estimateTokens(text);
     // Strict invariants always make the budget (score 1.0)
     // Advisory invariants scored by severity
@@ -235,7 +255,7 @@ function invariantCapsules(invariants: InvariantRow[]): CapsuleCandidate[] {
 function antiRunbookCapsules(antiRunbooks: AntiRunbookRow[], compositeIds: string[] = [], contestedIds: Set<string> = new Set()): CapsuleCandidate[] {
   return antiRunbooks.map((ar, i) => {
     const label = epistemicLabel(ar.confidence, compositeIds[i], contestedIds);
-    const text = `[anti-runbook] AVOID: ${ar.failure_pattern} (${ar.tool_name}, ${ar.failure_count} failures)${label}`;
+    const text = `[anti-runbook] AVOID: ${sanitizeCapsuleText(ar.failure_pattern)} (${sanitizeCapsuleText(ar.tool_name)}, ${ar.failure_count} failures)${label}`;
     const tokens = estimateTokens(text);
     // Anti-runbooks get very high score — preventing known failures is critical
     const score = 0.95;
@@ -254,7 +274,7 @@ function runbookCapsules(runbooks: Array<{ tool_name: string; pattern: string; c
     const rate = (rb.success_count + rb.failure_count) > 0
       ? ((rb.success_count / (rb.success_count + rb.failure_count)) * 100).toFixed(0) : "N/A";
     const label = epistemicLabel(rb.confidence, compositeIds[i], contestedIds);
-    const text = `[runbook] ${rb.tool_name}: ${rb.pattern} (${rate}% success)${label}`;
+    const text = `[runbook] ${sanitizeCapsuleText(rb.tool_name)}: ${sanitizeCapsuleText(rb.pattern)} (${rate}% success)${label}`;
     const tokens = estimateTokens(text);
     const score = rb.confidence * 0.85;
     return {
@@ -270,7 +290,7 @@ function runbookCapsules(runbooks: Array<{ tool_name: string; pattern: string; c
 function relationCapsules(relations: Array<{ subject_name: string; predicate: string; object_name: string; confidence: number }>, compositeIds: string[] = [], contestedIds: Set<string> = new Set()): CapsuleCandidate[] {
   return relations.map((r, i) => {
     const label = epistemicLabel(r.confidence, compositeIds[i], contestedIds);
-    const text = `[relation] ${r.subject_name} ${r.predicate} ${r.object_name}${label}`;
+    const text = `[relation] ${sanitizeCapsuleText(r.subject_name)} ${sanitizeCapsuleText(r.predicate)} ${sanitizeCapsuleText(r.object_name)}${label}`;
     const tokens = estimateTokens(text);
     const score = r.confidence * 0.8; // Slightly below claims
     return {
@@ -286,9 +306,9 @@ function relationCapsules(relations: Array<{ subject_name: string; predicate: st
 function conflictCapsules(rows: Array<Record<string, unknown>>): CapsuleCandidate[] {
   return rows.map((row) => {
     const s = safeParseStructured(row.structured_json);
-    const sideA = String(s.objectIdA ?? "?");
-    const sideB = String(s.objectIdB ?? "?");
-    const status = String(row.status ?? "active");
+    const sideA = sanitizeCapsuleText(String(s.objectIdA ?? "?"));
+    const sideB = sanitizeCapsuleText(String(s.objectIdB ?? "?"));
+    const status = sanitizeCapsuleText(String(row.status ?? "active"));
     const label = status === "active" ? "unresolved" : status;
     const text = `[conflict] ${sideA} vs ${sideB} (${label})`;
     const tokens = estimateTokens(text);

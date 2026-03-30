@@ -122,7 +122,16 @@ export class OneDriveAdapter extends PollingAdapterBase {
     // If we have configured folders, use folder-based listing
     // If we have a delta link, use delta sync for efficiency
     if (this.cfg.collections.length > 0 && !deltaLink) {
-      return this.listFolderItems(token);
+      const items = await this.listFolderItems(token);
+
+      // Bootstrap delta token for future incremental syncs
+      try {
+        await this.listDeltaItems(token, null);
+        // We don't need the items (already have them from folder listing),
+        // but this saves the deltaLink for next cycle
+      } catch { /* non-fatal — delta will be retried next cycle */ }
+
+      return items;
     }
 
     return this.listDeltaItems(token, deltaLink);

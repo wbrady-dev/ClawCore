@@ -79,7 +79,7 @@ describe("H3 Lease Store", () => {
     const lease = acquireLease(db, {
       scopeId: 1, agentId: "agent-1", resourceKey: "file:main.ts", durationMs: 60_000,
     });
-    releaseLease(db, lease!.id);
+    releaseLease(db, lease!.id, "agent-1");
     const active = getActiveLeases(db, 1);
     expect(active.length).toBe(0);
   });
@@ -230,7 +230,7 @@ describe("H3 Lease: renewLease", () => {
     expect(lease).not.toBeNull();
 
     const oldUntil = lease!.lease_until;
-    renewLease(db, lease!.id, 600_000); // extend by 10 minutes
+    renewLease(db, lease!.id, 600_000, "agent-1"); // extend by 10 minutes
 
     const renewed = db.prepare("SELECT lease_until FROM work_leases WHERE id = ?").get(lease!.id) as { lease_until: string };
     expect(new Date(renewed.lease_until).getTime()).toBeGreaterThan(new Date(oldUntil).getTime());

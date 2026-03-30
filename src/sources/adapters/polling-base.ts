@@ -11,8 +11,8 @@
  *   - checkAvailability()
  *   - getStagingPath() (for removal cleanup)
  */
-import { existsSync, mkdirSync, unlinkSync } from "fs";
-import { resolve } from "path";
+import { existsSync, mkdirSync, unlinkSync, readFileSync, writeFileSync } from "fs";
+import { resolve, join } from "path";
 import { ingestFile } from "../../ingest/pipeline.js";
 import { logger } from "../../utils/logger.js";
 import { config } from "../../config.js";
@@ -61,6 +61,37 @@ export abstract class PollingAdapterBase implements SourceAdapter {
     this.name = opts.name;
     this.stagingDir = opts.stagingDir;
     this.defaultSyncInterval = opts.defaultSyncInterval;
+  }
+
+  /** Path for persisted manifest file */
+  private get manifestPath(): string {
+    return join(this.stagingDir, ".manifest.json");
+  }
+
+  /** Load manifest from disk (best-effort) */
+  private loadManifest(): void {
+    try {
+      if (existsSync(this.manifestPath)) {
+        const raw = JSON.parse(readFileSync(this.manifestPath, "utf-8")) as
+          Record<string, { id: string; name: string; lastModified: string }>;
+        for (const [k, v] of Object.entries(raw)) {
+          this.manifest.set(k, v);
+        }
+        logger.debug({ source: this.id, entries: this.manifest.size }, "Loaded persisted manifest");
+      }
+    } catch (err) {
+      logger.warn({ source: this.id, error: String(err) }, "Failed to load manifest — will do full sync");
+    }
+  }
+
+  /** Save manifest to disk (best-effort) */
+  private saveManifest(): void {
+    try {
+      mkdirSync(this.stagingDir, { recursive: true });
+      writeFileSync(this.manifestPath, JSON.stringify(Object.fromEntries(this.manifest)));
+    } catch (err) {
+      logger.warn({ source: this.id, error: String(err) }, "Failed to persist manifest");
+    }
   }
 
   // ── Abstract methods (subclass must implement) ──
@@ -125,9 +156,7 @@ export abstract class PollingAdapterBase implements SourceAdapter {
       return;
     }
 
-    // NOTE: Manifest is in-memory only — full re-sync will occur on restart.
-    // Consider persisting manifest to disk for faster startup.
-    logger.info(`${this.name} starting — manifest is in-memory, full re-sync will occur on restart`);
+    logger.info(`${this.name} starting — manifest persisted to ${this.manifestPath}`);
 
     try {
       await this.initClient();
@@ -291,6 +320,11 @@ export abstract class PollingAdapterBase implements SourceAdapter {
     this.status = { ...this.status, state: "syncing" };
 
     try {
+      // Load persisted manifest if this is the first sync (manifest empty)
+      if (this.manifest.size === 0) {
+        this.loadManifest();
+      }
+
       const changes = await this.detectChanges();
       const totalChanges = changes.added.length + changes.modified.length + changes.removed.length;
       const interval = this.cfg?.syncInterval ?? this.defaultSyncInterval;
@@ -376,6 +410,8 @@ export abstract class PollingAdapterBase implements SourceAdapter {
         nextSync: new Date(Date.now() + interval * 1000),
         docCount: this.manifest.size,
       };
+
+      this.saveManifest();
 
       logger.info({ source: this.id, ingested, total: this.manifest.size }, `${this.name} sync complete`);
     } finally {

@@ -276,6 +276,145 @@ export function deduplicateActiveObjects(db: GraphDb, scopeId: number): number {
 }
 
 /**
+ * Decay low-confidence claims that haven't been observed recently.
+ * - Multiply confidence by 0.9 for claims not observed in staleDays (default 30)
+ * - Mark as 'stale' if confidence < 0.3 AND last_observed_at older than staleDays (default 60)
+ */
+export function decayClaims(db: GraphDb, scopeId: number, staleDays = 60): number {
+  // Confidence decay: multiply by 0.9 for claims not observed in 30 days
+  const confidenceDecayDays = Math.floor(staleDays / 2); // default 30
+  const decayed = db.prepare(`
+    UPDATE memory_objects
+    SET confidence = confidence * 0.9,
+        updated_at = strftime('%Y-%m-%dT%H:%M:%f', 'now')
+    WHERE scope_id = ?
+      AND kind = 'claim'
+      AND branch_id = 0
+      AND status = 'active'
+      AND confidence > 0.1
+      AND COALESCE(last_observed_at, updated_at) < datetime('now', '-' || ? || ' days')
+  `).run(scopeId, confidenceDecayDays);
+
+  // Mark stale: confidence < 0.3 AND not observed in staleDays
+  const staled = db.prepare(`
+    UPDATE memory_objects
+    SET status = 'stale',
+        updated_at = strftime('%Y-%m-%dT%H:%M:%f', 'now')
+    WHERE scope_id = ?
+      AND kind = 'claim'
+      AND branch_id = 0
+      AND status = 'active'
+      AND confidence < 0.3
+      AND COALESCE(last_observed_at, updated_at) < datetime('now', '-' || ? || ' days')
+  `).run(scopeId, staleDays);
+
+  if (Number(decayed.changes) > 0 || Number(staled.changes) > 0) {
+    logEvidence(db, {
+      scopeId,
+      objectType: "claim",
+      objectId: 0,
+      eventType: "decay",
+      payload: {
+        confidenceDecayed: Number(decayed.changes),
+        markedStale: Number(staled.changes),
+        staleDays,
+      },
+    });
+  }
+
+  return Number(decayed.changes) + Number(staled.changes);
+}
+
+/**
+ * Decay entities that are rarely mentioned and haven't been observed recently.
+ * Mark as 'stale' if mentionCount <= 1 AND last_observed_at older than staleDays (default 90).
+ */
+export function decayEntities(db: GraphDb, scopeId: number, staleDays = 90): number {
+  const staled = db.prepare(`
+    UPDATE memory_objects
+    SET status = 'stale',
+        updated_at = strftime('%Y-%m-%dT%H:%M:%f', 'now')
+    WHERE scope_id = ?
+      AND kind = 'entity'
+      AND branch_id = 0
+      AND status = 'active'
+      AND COALESCE(CAST(json_extract(structured_json, '$.mentionCount') AS INTEGER), 0) <= 1
+      AND COALESCE(last_observed_at, updated_at) < datetime('now', '-' || ? || ' days')
+  `).run(scopeId, staleDays);
+
+  if (Number(staled.changes) > 0) {
+    logEvidence(db, {
+      scopeId,
+      objectType: "entity",
+      objectId: 0,
+      eventType: "decay",
+      payload: { markedStale: Number(staled.changes), staleDays },
+    });
+  }
+
+  return Number(staled.changes);
+}
+
+/**
+ * Prune old attempts to prevent unbounded growth.
+ * - Delete attempts older than maxAgeDays (default 30)
+ * - Keep at most maxPerTool (default 100) attempts per toolName
+ */
+export function decayAttempts(db: GraphDb, scopeId: number, maxAgeDays = 30, maxPerTool = 100): number {
+  // Phase 1: Delete attempts older than maxAgeDays
+  const aged = db.prepare(`
+    DELETE FROM memory_objects
+    WHERE scope_id = ?
+      AND kind = 'attempt'
+      AND branch_id = 0
+      AND created_at < datetime('now', '-' || ? || ' days')
+  `).run(scopeId, maxAgeDays);
+
+  // Phase 2: Per-tool cap — keep only the most recent maxPerTool per toolName
+  const tools = db.prepare(`
+    SELECT DISTINCT json_extract(structured_json, '$.toolName') as toolName
+    FROM memory_objects
+    WHERE scope_id = ? AND kind = 'attempt' AND branch_id = 0
+      AND json_extract(structured_json, '$.toolName') IS NOT NULL
+  `).all(scopeId) as Array<{ toolName: string }>;
+
+  let capped = 0;
+  for (const { toolName } of tools) {
+    const excess = db.prepare(`
+      DELETE FROM memory_objects
+      WHERE id IN (
+        SELECT id FROM memory_objects
+        WHERE scope_id = ?
+          AND kind = 'attempt'
+          AND branch_id = 0
+          AND json_extract(structured_json, '$.toolName') = ?
+        ORDER BY created_at DESC
+        LIMIT -1 OFFSET ?
+      )
+    `).run(scopeId, toolName, maxPerTool);
+    capped += Number(excess.changes);
+  }
+
+  const total = Number(aged.changes) + capped;
+  if (total > 0) {
+    logEvidence(db, {
+      scopeId,
+      objectType: "attempt",
+      objectId: 0,
+      eventType: "decay",
+      payload: {
+        deletedByAge: Number(aged.changes),
+        deletedByCap: capped,
+        maxAgeDays,
+        maxPerTool,
+      },
+    });
+  }
+
+  return total;
+}
+
+/**
  * Apply all decay rules for a scope. Call lazily before queries.
  */
 export function applyDecay(
@@ -290,6 +429,9 @@ export function applyDecay(
     decayRunbooks(db, scopeId, staleDays);
     decayLoops(db, scopeId);
     decayRelations(db, scopeId, staleDays);
+    decayClaims(db, scopeId);
+    decayEntities(db, scopeId);
+    decayAttempts(db, scopeId);
     deduplicateActiveObjects(db, scopeId);
   } catch {
     // Non-fatal: decay failure should not block queries

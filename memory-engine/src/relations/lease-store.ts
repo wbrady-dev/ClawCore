@@ -73,41 +73,59 @@ export function acquireLease(
   });
 }
 
-/** Renew an existing lease by extending its duration. */
-export function renewLease(db: GraphDb, leaseId: number, durationMs: number): void {
+/** Renew an existing lease by extending its duration. Only the owning agent can renew. */
+export function renewLease(db: GraphDb, leaseId: number, durationMs: number, agentId: string): { renewed: boolean } {
   const leaseUntil = new Date(Date.now() + durationMs).toISOString();
 
   const leaseRow = db.prepare(
-    "SELECT scope_id FROM work_leases WHERE id = ?",
-  ).get(leaseId) as { scope_id: number } | undefined;
+    "SELECT scope_id FROM work_leases WHERE id = ? AND agent_id = ?",
+  ).get(leaseId, agentId) as { scope_id: number } | undefined;
+
+  if (!leaseRow) {
+    return { renewed: false };
+  }
 
   db.prepare(
-    "UPDATE work_leases SET lease_until = ? WHERE id = ?",
-  ).run(leaseUntil, leaseId);
+    "UPDATE work_leases SET lease_until = ? WHERE id = ? AND agent_id = ?",
+  ).run(leaseUntil, leaseId, agentId);
 
   logEvidence(db, {
-    scopeId: leaseRow?.scope_id,
+    scopeId: leaseRow.scope_id,
     objectType: "lease",
     objectId: leaseId,
     eventType: "renew",
+    actor: agentId,
     payload: { leaseUntil },
   });
+
+  return { renewed: true };
 }
 
-/** Release a lease (explicit cleanup). */
-export function releaseLease(db: GraphDb, leaseId: number): void {
+/** Release a lease (explicit cleanup). Only the owning agent can release. */
+export function releaseLease(db: GraphDb, leaseId: number, agentId: string): { released: boolean } {
   const leaseRow = db.prepare(
-    "SELECT scope_id FROM work_leases WHERE id = ?",
-  ).get(leaseId) as { scope_id: number } | undefined;
+    "SELECT scope_id FROM work_leases WHERE id = ? AND agent_id = ?",
+  ).get(leaseId, agentId) as { scope_id: number } | undefined;
 
-  db.prepare("DELETE FROM work_leases WHERE id = ?").run(leaseId);
+  if (!leaseRow) {
+    return { released: false };
+  }
+
+  const result = db.prepare("DELETE FROM work_leases WHERE id = ? AND agent_id = ?").run(leaseId, agentId);
+
+  if (Number(result.changes) === 0) {
+    return { released: false };
+  }
 
   logEvidence(db, {
-    scopeId: leaseRow?.scope_id,
+    scopeId: leaseRow.scope_id,
     objectType: "lease",
     objectId: leaseId,
     eventType: "release",
+    actor: agentId,
   });
+
+  return { released: true };
 }
 
 /** Get active (non-expired) leases for a scope, optionally filtered by agent. */

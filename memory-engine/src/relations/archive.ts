@@ -24,6 +24,9 @@ import { dirname } from "path";
 import { randomUUID } from "crypto";
 import type { GraphDb } from "./types.js";
 
+// ── Concurrency guard ──
+let _archiveRunning = false;
+
 // ── Archive DB schema ──
 
 const ARCHIVE_SCHEMA = `
@@ -136,6 +139,10 @@ export interface ArchiveResult {
   loopsCandidates: number;
   relationsArchived: number;
   relationsCandidates: number;
+  attemptsArchived: number;
+  attemptsCandidates: number;
+  proceduresArchived: number;
+  proceduresCandidates: number;
   errors: string[];
   durationMs: number;
 }
@@ -356,6 +363,43 @@ export function runArchive(
     eventRetentionDays?: number;
     loopStaleDays?: number;
     eventBatchSize?: number;
+    attemptStaleDays?: number;
+    procedureStaleDays?: number;
+  },
+): ArchiveResult {
+  if (_archiveRunning) {
+    console.warn("[cc-mem] archive: runArchive already in progress, skipping concurrent call");
+    return {
+      runId: "skipped",
+      claimsArchived: 0, decisionsArchived: 0, eventsArchived: 0, loopsArchived: 0,
+      claimsCandidates: 0, decisionsCandidates: 0, eventsCandidates: 0, loopsCandidates: 0,
+      relationsArchived: 0, relationsCandidates: 0,
+      attemptsArchived: 0, attemptsCandidates: 0,
+      proceduresArchived: 0, proceduresCandidates: 0,
+      errors: ["skipped: concurrent archive already running"],
+      durationMs: 0,
+    };
+  }
+  _archiveRunning = true;
+  try {
+  return _runArchiveInner(hotDb, archivePath, opts);
+  } finally {
+    _archiveRunning = false;
+  }
+}
+
+function _runArchiveInner(
+  hotDb: GraphDb,
+  archivePath: string,
+  opts?: {
+    claimConfidenceThreshold?: number;
+    claimStaleDays?: number;
+    decisionStaleDays?: number;
+    eventRetentionDays?: number;
+    loopStaleDays?: number;
+    eventBatchSize?: number;
+    attemptStaleDays?: number;
+    procedureStaleDays?: number;
   },
 ): ArchiveResult {
   const start = Date.now();
@@ -461,8 +505,142 @@ export function runArchive(
       opts?.decisionStaleDays ?? 90);
   } catch (e: any) { errors.push(`relations: ${e.message}`); }
 
+  // Archive old active attempts (older than 30 days)
+  let attemptsResult = { archived: 0, candidates: 0 };
+  try {
+    const attemptDays = opts?.attemptStaleDays ?? 30;
+    const cutoff = new Date(Date.now() - attemptDays * 86_400_000).toISOString();
+    const old = hotDb.prepare(`
+      SELECT * FROM memory_objects
+      WHERE kind = 'attempt' AND status = 'active' AND created_at < ?
+    `).all(cutoff) as any[];
+
+    if (old.length > 0) {
+      const insert = archiveDb.prepare(`
+        INSERT OR IGNORE INTO archived_memory_objects
+          (id, composite_id, kind, canonical_key, content, structured_json,
+           scope_id, branch_id, status, confidence, trust_score,
+           influence_weight, superseded_by, extraction_method, provisional,
+           source_kind, source_id, source_detail, source_authority,
+           first_observed_at, last_observed_at, observed_at,
+           original_created_at, original_updated_at,
+           archive_reason, archive_run_id)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `);
+
+      archiveDb.exec("BEGIN");
+      try {
+        for (const row of old) {
+          insert.run(
+            row.id, row.composite_id, row.kind, row.canonical_key,
+            row.content, row.structured_json,
+            row.scope_id, row.branch_id, row.status, row.confidence,
+            row.trust_score, row.influence_weight, row.superseded_by,
+            row.extraction_method ?? null, row.provisional ?? 0,
+            row.source_kind, row.source_id, row.source_detail, row.source_authority,
+            row.first_observed_at, row.last_observed_at, row.observed_at,
+            row.created_at, row.updated_at,
+            `attempt:active:${attemptDays}d`, runId,
+          );
+        }
+        archiveDb.exec("COMMIT");
+      } catch (err) {
+        archiveDb.exec("ROLLBACK");
+        throw err;
+      }
+
+      const attemptIds = old.map((r: any) => r.composite_id).filter(Boolean);
+      hotDb.exec("BEGIN IMMEDIATE");
+      try {
+        const delStmt = hotDb.prepare("DELETE FROM memory_objects WHERE id = ?");
+        for (const row of old) {
+          delStmt.run(row.id);
+        }
+        if (attemptIds.length > 0) {
+          const ph = attemptIds.map(() => "?").join(",");
+          try {
+            hotDb.prepare(`DELETE FROM provenance_links WHERE subject_id IN (${ph}) OR object_id IN (${ph})`).run(...attemptIds, ...attemptIds);
+          } catch { /* non-fatal */ }
+        }
+        hotDb.exec("COMMIT");
+      } catch (err) {
+        hotDb.exec("ROLLBACK");
+        throw err;
+      }
+
+      attemptsResult = { archived: old.length, candidates: old.length };
+    }
+  } catch (e: any) { errors.push(`attempts: ${e.message}`); }
+
+  // Archive stale procedures older than 30 days
+  let proceduresResult = { archived: 0, candidates: 0 };
+  try {
+    const procedureDays = opts?.procedureStaleDays ?? 30;
+    const cutoff = new Date(Date.now() - procedureDays * 86_400_000).toISOString();
+    const old = hotDb.prepare(`
+      SELECT * FROM memory_objects
+      WHERE kind = 'procedure' AND status = 'stale' AND updated_at < ?
+    `).all(cutoff) as any[];
+
+    if (old.length > 0) {
+      const insert = archiveDb.prepare(`
+        INSERT OR IGNORE INTO archived_memory_objects
+          (id, composite_id, kind, canonical_key, content, structured_json,
+           scope_id, branch_id, status, confidence, trust_score,
+           influence_weight, superseded_by, extraction_method, provisional,
+           source_kind, source_id, source_detail, source_authority,
+           first_observed_at, last_observed_at, observed_at,
+           original_created_at, original_updated_at,
+           archive_reason, archive_run_id)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `);
+
+      archiveDb.exec("BEGIN");
+      try {
+        for (const row of old) {
+          insert.run(
+            row.id, row.composite_id, row.kind, row.canonical_key,
+            row.content, row.structured_json,
+            row.scope_id, row.branch_id, row.status, row.confidence,
+            row.trust_score, row.influence_weight, row.superseded_by,
+            row.extraction_method ?? null, row.provisional ?? 0,
+            row.source_kind, row.source_id, row.source_detail, row.source_authority,
+            row.first_observed_at, row.last_observed_at, row.observed_at,
+            row.created_at, row.updated_at,
+            `procedure:stale:${procedureDays}d`, runId,
+          );
+        }
+        archiveDb.exec("COMMIT");
+      } catch (err) {
+        archiveDb.exec("ROLLBACK");
+        throw err;
+      }
+
+      const procIds = old.map((r: any) => r.composite_id).filter(Boolean);
+      hotDb.exec("BEGIN IMMEDIATE");
+      try {
+        const delStmt = hotDb.prepare("DELETE FROM memory_objects WHERE id = ?");
+        for (const row of old) {
+          delStmt.run(row.id);
+        }
+        if (procIds.length > 0) {
+          const ph = procIds.map(() => "?").join(",");
+          try {
+            hotDb.prepare(`DELETE FROM provenance_links WHERE subject_id IN (${ph}) OR object_id IN (${ph})`).run(...procIds, ...procIds);
+          } catch { /* non-fatal */ }
+        }
+        hotDb.exec("COMMIT");
+      } catch (err) {
+        hotDb.exec("ROLLBACK");
+        throw err;
+      }
+
+      proceduresResult = { archived: old.length, candidates: old.length };
+    }
+  } catch (e: any) { errors.push(`procedures: ${e.message}`); }
+
   const durationMs = Date.now() - start;
-  const totalArchived = claimsResult.archived + decisionsResult.archived + eventsResult.archived + loopsResult.archived + relationsResult.archived;
+  const totalArchived = claimsResult.archived + decisionsResult.archived + eventsResult.archived + loopsResult.archived + relationsResult.archived + attemptsResult.archived + proceduresResult.archived;
 
   // Record run completion
   archiveDb.prepare(`
@@ -472,7 +650,7 @@ export function runArchive(
     WHERE run_id = ?
   `).run(
     new Date().toISOString(),
-    claimsResult.archived + decisionsResult.archived + loopsResult.archived,
+    claimsResult.archived + decisionsResult.archived + loopsResult.archived + attemptsResult.archived + proceduresResult.archived,
     eventsResult.archived,
     errors.length > 0 ? "partial" : "complete",
     runId,
@@ -503,6 +681,10 @@ export function runArchive(
     loopsCandidates: loopsResult.candidates,
     relationsArchived: relationsResult.archived,
     relationsCandidates: relationsResult.candidates,
+    attemptsArchived: attemptsResult.archived,
+    attemptsCandidates: attemptsResult.candidates,
+    proceduresArchived: proceduresResult.archived,
+    proceduresCandidates: proceduresResult.candidates,
     errors,
     durationMs,
   };

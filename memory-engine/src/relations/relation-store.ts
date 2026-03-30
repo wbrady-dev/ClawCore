@@ -107,7 +107,8 @@ export function upsertRelation(
   }
 
   const predNorm = normalizePredicate(input.predicate);
-  const compositeId = `relation:${input.scopeId}:${input.subjectEntityId}:${predNorm}:${input.objectEntityId}`;
+  // Use stable entity composite_ids (not fragile numeric row IDs that change on DB rebuild)
+  const compositeId = `relation:${input.scopeId}:${subject.compositeId}:${predNorm}:${object.compositeId}`;
   const content = `${subject.name} ${predNorm} ${object.name}`;
 
   const canonicalKey = buildCanonicalKey("relation", content, {

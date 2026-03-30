@@ -11,32 +11,32 @@ if (process.env.DEBUG || process.env.THREADCLAW_DEBUG) {
 // Global safety nets — prevent unhandled errors from crashing the entire
 // OpenClaw gateway process. ThreadClaw memory operations are non-critical;
 // a failure should degrade gracefully, not kill Copper's session.
-if (!process.listenerCount("unhandledRejection")) {
-  process.on("unhandledRejection", (reason) => {
-    const stack = reason instanceof Error ? reason.stack ?? "" : "";
-    const isCcMem = stack.includes("cc-mem") || stack.includes("memory-engine");
-    if (isCcMem) {
-      console.warn("[cc-mem] unhandled promise rejection (swallowed):", reason instanceof Error ? reason.message : String(reason));
-    } else {
-      // Re-throw non-cc-mem rejections so the host process can handle them
-      throw reason;
-    }
-  });
-}
-if (!process.listenerCount("uncaughtException")) {
-  process.on("uncaughtException", (err) => {
-    // Only swallow errors that originate from cc-mem code to avoid masking
-    // genuine fatal errors from the host process. Check the stack trace.
-    const isCcMem = err.stack?.includes("cc-mem") || err.stack?.includes("memory-engine");
-    if (isCcMem) {
-      console.error("[cc-mem] uncaught exception (swallowed):", err.message, err.stack?.split("\n").slice(0, 3).join("\n"));
-      // Do NOT re-throw — let the process survive
-    } else {
-      // Re-throw non-cc-mem errors so the host process can handle them
-      throw err;
-    }
-  });
-}
+//
+// Multiple handlers can coexist on the same event. Our handler swallows
+// cc-mem/memory-engine errors and ignores everything else (letting the
+// gateway's own handler deal with non-cc-mem issues). We intentionally
+// do NOT re-throw from inside unhandledRejection — that causes undefined
+// behavior per the Node.js docs.
+process.on("unhandledRejection", (reason) => {
+  const stack = reason instanceof Error ? reason.stack ?? "" : "";
+  const isCcMem = stack.includes("cc-mem") || stack.includes("memory-engine");
+  if (isCcMem) {
+    console.warn("[cc-mem] unhandled promise rejection (swallowed):", reason instanceof Error ? reason.message : String(reason));
+  }
+  // Non-cc-mem rejections: do nothing — let the gateway's own handler deal with them
+});
+process.on("uncaughtException", (err) => {
+  // Only swallow errors that originate from cc-mem code to avoid masking
+  // genuine fatal errors from the host process. Check the stack trace.
+  const isCcMem = err.stack?.includes("cc-mem") || err.stack?.includes("memory-engine");
+  if (isCcMem) {
+    console.error("[cc-mem] uncaught exception (swallowed):", err.message, err.stack?.split("\n").slice(0, 3).join("\n"));
+    // Do NOT re-throw — let the process survive
+  } else {
+    // Re-throw non-cc-mem errors so the host process can handle them
+    throw err;
+  }
+});
 import { readFileSync, writeFileSync, existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { join, resolve as pathResolve, dirname } from "node:path";
@@ -48,11 +48,19 @@ import { createLcmDescribeTool } from "./src/tools/lcm-describe-tool.js";
 import { closeLcmConnection } from "./src/db/connection.js";
 import { closeGraphConnection } from "./src/relations/graph-connection.js";
 
-// Ensure DB connections are cleanly closed on shutdown to checkpoint WAL
-process.on("beforeExit", () => {
+// Ensure DB connections are cleanly closed on shutdown to checkpoint WAL.
+// beforeExit is unreliable on Windows when the process is killed via Task Scheduler,
+// so also register SIGINT/SIGTERM. Guard against duplicate cleanup calls.
+let _cleanupDone = false;
+const shutdownCleanup = () => {
+  if (_cleanupDone) return;
+  _cleanupDone = true;
   try { closeLcmConnection(); } catch { /* non-fatal */ }
   try { closeGraphConnection(); } catch { /* non-fatal */ }
-});
+};
+process.on("beforeExit", shutdownCleanup);
+process.on("SIGINT", shutdownCleanup);
+process.on("SIGTERM", shutdownCleanup);
 import { createLcmExpandQueryTool } from "./src/tools/lcm-expand-query-tool.js";
 import { createLcmExpandTool } from "./src/tools/lcm-expand-tool.js";
 import { createLcmGrepTool } from "./src/tools/lcm-grep-tool.js";

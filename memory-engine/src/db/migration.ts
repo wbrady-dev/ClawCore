@@ -425,7 +425,7 @@ export function runLcmMigrations(
   db.exec(`
     CREATE TABLE IF NOT EXISTS conversations (
       conversation_id INTEGER PRIMARY KEY AUTOINCREMENT,
-      session_id TEXT NOT NULL,
+      session_id TEXT NOT NULL UNIQUE,
       agent_id TEXT,
       title TEXT,
       bootstrapped_at TEXT,
@@ -563,6 +563,58 @@ export function runLcmMigrations(
   }
   db.exec(`CREATE INDEX IF NOT EXISTS conversations_agent_idx ON conversations (agent_id)`);
   db.exec(`CREATE INDEX IF NOT EXISTS idx_conversations_session ON conversations(session_id, created_at)`);
+
+  // Deduplicate conversations by session_id and add UNIQUE index for existing DBs.
+  // For fresh installs the UNIQUE constraint is on the CREATE TABLE, but older DBs
+  // may already have duplicates that must be cleaned before the index can be created.
+  const hasUniqueSessionIdx = db
+    .prepare(
+      "SELECT 1 FROM sqlite_master WHERE type='index' AND name='conversations_session_unique_idx'",
+    )
+    .get();
+  if (!hasUniqueSessionIdx) {
+    db.exec("BEGIN");
+    try {
+      // For each duplicated session_id keep the conversation with the most
+      // context_items (tie-break: most recent created_at, then highest rowid).
+      db.exec(`
+        DELETE FROM conversations
+        WHERE conversation_id IN (
+          SELECT c.conversation_id
+          FROM conversations c
+          WHERE EXISTS (
+            SELECT 1 FROM conversations c2
+            WHERE c2.session_id = c.session_id
+              AND c2.conversation_id <> c.conversation_id
+          )
+          AND c.conversation_id NOT IN (
+            SELECT best.conversation_id
+            FROM (
+              SELECT c3.conversation_id,
+                     ROW_NUMBER() OVER (
+                       PARTITION BY c3.session_id
+                       ORDER BY (
+                         SELECT COUNT(*) FROM context_items ci
+                         WHERE ci.conversation_id = c3.conversation_id
+                       ) DESC,
+                       c3.created_at DESC,
+                       c3.conversation_id DESC
+                     ) AS rn
+              FROM conversations c3
+            ) best
+            WHERE best.rn = 1
+          )
+        )
+      `);
+      db.exec(
+        `CREATE UNIQUE INDEX conversations_session_unique_idx ON conversations(session_id)`,
+      );
+      db.exec("COMMIT");
+    } catch (err) {
+      try { db.exec("ROLLBACK"); } catch { /* already rolled back */ }
+      throw err;
+    }
+  }
 
   ensureSummaryDepthColumn(db);
   ensureSummaryMetadataColumns(db);

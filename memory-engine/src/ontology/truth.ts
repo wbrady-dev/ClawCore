@@ -172,6 +172,30 @@ function findExistingByCanonicalKey(
   }
 }
 
+// ── Flip-Flop Dampening ─────────────────────────────────────────────────────
+
+const SUPERSESSION_DAMPEN_WINDOW_MS = 24 * 60 * 60 * 1000; // 24 hours
+const SUPERSESSION_DAMPEN_THRESHOLD = 3;
+
+/**
+ * Count how many times a canonical_key has been superseded in the last 24 hours.
+ * If the count exceeds the threshold, the caller should escalate to a conflict
+ * instead of superseding, to break flip-flop chains between competing sources.
+ */
+function isFlipFlopDetected(db: GraphDb, canonicalKey: string, scopeId: number): boolean {
+  try {
+    const cutoff = new Date(Date.now() - SUPERSESSION_DAMPEN_WINDOW_MS).toISOString();
+    const row = db.prepare(`
+      SELECT COUNT(*) AS cnt FROM memory_objects
+      WHERE canonical_key = ? AND scope_id = ? AND status = 'superseded'
+        AND updated_at >= ?
+    `).get(canonicalKey, scopeId, cutoff) as { cnt: number } | undefined;
+    return (row?.cnt ?? 0) >= SUPERSESSION_DAMPEN_THRESHOLD;
+  } catch {
+    return false;
+  }
+}
+
 // ── Value Comparison ────────────────────────────────────────────────────────
 
 /** Extract the comparable value from a MemoryObject. */
@@ -276,6 +300,29 @@ export function reconcile(
 
     // ── Determine supersession vs evidence ──
     let didSupersede = false;
+
+    // ── Flip-flop dampening: if this canonical_key has been superseded 3+
+    //    times in the last 24h, escalate to conflict instead of superseding
+    //    again. This breaks unbounded flip-flop chains between competing sources. ──
+    if (candidate.canonical_key && isFlipFlopDetected(db, candidate.canonical_key, candidate.scope_id)) {
+      const conflictObj = createConflictObject(candidate, match, "needs_confirmation");
+      actions.push({
+        type: "conflict",
+        conflictObject: conflictObj,
+        objectIdA: candidate.id,
+        objectIdB: match.id,
+        reason: `flip-flop dampening: canonical_key "${candidate.canonical_key}" superseded ${SUPERSESSION_DAMPEN_THRESHOLD}+ times in 24h — escalating to conflict`,
+      });
+      // Also add as evidence so the data is not lost
+      actions.push({
+        type: "evidence",
+        newObject: candidate,
+        existingObjectId: match.id,
+        predicate: "contradicts",
+        reason: `flip-flop dampened — added as contradicting evidence instead of superseding`,
+      });
+      continue;
+    }
 
     // ── Rule 5: Correction signal → auto-supersede (with 5-point guard) ──
     if (options.isCorrection) {

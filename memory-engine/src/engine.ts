@@ -63,6 +63,9 @@ const _RSMA_LOG_INTERVAL = 100;
 let _activeExtractions = 0;
 const MAX_CONCURRENT_EXTRACTIONS = 3;
 
+// ── Compaction backpressure ─────────────────────────────────────────────────
+const _compactionPending = new Set<string>();
+
 // ── NER Circuit Breaker ─────────────────────────────────────────────────────
 let _nerCircuitOpen = false;
 let _nerLastFailure = 0;
@@ -1150,7 +1153,7 @@ export class LcmContextEngine implements ContextEngine {
     return { importedMessages, hasOverlap: true };
   }
 
-  async bootstrap(params: { sessionId: string; sessionFile: string }): Promise<BootstrapResult> {
+  async bootstrap(params: { sessionId: string; sessionFile: string; sessionKey?: string }): Promise<BootstrapResult> {
     this.ensureMigrated();
 
     const result = await this.withSessionQueue(params.sessionId, async () =>
@@ -1306,7 +1309,7 @@ export class LcmContextEngine implements ContextEngine {
     if (this.graphDb && this.config.relationsEnabled) {
       try {
         const { buildAwarenessNote } = await import("./relations/awareness.js");
-        buildAwarenessNote(this.graphDb, "", { enabled: true, maxNotes: 0 });
+        buildAwarenessNote([], this.graphDb, { maxNotes: 0, maxTokens: 0, staleDays: 90, minMentions: 1, docSurfacing: false });
       } catch {}
     }
 
@@ -2258,6 +2261,7 @@ export class LcmContextEngine implements ContextEngine {
     sessionId: string;
     message: AgentMessage;
     isHeartbeat?: boolean;
+    sessionKey?: string;
   }): Promise<IngestResult> {
     this.ensureMigrated();
     return this.withSessionQueue(params.sessionId, () => this.ingestSingle(params));
@@ -2267,6 +2271,7 @@ export class LcmContextEngine implements ContextEngine {
     sessionId: string;
     messages: AgentMessage[];
     isHeartbeat?: boolean;
+    sessionKey?: string;
   }): Promise<IngestBatchResult> {
     this.ensureMigrated();
     if (params.messages.length === 0) {
@@ -2300,6 +2305,7 @@ export class LcmContextEngine implements ContextEngine {
     runtimeContext?: Record<string, unknown>;
     /** Back-compat param name. */
     legacyCompactionParams?: Record<string, unknown>;
+    sessionKey?: string;
   }): Promise<void> {
     this.ensureMigrated();
 
@@ -2341,6 +2347,12 @@ export class LcmContextEngine implements ContextEngine {
 
     const liveContextTokens = estimateSessionTokenCountForAfterTurn(params.messages);
 
+    // Backpressure: skip if compaction is already pending for this session
+    if (_compactionPending.has(params.sessionId)) {
+      return;
+    }
+    _compactionPending.add(params.sessionId);
+
     try {
       const leafTrigger = await this.evaluateLeafTrigger(params.sessionId);
       if (leafTrigger.shouldCompact) {
@@ -2367,7 +2379,9 @@ export class LcmContextEngine implements ContextEngine {
       currentTokenCount: liveContextTokens,
       compactionTarget: "threshold",
       legacyParams,
-    }).catch(() => {});
+    }).catch(() => {}).finally(() => {
+      _compactionPending.delete(params.sessionId);
+    });
   }
 
   async assemble(params: {

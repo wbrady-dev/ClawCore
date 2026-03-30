@@ -25,7 +25,7 @@ import type {
 /** Normalize a string for canonical key comparison. */
 export function normalize(value: string | undefined | null): string {
   if (!value) return "";
-  return value.toLowerCase().trim().replace(/\s+/g, " ");
+  return value.normalize("NFC").toLowerCase().trim().replace(/\s+/g, " ");
 }
 
 /** SHA-256 prefix hash (for content-based keys). Trim first, then truncate. */

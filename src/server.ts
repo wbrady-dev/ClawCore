@@ -99,12 +99,27 @@ function migrateOldGraphDb(db: ReturnType<typeof getDb>): void {
       "SELECT name FROM old_graph.sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'",
     ).all() as { name: string }[]).map((r) => r.name);
 
+    // Security: only migrate known tables to prevent arbitrary DDL execution
+    const ALLOWED_TABLES = new Set([
+      'memory_objects', 'provenance_links', 'state_scopes', 'evidence_log',
+      'state_deltas', 'work_leases', 'capabilities', '_evidence_migrations',
+    ]);
+
     for (const table of tables) {
+      if (!ALLOWED_TABLES.has(table)) {
+        logger.warn({ table }, "Skipping unknown table in old graph.db during migration — not in allowlist");
+        continue;
+      }
       // Create table in main DB if it doesn't exist (copy DDL)
       const ddlRow = db.prepare(
         "SELECT sql FROM old_graph.sqlite_master WHERE type = 'table' AND name = ?",
       ).get(table) as { sql: string } | undefined;
       if (ddlRow?.sql) {
+        // Validate DDL starts with CREATE TABLE to prevent arbitrary SQL execution
+        if (!/^CREATE\s+TABLE\b/i.test(ddlRow.sql.trim())) {
+          logger.warn({ table, sql: ddlRow.sql.slice(0, 200) }, "Rejected non-CREATE-TABLE DDL from old graph.db");
+          continue;
+        }
         try { db.exec(ddlRow.sql); } catch { /* table already exists */ }
       }
       // Copy data
