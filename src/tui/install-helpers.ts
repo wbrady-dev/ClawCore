@@ -428,6 +428,7 @@ export async function performInstallPlan(plan: InstallPlan): Promise<void> {
   const templateEnv: EnvMap = {
     THREADCLAW_PORT: "18800",
     THREADCLAW_DATA_DIR: resolve(root, "data"),
+    THREADCLAW_MEMORY_RELATIONS_GRAPH_DB_PATH: resolve(root, "data", "threadclaw.db"),
     EMBEDDING_URL: process.env.EMBEDDING_URL ?? "http://127.0.0.1:8012/v1",
     EMBEDDING_MODEL: embedChoice.id,
     EMBEDDING_DIMENSIONS: String(embedChoice.dims),
