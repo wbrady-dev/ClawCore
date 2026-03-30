@@ -1824,6 +1824,12 @@ export function runGraphMigrations(db: GraphDb, dbPath?: string): void {
       `);
       db.exec(`COMMIT`);
       // Ensure FTS5 table and triggers exist (may have been missed on earlier installs)
+      // Drop old v26 trigger names (mo_fts_*) to prevent double-firing with new names
+      try {
+        db.exec(`DROP TRIGGER IF EXISTS mo_fts_ai`);
+        db.exec(`DROP TRIGGER IF EXISTS mo_fts_ad`);
+        db.exec(`DROP TRIGGER IF EXISTS mo_fts_au`);
+      } catch { /* non-fatal */ }
       db.exec(`
         CREATE VIRTUAL TABLE IF NOT EXISTS memory_objects_fts USING fts5(content, content='memory_objects', content_rowid='id');
         CREATE TRIGGER IF NOT EXISTS memory_objects_fts_ai AFTER INSERT ON memory_objects BEGIN
