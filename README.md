@@ -73,7 +73,7 @@ ThreadClaw runs as two local processes that work together:
 
 **Layer 1 — RAG Pipeline.** Your documents are chunked semantically, embedded with a local model, and stored in a SQLite vector database. Queries hit a hybrid pipeline: BM25 full-text search and vector similarity are fused with Reciprocal Rank Fusion (RRF), then optionally reranked by a cross-encoder. Results are packed into context with source attribution.
 
-**Layer 2 — Lossless Conversation Memory.** Every conversation is stored as a DAG of messages, summaries, and context items. When context fills up, the compaction engine produces summaries — but unlike traditional systems, the original messages are never deleted. The agent can always expand a summary back to the full original text via the `cc_recall` tool.
+**Layer 2 — Lossless Conversation Memory.** We have integrated [Lossless-Claw](https://github.com/Martian-Engineering/lossless-claw) into ThreadClaw. Every conversation is stored as a DAG of messages, summaries, and context items. When context fills up, the compaction engine produces summaries — but unlike traditional systems, the original messages are never deleted. The agent can always expand a summary back to the full original text via the `cc_recall` tool.
 
 **Layer 3 — Evidence OS (RSMA).** Claims, decisions, entities, relationships, loops, invariants, capabilities, and procedures are extracted from every conversation in real time. A truth engine reconciles new information against existing knowledge: it detects contradictions, creates conflicts, supersedes outdated beliefs, and tracks confidence with evidence accumulation. The context compiler selects the most valuable evidence for each turn using a token-budgeted greedy knapsack algorithm.
 
