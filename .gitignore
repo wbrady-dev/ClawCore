@@ -28,3 +28,7 @@ package-lock.json
 data/*
 !data/.gitkeep
 .env.bak
+
+# Generated runtime wrappers
+bin/run-*.bat
+bin/run-*.vbs
