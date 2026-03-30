@@ -236,6 +236,27 @@ ThreadClaw provides 16 tools to the AI agent through the OpenClaw plugin interfa
 |------|---------|
 | `threadclaw query` | Search the document knowledge base |
 | `threadclaw collections` | List and manage document collections |
+| `threadclaw ingest` | Ingest files, folders, or URLs into the knowledge base |
+
+---
+
+## Natural Language Ingestion
+
+Your AI agent can ingest content on your behalf using natural language. Just tell it what to add:
+
+> "Ingest this PDF into the research collection"
+> "Add everything in my Documents/notes folder to the notes collection"
+> "Ingest https://docs.example.com into the docs collection"
+> "Pull in this web page and add it to my knowledge base"
+
+The agent has access to the `threadclaw ingest` command which handles:
+
+- **Local files** — PDFs, DOCX, Markdown, HTML, CSV, JSON, email, ePub, plain text, and more
+- **Folders** — recursively ingest all supported files in a directory
+- **URLs** — fetch any web page or text file, extract the content, and ingest it directly
+- **Collections** — organize everything into named, searchable collections
+
+No manual configuration needed. The agent fetches, parses, chunks, embeds, and indexes — you just say what you want added.
 
 ---
 
