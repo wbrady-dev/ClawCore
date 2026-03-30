@@ -303,10 +303,7 @@ function ensureWindowsTasks(root: string): { success: boolean; error?: string } 
     writeFileSync(path, Buffer.concat([bom, body]));
   };
 
-  // Use pythonw.exe (windowless) for models if available, else python.exe
-  const pythonwCmd = pythonCmd.replace(/python\.exe$/i, "pythonw.exe");
-  const usePythonw = existsSync(pythonwCmd) ? pythonwCmd : pythonCmd;
-
+  // Wrap both servers in cmd /c start /b to suppress console windows on Windows
   const modelsXml = resolve(binDir, `${TASK_MODELS}.xml`);
   writeXml(modelsXml, `<?xml version="1.0" encoding="UTF-16"?>
 <Task version="1.2" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
@@ -324,8 +321,8 @@ function ensureWindowsTasks(root: string): { success: boolean; error?: string } 
   </Settings>
   <Actions>
     <Exec>
-      <Command>${escXml(usePythonw)}</Command>
-      <Arguments>"${escXml(modelsScript)}"</Arguments>
+      <Command>cmd.exe</Command>
+      <Arguments>/c start /b "" "${escXml(pythonCmd)}" "${escXml(modelsScript)}"</Arguments>
       <WorkingDirectory>${escXml(dirname(modelsScript))}</WorkingDirectory>
     </Exec>
   </Actions>
