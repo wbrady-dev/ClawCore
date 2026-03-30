@@ -303,10 +303,7 @@ function ensureWindowsTasks(root: string): { success: boolean; error?: string } 
     writeFileSync(path, Buffer.concat([bom, body]));
   };
 
-  // Use cmd /c with output piped to log file so the Task Scheduler console
-  // window shows live output instead of being blank.
-  const logsDir = resolve(root, "logs");
-  mkdirSync(logsDir, { recursive: true });
+  // Generate .bat wrappers so the Task Scheduler console window shows live output.
   const modelsLog = resolve(logsDir, "models.log");
   const ragLog = resolve(logsDir, "threadclaw.log");
 
