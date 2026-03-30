@@ -433,7 +433,7 @@ export async function performInstallPlan(plan: InstallPlan): Promise<void> {
     EMBEDDING_DIMENSIONS: String(embedChoice.dims),
     EMBEDDING_API_KEY: process.env.EMBEDDING_API_KEY ?? "",
     RERANKER_URL: process.env.RERANKER_URL ?? "http://127.0.0.1:8012",
-    RERANKER_MODEL: process.env.RERANKER_MODEL ?? "",
+    RERANKER_MODEL: rerankChoice.id || process.env.RERANKER_MODEL || "",
     RERANKER_API_KEY: process.env.RERANKER_API_KEY ?? "",
     QUERY_EXPANSION_ENABLED: "false",
     QUERY_EXPANSION_URL: "http://127.0.0.1:1234/v1",
