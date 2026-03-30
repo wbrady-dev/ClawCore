@@ -454,7 +454,7 @@ See [`.env.example`](.env.example) for the full reference with documentation for
 
 ## Credits
 
-ThreadClaw's conversation memory engine is based on [lossless-claw](https://github.com/nicobailon/lossless-claw) by Nico Bailon / Martian Engineering (MIT License). The DAG-based compaction architecture, incremental summarization strategy, and context assembly approach originated from that work and have been extended with RSMA, Evidence OS, source adapters, and the full RAG pipeline.
+ThreadClaw's conversation memory engine is based on [lossless-claw](https://github.com/nicobailon/lossless-claw) by Josh Lehman / Martian Engineering (MIT License). The DAG-based compaction architecture, incremental summarization strategy, and context assembly approach originated from that work and have been extended with RSMA, Evidence OS, source adapters, and the full RAG pipeline.
 
 ## License
 
