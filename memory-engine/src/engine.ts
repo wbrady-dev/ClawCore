@@ -63,6 +63,23 @@ const _RSMA_LOG_INTERVAL = 100;
 let _activeExtractions = 0;
 const MAX_CONCURRENT_EXTRACTIONS = 3;
 
+// ── Deferred extraction queue ───────────────────────────────────────────────
+// When backpressure skips a message, queue it here for retry when a slot opens.
+type DeferredExtraction = { fn: () => Promise<void>; messageId: string };
+const _deferredExtractions: DeferredExtraction[] = [];
+const MAX_DEFERRED_QUEUE = 500;
+
+function _drainDeferred() {
+  while (_activeExtractions < MAX_CONCURRENT_EXTRACTIONS && _deferredExtractions.length > 0) {
+    const deferred = _deferredExtractions.shift()!;
+    _activeExtractions++;
+    deferred.fn().catch((err) => {
+      _activeExtractions = Math.max(0, _activeExtractions);
+      console.warn(`[rsma] deferred extraction error for message ${deferred.messageId}:`, err instanceof Error ? err.message : String(err));
+    });
+  }
+}
+
 // ── Compaction backpressure ─────────────────────────────────────────────────
 const _compactionPending = new Set<string>();
 
@@ -1713,9 +1730,7 @@ export class LcmContextEngine implements ContextEngine {
     // fire-and-forget async IIFE. Reconciliation runs before store writes
     // so supersession actions apply to the latest objects.
     if (rsmaWillRun) {
-      if (_activeExtractions >= MAX_CONCURRENT_EXTRACTIONS) {
-        console.warn(`[rsma] backpressure: ${_activeExtractions} extractions in flight, skipping extraction for message ${msgRecord.messageId}`);
-      } else {
+      // Capture variables for the async extraction closure (shared by immediate and deferred paths)
       const _graphDb = this.graphDb!;
       const _content = stored.content;
       const _messageId = String(msgRecord.messageId);
@@ -1724,8 +1739,9 @@ export class LcmContextEngine implements ContextEngine {
       const _deps = this.deps;
       const _runId = runId;
       const _eeActor = eeActor;
-      _activeExtractions++;
-      (async () => { try {
+
+      // Shared extraction function used by both immediate and deferred paths
+      const _runExtraction = async () => { try {
         const graphDb = _graphDb;
         const role = _role;
         const extractionMode = _config.relationsExtractionMode ?? "smart";
@@ -2262,15 +2278,28 @@ export class LcmContextEngine implements ContextEngine {
         }
       } finally {
         _activeExtractions--;
+        _drainDeferred();
       }
-      })().catch((err) => {
-        // Safety net: catch any unhandled rejection from the fire-and-forget IIFE.
-        // Without this, an unhandled promise rejection kills the entire process
-        // (no process.on('unhandledRejection') handler exists in OpenClaw plugins).
-        _activeExtractions = Math.max(0, _activeExtractions); // safety: never go negative
-        console.warn("[rsma] unhandled extraction error:", err instanceof Error ? err.message : String(err));
-      }); // fire-and-forget — don't await
-      } // end backpressure else
+      }; // end _runExtraction
+
+      if (_activeExtractions >= MAX_CONCURRENT_EXTRACTIONS) {
+        // Queue for deferred retry instead of dropping permanently
+        if (_deferredExtractions.length < MAX_DEFERRED_QUEUE) {
+          _deferredExtractions.push({ messageId: _messageId, fn: _runExtraction });
+          console.info(`[rsma] backpressure: queued message ${msgRecord.messageId} for deferred extraction (${_deferredExtractions.length} in queue)`);
+        } else {
+          console.warn(`[rsma] backpressure: deferred queue full (${MAX_DEFERRED_QUEUE}), dropping extraction for message ${msgRecord.messageId}`);
+        }
+      } else {
+        // Slot available — run immediately
+        _activeExtractions++;
+        _runExtraction().catch((err) => {
+          // Safety net: catch any unhandled rejection from the fire-and-forget.
+          _activeExtractions = Math.max(0, _activeExtractions);
+          console.warn("[rsma] unhandled extraction error:", err instanceof Error ? err.message : String(err));
+          _drainDeferred();
+        }); // fire-and-forget — don't await
+      }
     }
 
     return { ingested: true };
